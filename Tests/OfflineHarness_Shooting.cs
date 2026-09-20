@@ -49,7 +49,10 @@ static class ShootingHarness
     {
         foreach (string n in new[] { "ConsciousnessSource", "BreathingPathway", "BloodPumpingSource",
                                      "BreathingSource", "BloodFiltrationSource",
-                                     "MovingLimbCore", "MovingLimbSegment", "MovingLimbDigit" })
+                                     "MovingLimbCore", "MovingLimbSegment", "MovingLimbDigit",
+                                     "Pelvis", "Spine",
+                                     "ManipulationLimbCore", "ManipulationLimbSegment",
+                                     "ManipulationLimbDigit" })
         {
             BodyPartTagDef t = new BodyPartTagDef { defName = n };
             Tags[n] = t;
@@ -84,13 +87,18 @@ static class ShootingHarness
         BodyPartRecord torso = Part("Torso", 0.40f, null);
         head = Part("Head", 0.10f, torso);
         brain = Part("Brain", 0.01f, head, "ConsciousnessSource");
+        brain.depth = BodyPartDepth.Inside;
         neck = Part("Neck", 0.04f, torso, "BreathingPathway");
         heart = Part("Heart", 0.03f, torso, "BloodPumpingSource");
+        heart.depth = BodyPartDepth.Inside;
         BodyPartRecord lung = Part("Lung", 0.05f, torso, "BreathingSource");
+        lung.depth = BodyPartDepth.Inside;
         leftLeg = Part("LeftLeg", 0.10f, torso, "MovingLimbCore");
         rightLeg = Part("RightLeg", 0.10f, torso, "MovingLimbCore");
         foot = Part("LeftFoot", 0.03f, leftLeg, "MovingLimbSegment");
         toe = Part("LeftToe", 0.01f, foot, "MovingLimbDigit");
+        torso.parts.AddRange(new[] { head, neck, heart, lung, leftLeg, rightLeg });
+        head.parts.Add(brain); leftLeg.parts.Add(foot); foot.parts.Add(toe);
         return MakePawn(torso, head, brain, neck, heart, lung, leftLeg, rightLeg, foot, toe);
     }
 
@@ -111,6 +119,62 @@ static class ShootingHarness
         {
             Def = Bullet, Instigator = shooter, Weapon = Rifle, IntendedTarget = victim
         };
+    }
+
+    static Verb VerbFor(Pawn shooter, Pawn target, int shotsPerBurst, int burstShotsLeft)
+    {
+        Verb v = new Verb { CasterPawn = shooter, caster = shooter, shotsPerBurstStub = shotsPerBurst };
+        v.CurrentTarget = new LocalTargetInfo { Thing = target };
+        typeof(Verb).GetField("burstShotsLeft", BindingFlags.Instance | BindingFlags.NonPublic
+                                              | BindingFlags.Public).SetValue(v, burstShotsLeft);
+        return v;
+    }
+
+    static readonly Type TBurst = Mod.GetType("Grandmaster21.Gm21Burst");
+    static bool HoldFire(Verb v) => (bool)TBurst
+        .GetMethod("ShouldHoldFire", BindingFlags.Static | BindingFlags.NonPublic)
+        .Invoke(null, new object[] { v });
+
+    /// <summary>Builds a quadruped: torso with vitals inside, four legs, paws, a tail and ears.</summary>
+    static Pawn Quadruped(out BodyPartRecord[] legs, out BodyPartRecord tail, out BodyPartRecord ear,
+                          out BodyPartRecord torso, out BodyPartRecord head, out BodyPartRecord brain)
+    {
+        torso = Part("Torso", 0.40f, null);
+        BodyPartRecord heart = Part("Heart", 0.03f, torso, "BloodPumpingSource");
+        heart.depth = BodyPartDepth.Inside;
+        BodyPartRecord lung = Part("Lung", 0.05f, torso, "BreathingSource");
+        lung.depth = BodyPartDepth.Inside;
+        head = Part("Head", 0.10f, torso);
+        brain = Part("Brain", 0.01f, head, "ConsciousnessSource");
+        brain.depth = BodyPartDepth.Inside;
+        BodyPartRecord spine = Part("Spine", 0.05f, torso, "Spine");
+        spine.depth = BodyPartDepth.Inside;
+        BodyPartRecord stomach = Part("Stomach", 0.04f, torso);
+        stomach.depth = BodyPartDepth.Inside;
+
+        torso.parts.Add(heart); torso.parts.Add(lung); torso.parts.Add(head);
+        torso.parts.Add(spine); torso.parts.Add(stomach);
+        head.parts.Add(brain);
+
+        legs = new BodyPartRecord[4];
+        List<BodyPartRecord> all = new List<BodyPartRecord>
+            { torso, heart, lung, head, brain, spine, stomach };
+        string[] names = { "FrontLeftLeg", "FrontRightLeg", "RearLeftLeg", "RearRightLeg" };
+        for (int i = 0; i < 4; i++)
+        {
+            legs[i] = Part(names[i], 0.08f, torso, "MovingLimbCore");
+            BodyPartRecord paw = Part(names[i] + "Paw", 0.02f, legs[i], "MovingLimbSegment");
+            legs[i].parts.Add(paw);
+            torso.parts.Add(legs[i]);
+            all.Add(legs[i]); all.Add(paw);
+        }
+        tail = Part("Tail", 0.03f, torso);
+        ear = Part("Ear", 0.01f, head);
+        torso.parts.Add(tail); head.parts.Add(ear);
+        all.Add(tail); all.Add(ear);
+
+        Pawn p = MakePawn(all.ToArray());
+        return p;
     }
 
     static void Main()
@@ -214,8 +278,14 @@ static class ShootingHarness
         Pawn bug = MakePawn(insect.ToArray());
         Check("six-legged creature -> a leg, not the heart",
               Array.IndexOf(legs, Incap(bug)) >= 0, "got=" + Name(Incap(bug)));
-        Check("creature with no mobility tags -> null",
-              Incap(MakePawn(Part("Blob", 1f, null))) == null);
+        // Under the deeper ladder this no longer gives up: an external non-vital part is a valid
+        // less-lethal target even with no mobility or manipulation anatomy at all.
+        BodyPartRecord blob = Part("Blob", 1f, null);
+        Check("creature with no limb tags -> its non-vital external part, not null",
+              Incap(MakePawn(blob)) == blob, "got=" + Name(Incap(MakePawn(blob))));
+        BodyPartRecord onlyBrain = Part("Core", 1f, null, "ConsciousnessSource");
+        Check("creature that is nothing but a vital -> null (no safe shot exists)",
+              Incap(MakePawn(onlyBrain)) == null, "got=" + Name(Incap(MakePawn(onlyBrain))));
 
         Console.WriteLine("\n=== S6. Targeting patch gating ===");
         Gm21Shooting.AnatomicalTargetingEnabled = true;
@@ -283,6 +353,110 @@ static class ShootingHarness
         Gm21AimModeStore.Clear(cleanupPawn);
         Check("aim mode is cleared alongside the demotion",
               Gm21AimModeStore.Get(cleanupPawn) == Gm21AimMode.Normal, "pawns=" + rep.pawnsProcessed);
+
+        Console.WriteLine("\n=== S10. Less-lethal ladder ===");
+        BodyPartRecord[] qLegs; BodyPartRecord qTail, qEar, qTorso, qHead, qBrain;
+        Pawn quad = Quadruped(out qLegs, out qTail, out qEar, out qTorso, out qHead, out qBrain);
+        Check("quadruped -> a mobility limb first",
+              Array.IndexOf(qLegs, Incap(quad)) >= 0, "got=" + Name(Incap(quad)));
+        Check("torso is never chosen (it contains vitals)", Incap(quad) != qTorso);
+        Check("head is never chosen (it contains the brain)", Incap(quad) != qHead);
+
+        // Strip every mobility part and watch the ladder descend.
+        foreach (BodyPartRecord leg in qLegs) { leg.missingStub = true; }
+        foreach (BodyPartRecord p in quad.health.hediffSet.parts)
+            if (p.def.defName.EndsWith("Paw")) p.missingStub = true;
+        BodyPartRecord afterLegs = Incap(quad);
+        Check("all mobility gone -> drops to a non-vital extremity, never a vital",
+              afterLegs == qTail || afterLegs == qEar, "got=" + Name(afterLegs));
+        Check("  ...and still not the torso or head", afterLegs != qTorso && afterLegs != qHead);
+
+        qTail.missingStub = true; qEar.missingStub = true;
+        BodyPartRecord internalPick = Incap(quad);
+        Check("outside exhausted -> internal mobility structure (spine) before other organs",
+              internalPick != null && internalPick.def.defName == "Spine", "got=" + Name(internalPick));
+        foreach (BodyPartRecord p2 in quad.health.hediffSet.parts)
+            if (p2.def.defName == "Spine") p2.missingStub = true;
+        BodyPartRecord lastResort = Incap(quad);
+        Check("spine gone -> other internal non-vital, still never a vital organ",
+              lastResort != null && lastResort.def.defName == "Stomach", "got=" + Name(lastResort));
+
+        // Humanlike ladder: mobility -> manipulation.
+        BodyPartRecord hBrain, hHead, hNeck, hHeart, hL, hR, hFoot, hToe;
+        Pawn man = Humanlike(out hBrain, out hHead, out hNeck, out hHeart, out hL, out hR, out hFoot, out hToe);
+        BodyPartRecord arm = Part("LeftArm", 0.08f, null, "ManipulationLimbCore");
+        BodyPartRecord hand = Part("LeftHand", 0.03f, arm, "ManipulationLimbSegment");
+        arm.parts.Add(hand);
+        man.health.hediffSet.parts.Add(arm); man.health.hediffSet.parts.Add(hand);
+        Check("humanlike prefers mobility over manipulation",
+              Incap(man) == hL || Incap(man) == hR, "got=" + Name(Incap(man)));
+        hL.missingStub = true; hR.missingStub = true; hFoot.missingStub = true; hToe.missingStub = true;
+        Check("mobility exhausted -> manipulation core (arm)", Incap(man) == arm, "got=" + Name(Incap(man)));
+        arm.missingStub = true;
+        Check("arm gone -> manipulation segment (hand)", Incap(man) == hand, "got=" + Name(Incap(man)));
+
+        Console.WriteLine("\n=== S11. Per-projectile re-evaluation (the raccoon burst) ===");
+        // Reproduces the reported scenario: assault rifle burst, quadruped, Downed mode. Each
+        // projectile must re-read anatomy rather than reusing the first shot's choice.
+        BodyPartRecord[] rLegs; BodyPartRecord rTail, rEar, rTorso, rHead, rBrain;
+        Pawn raccoon = Quadruped(out rLegs, out rTail, out rEar, out rTorso, out rHead, out rBrain);
+        Pawn burstGm = ShootingGrandmaster(Gm21AimMode.Downed);
+        Gm21Shooting.AnatomicalTargetingEnabled = true;
+
+        List<BodyPartRecord> burstHits = new List<BodyPartRecord>();
+        for (int shot = 0; shot < 4; shot++)
+        {
+            BodyPartRecord hit = RunTargetingPrefix(raccoon, Shot(burstGm, raccoon)).HitPart;
+            burstHits.Add(hit);
+            if (hit != null) hit.missingStub = true;   // the shot takes the limb off
+        }
+        bool allLegs = true; string seq = "";
+        foreach (BodyPartRecord h in burstHits)
+        {
+            seq += " " + Name(h);
+            if (Array.IndexOf(rLegs, h) < 0) allLegs = false;
+        }
+        Check("every projectile in the burst picked a different mobility limb", allLegs, seq.Trim());
+        Check("no projectile fell through to vanilla (null)", !burstHits.Contains(null), seq.Trim());
+        Check("no projectile chose the torso or head",
+              !burstHits.Contains(rTorso) && !burstHits.Contains(rHead));
+
+        Console.WriteLine("\n=== S12. Burst discipline ===");
+        Pawn burstVictim = Quadruped(out rLegs, out rTail, out rEar, out rTorso, out rHead, out rBrain);
+        Check("opening shot of a burst is never held (no job spin)",
+              !HoldFire(VerbFor(burstGm, burstVictim, 3, 3)));
+        Check("single-shot weapon never holds fire", !HoldFire(VerbFor(burstGm, burstVictim, 1, 1)));
+        Check("mid-burst, target still up -> keep firing", !HoldFire(VerbFor(burstGm, burstVictim, 3, 2)));
+        burstVictim.Downed = true;
+        Check("mid-burst, target downed -> hold fire", HoldFire(VerbFor(burstGm, burstVictim, 3, 2)));
+        Check("but the opening shot still fires even at a downed target",
+              !HoldFire(VerbFor(burstGm, burstVictim, 3, 3)));
+        burstVictim.Downed = false; burstVictim.Dead = true;
+        Check("mid-burst, target dead -> hold fire", HoldFire(VerbFor(burstGm, burstVictim, 3, 2)));
+        burstVictim.Dead = false;
+
+        // No safe target left anywhere -> stop firing rather than revert to vanilla.
+        Pawn stripped = Quadruped(out rLegs, out rTail, out rEar, out rTorso, out rHead, out rBrain);
+        foreach (BodyPartRecord p in stripped.health.hediffSet.parts)
+            p.missingStub = (p != rTorso && p != rHead && p != rBrain);
+        Check("no less-lethal target remains -> selector returns null",
+              Incap(stripped) == null, "got=" + Name(Incap(stripped)));
+        Check("  ...and the Grandmaster holds fire rather than shooting centre mass",
+              HoldFire(VerbFor(burstGm, stripped, 3, 2)));
+
+        Pawn normalGm = ShootingGrandmaster(Gm21AimMode.Normal);
+        Check("Normal mode never holds fire", !HoldFire(VerbFor(normalGm, burstVictim, 3, 2)));
+        Pawn killerGm = ShootingGrandmaster(Gm21AimMode.Killer);
+        Check("Killer keeps firing while the target lives", !HoldFire(VerbFor(killerGm, burstVictim, 3, 2)));
+        burstVictim.Dead = true;
+        Check("Killer stops once the target is dead", HoldFire(VerbFor(killerGm, burstVictim, 3, 2)));
+        burstVictim.Dead = false;
+        Pawn plain = new Pawn { health = new Pawn_HealthTracker(), skills = new Pawn_SkillTracker() };
+        plain.skills.skills.Add(new SkillRecord { def = SkillDefOf.Shooting, levelInt = 20 });
+        Gm21AimModeStore.Set(plain, Gm21AimMode.Downed);
+        burstVictim.Downed = true;
+        Check("a level 20 shooter never holds fire", !HoldFire(VerbFor(plain, burstVictim, 3, 2)));
+        burstVictim.Downed = false;
 
         Console.WriteLine("\n=== S9. Shipped translation keys ===");
         string[] required = {

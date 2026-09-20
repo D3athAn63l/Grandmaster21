@@ -32,10 +32,18 @@ namespace Grandmaster21
         private static BodyPartTagDef tagBreathing;       // lungs
         private static BodyPartTagDef tagBloodFiltration; // liver / kidney
 
-        // Mobility tags.
+        // Mobility tags. These are exactly the tags PawnCapacityWorker_Moving consumes
+        // (verified in 1.6 IL), so scoring by them tracks the capacity we are trying to remove.
         private static BodyPartTagDef tagMovingCore;
         private static BodyPartTagDef tagMovingSegment;
         private static BodyPartTagDef tagMovingDigit;
+        private static BodyPartTagDef tagPelvis;
+        private static BodyPartTagDef tagSpine;
+
+        // Manipulation tags, likewise from PawnCapacityWorker_Manipulation.
+        private static BodyPartTagDef tagManipCore;
+        private static BodyPartTagDef tagManipSegment;
+        private static BodyPartTagDef tagManipDigit;
 
         private static void Resolve()
         {
@@ -49,6 +57,11 @@ namespace Grandmaster21
             tagMovingCore = Tag("MovingLimbCore");
             tagMovingSegment = Tag("MovingLimbSegment");
             tagMovingDigit = Tag("MovingLimbDigit");
+            tagPelvis = Tag("Pelvis");
+            tagSpine = Tag("Spine");
+            tagManipCore = Tag("ManipulationLimbCore");
+            tagManipSegment = Tag("ManipulationLimbSegment");
+            tagManipDigit = Tag("ManipulationLimbDigit");
         }
 
         private static BodyPartTagDef Tag(string defName)
@@ -131,25 +144,65 @@ namespace Grandmaster21
             return best;
         }
 
+        // Less-lethal scoring ladder, highest first. The exact numbers do not matter; the
+        // ORDER does, and keeping them as named constants makes the ladder readable at a glance.
+        private const int ScoreMobilityCore      = 1000; // a leg
+        private const int ScoreMobilitySegment   =  900; // a foot
+        private const int ScoreMobilityDigit     =  800; // a toe
+        private const int ScoreManipulationCore  =  700; // an arm
+        private const int ScoreManipulationSeg   =  600; // a hand
+        private const int ScoreManipulationDigit =  500; // a finger
+        private const int ScoreExternalDistal    =  300; // ear, nose, tail, horn -- an external extremity
+        private const int ScoreExternalOther     =  200; // any other external non-vital part
+        private const int ScoreInternalMobility  =  150; // pelvis / spine -- see below
+        private const int ScoreInternalOther     =  100; // internal, non-vital, nothing else left
+
         /// <summary>
-        /// DOWNED -- the anatomy whose loss most reduces Moving, while avoiding vitals.
+        /// DOWNED -- least-lethal useful targeting.
         ///
-        /// Mobility is expressed by the MovingLimb* tags, so this works on bipeds, quadrupeds,
-        /// insects and anything else that declares how it moves. Core limbs outrank segments,
-        /// which outrank digits, because losing a core structure costs the most Moving.
+        /// This is not "aim at the legs". It is: of everything still attached to this creature,
+        /// which single part most reduces its ability to fight or flee while being least likely to
+        /// kill it? That question is re-asked for EVERY projectile, because the answer changes the
+        /// moment a limb comes off.
         ///
-        /// Vital parts are excluded outright: the point of Downed mode is a live captive. It is
-        /// not a guarantee of survival -- blood loss, later untreated wounds and fire still kill
-        /// normally -- it only means the Grandmaster is not aiming at anything immediately fatal.
+        /// THE LADDER
+        ///   1. Mobility limbs      -- core &gt; segment &gt; digit. Stops the target leaving.
+        ///   2. Manipulation limbs  -- core &gt; segment &gt; digit. Stops the target fighting back.
+        ///   3. External extremities -- a leaf part with nothing hanging off it: ear, nose, tail,
+        ///                              horn, digit, genitalia. Peripheral by construction, with no
+        ///                              naming special cases and no anatomy assumptions.
+        ///   4. Any other external non-vital part.
+        ///   5. Pelvis / spine, then any other internal non-vital part.
         ///
-        /// ADAPTIVE: missing parts and parts already at zero health are filtered every shot, so a
-        /// Grandmaster never keeps firing into a leg that is already gone.
+        /// WHY INTERNAL PARTS RANK LAST, EVEN MOBILITY-CRITICAL ONES. A spine is non-vital and
+        /// wrecks Moving, which by function alone would put it near the top. But a bullet aimed
+        /// into the torso cavity can spill damage onto the parent part on its way, and the torso
+        /// is where bleeding out happens. External anatomy carries no such risk, so anything on
+        /// the outside is preferred to anything on the inside -- "least lethal" outranks "most
+        /// disabling" whenever the two disagree. Pelvis and spine stay in the ladder as a late
+        /// option rather than being excluded, because an otherwise stripped target still needs an
+        /// answer that is not centre mass.
+        ///
+        /// Within a tier, the healthiest candidate wins: shooting a working leg removes more
+        /// Moving than finishing off one that is already ruined, and it keeps the Grandmaster from
+        /// wasting the rest of a burst on a limb that is nearly off anyway.
+        ///
+        /// WHAT IS EXCLUDED, AND WHY IT IS GENERIC: any part whose own subtree contains a vital
+        /// organ. One rule, no name lists. On a human that removes the brain, the head that holds
+        /// it, the neck, and the whole torso; on a six-legged modded creature with three hearts it
+        /// removes exactly the parts wrapping those hearts. It is also what keeps Downed mode from
+        /// ever choosing centre mass, which is the entire point.
+        ///
+        /// Returns null only when the creature has NO non-vital part left anywhere. The caller
+        /// treats that as "there is no safe shot", not as "let vanilla pick".
         /// </summary>
         internal static BodyPartRecord ChooseIncapacitatingPart(Pawn target)
         {
             Resolve();
             Pawn_HealthTracker health = target.health;
             if (health == null || health.hediffSet == null) return null;
+
+            HashSet<BodyPartRecord> offLimits = MarkVitalAncestors(health);
 
             BodyPartRecord best = null;
             int bestScore = 0;
@@ -158,19 +211,12 @@ namespace Grandmaster21
             foreach (BodyPartRecord part in health.hediffSet.GetNotMissingParts())
             {
                 if (!IsTargetable(health, part)) continue;
-                if (IsVital(part)) continue;
+                if (offLimits.Contains(part)) continue;
 
-                int score;
-                if (HasTag(part, tagMovingCore)) score = 100;
-                else if (HasTag(part, tagMovingSegment)) score = 70;
-                else if (HasTag(part, tagMovingDigit)) score = 40;
-                else continue;
+                int score = ScoreLessLethal(part);
+                if (score <= 0) continue;
 
-                // Prefer the healthiest remaining mobility part: shooting the one that still works
-                // takes more Moving away than finishing off one that is already ruined.
                 float remaining = health.hediffSet.GetPartHealth(part);
-                if (remaining <= 0f) continue;
-
                 if (score > bestScore || (score == bestScore && remaining > bestHealth))
                 {
                     best = part;
@@ -180,6 +226,56 @@ namespace Grandmaster21
             }
 
             return best;
+        }
+
+        private static int ScoreLessLethal(BodyPartRecord part)
+        {
+            if (HasTag(part, tagMovingCore)) return ScoreMobilityCore;
+            if (HasTag(part, tagMovingSegment)) return ScoreMobilitySegment;
+            if (HasTag(part, tagMovingDigit)) return ScoreMobilityDigit;
+
+            if (HasTag(part, tagManipCore)) return ScoreManipulationCore;
+            if (HasTag(part, tagManipSegment)) return ScoreManipulationSeg;
+            if (HasTag(part, tagManipDigit)) return ScoreManipulationDigit;
+
+            if (part.depth == BodyPartDepth.Outside)
+            {
+                // A leaf part is an extremity by construction -- nothing is attached beyond it.
+                bool leaf = part.parts == null || part.parts.Count == 0;
+                return leaf ? ScoreExternalDistal : ScoreExternalOther;
+            }
+
+            // Internal, and only reached once the outside is exhausted.
+            if (HasTag(part, tagPelvis) || HasTag(part, tagSpine)) return ScoreInternalMobility;
+            return ScoreInternalOther;
+        }
+
+        /// <summary>
+        /// Builds the off-limits set: every vital part, plus every ancestor that contains one.
+        ///
+        /// Walking UP from each vital part is O(vitals x depth); testing each candidate by walking
+        /// DOWN would be O(parts x subtree), which for a torso means re-walking most of the body
+        /// once per candidate. Since this now runs per projectile, the cheaper direction matters.
+        ///
+        /// The set is a reused [ThreadStatic] buffer, so a burst does not allocate one per shot.
+        /// </summary>
+        [System.ThreadStatic] private static HashSet<BodyPartRecord> offLimitsBuffer;
+
+        private static HashSet<BodyPartRecord> MarkVitalAncestors(Pawn_HealthTracker health)
+        {
+            HashSet<BodyPartRecord> set = offLimitsBuffer;
+            if (set == null) set = offLimitsBuffer = new HashSet<BodyPartRecord>();
+            set.Clear();
+
+            foreach (BodyPartRecord part in health.hediffSet.GetNotMissingParts())
+            {
+                if (!IsVital(part)) continue;
+                for (BodyPartRecord p = part; p != null; p = p.parent)
+                {
+                    if (!set.Add(p)) break; // this chain is already marked all the way up
+                }
+            }
+            return set;
         }
 
         /// <summary>

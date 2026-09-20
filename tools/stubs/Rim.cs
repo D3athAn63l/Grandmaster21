@@ -45,7 +45,16 @@ namespace Verse
 
     public class BodyPartTagDef : Def { }
     public class BodyPartDef : Def { public List<BodyPartTagDef> tags; public float hitPoints; }
-    public class BodyPartRecord { public BodyPartDef def; public BodyPartRecord parent; public float coverageAbsWithChildren; public float healthStub = 10f; }
+    public enum BodyPartDepth { Undefined, Outside, Inside }
+    public class BodyPartRecord
+    {
+        public BodyPartDef def; public BodyPartRecord parent;
+        public List<BodyPartRecord> parts = new List<BodyPartRecord>();
+        public BodyPartDepth depth = BodyPartDepth.Outside;
+        public float coverageAbsWithChildren;
+        public float healthStub = 10f;
+        public bool missingStub;
+    }
     public class DamageDef : Def { public bool harmsHealth; }
     public struct DamageInfo
     {
@@ -60,9 +69,10 @@ namespace Verse
     public class HediffSet
     {
         public List<BodyPartRecord> parts = new List<BodyPartRecord>();
-        public IEnumerable<BodyPartRecord> GetNotMissingParts() { return parts; }
+        public IEnumerable<BodyPartRecord> GetNotMissingParts()
+        { foreach (var p in parts) if (!p.missingStub) yield return p; }
         public float GetPartHealth(BodyPartRecord p) { return p.healthStub; }
-        public bool PartIsMissing(BodyPartRecord p) { return false; }
+        public bool PartIsMissing(BodyPartRecord p) { return p.missingStub; }
     }
 
     public class Faction { public bool IsPlayer; }
@@ -76,7 +86,14 @@ namespace Verse
     public static class ContentFinder<T> where T : class, new() { public static T Get(string path, bool reportFailure = true) { return new T(); } }
 
     public struct LocalTargetInfo { public Thing Thing; }
-    public class Verb { public Thing caster; public Pawn CasterPawn; public VerbProperties verbProps; }
+    public class Verb
+    {
+        public Thing caster; public Pawn CasterPawn; public VerbProperties verbProps;
+        public LocalTargetInfo CurrentTarget;
+        protected internal int burstShotsLeft;          // protected in RimWorld; read reflectively
+        protected internal virtual int ShotsPerBurst { get { return shotsPerBurstStub; } }
+        public int shotsPerBurstStub = 1;               // test hook
+    }
     public class VerbProperties { public float warmupTime; public bool IsMeleeAttack; }
     public class Verb_LaunchProjectile : Verb { }
     public class Stance { }
@@ -102,6 +119,7 @@ namespace Verse
         public RaceProperties RaceProps;
         public bool IsColonist;
         public bool Dead;
+        public bool Downed;
         public Faction Faction;
         public TaggedString LabelShortCap { get { return "pawn"; } }
         public override void PreApplyDamage(ref DamageInfo dinfo, out bool absorbed) { absorbed = false; }
@@ -231,6 +249,10 @@ namespace RimWorld
         public PawnCapacitiesHandler capacities = new PawnCapacitiesHandler();
         public HediffSet hediffSet = new HediffSet();
         public bool forceDowned;
+        private Pawn pawn;                                  // private in RimWorld; read reflectively
+        public bool Downed { get; set; }
+        public Pawn_HealthTracker() { }
+        public Pawn_HealthTracker(Pawn p) { pawn = p; }
         private void CheckForStateChange(DamageInfo? dinfo, Hediff hediff) { }
     }
 

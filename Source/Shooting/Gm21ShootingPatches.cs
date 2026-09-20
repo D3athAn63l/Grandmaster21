@@ -41,6 +41,13 @@ namespace Grandmaster21
             Gm21Shooting.PassiveBonusesEnabled = passive;
             Gm21Shooting.AnatomicalTargetingEnabled = targeting;
 
+            if (targeting && !Gm21Burst.Available)
+            {
+                Log.Warning("[Grandmaster 21] Verb.burstShotsLeft not found; a Grandmaster will no "
+                            + "longer stop a burst once the target is down. Per-projectile "
+                            + "less-lethal targeting is unaffected.");
+            }
+
             if (!passive)
             {
                 Log.Warning("[Grandmaster 21] Could not apply the passive Shooting Grandmaster "
@@ -163,10 +170,27 @@ namespace Grandmaster21
 
         // ------------------------------------------------------------------ patch bodies
 
-        /// <summary>Opens the shot context around an actual cast. Paired with the finalizer.</summary>
-        internal static void Prefix_OpenShotContext(Verb __instance)
+        /// <summary>
+        /// Opens the shot context around an actual cast, and enforces burst discipline.
+        ///
+        /// Returning false with __result = false is not a hack: it is the same outcome vanilla
+        /// produces whenever a shot cannot be taken mid-burst, and TryCastNextBurstShot already
+        /// handles it by zeroing burstShotsLeft and running the normal end-of-burst path --
+        /// cooldown stance, completion callback, verb back to Idle. See Gm21Burst.
+        ///
+        /// The context is opened FIRST so the finalizer's Close is always balanced, whether the
+        /// original method runs, is skipped, or throws.
+        /// </summary>
+        internal static bool Prefix_OpenShotContext(Verb __instance, ref bool __result)
         {
             Gm21ShotContext.Open(__instance.caster);
+
+            if (Gm21Burst.ShouldHoldFire(__instance))
+            {
+                __result = false;
+                return false;
+            }
+            return true;
         }
 
         /// <summary>
@@ -261,12 +285,23 @@ namespace Grandmaster21
             if (dinfo.Def == null || !dinfo.Def.harmsHealth) return;
             if (!Gm21Shooting.IsShootingGrandmaster(shooter)) return;
 
+            // Re-evaluated for EVERY projectile, never cached across a burst. The anatomy this
+            // reads has already absorbed the previous shot, so a limb that came off a moment ago
+            // is gone from consideration and the next best target is chosen instead.
             BodyPartRecord part = mode == Gm21AimMode.Killer
                 ? Gm21BodyTargeting.ChooseLethalPart(__instance)
                 : Gm21BodyTargeting.ChooseIncapacitatingPart(__instance);
 
-            // null means "no sensible target on this anatomy" -- leave vanilla resolution alone.
-            if (part != null) dinfo.SetHitPart(part);
+            if (part != null)
+            {
+                dinfo.SetHitPart(part);
+                return;
+            }
+
+            // null means the anatomy offers nothing this mode wants. Burst discipline normally
+            // stops the shooter before it gets here, but a projectile already in flight cannot be
+            // recalled, so vanilla resolves this one. Gm21Burst.ShouldHoldFire will withhold the
+            // rest of the burst on the next TryCastShot.
         }
 
         // ------------------------------------------------------------------ helpers
@@ -326,9 +361,10 @@ namespace Grandmaster21
     /// Suppresses ONLY the storyteller's artificial "downed enemies sometimes just die" roll, and
     /// only for a downing caused by a Grandmaster shooting in Downed mode.
     ///
-    /// This is not immortality. RimWorld checks "should be dead" BEFORE it checks "should be
-    /// downed", so a genuinely lethal wound still kills; forceDowned only decides which branch is
-    /// taken once the pawn is already going down. Blood loss, destroyed organs, fire and untreated
+    /// This is not immortality, and that is not an assumption -- it is visible in 1.6's IL.
+    /// CheckForStateChange tests ShouldBeDead() first and only reaches the downed branch if that
+    /// is false, where forceDowned short-circuits past the death roll straight to MakeDowned. A
+    /// genuinely lethal wound still kills. Blood loss, destroyed organs, fire and untreated
     /// wounds all still kill normally, afterwards.
     ///
     /// Scoped with a prefix/finalizer pair around one CheckForStateChange call, so the flag is
@@ -339,6 +375,13 @@ namespace Grandmaster21
     {
         internal static readonly FieldInfo ForceDownedField =
             AccessTools.Field(typeof(Pawn_HealthTracker), "forceDowned");
+
+        /// <summary>
+        /// Pawn_HealthTracker.pawn is private, and it is the only way to ask "who is this tracker
+        /// for?" -- which is what makes the intended-target check below possible.
+        /// </summary>
+        internal static readonly FieldInfo PawnField =
+            AccessTools.Field(typeof(Pawn_HealthTracker), "pawn");
 
         internal static void Prefix(Pawn_HealthTracker __instance, DamageInfo? dinfo, out bool __state)
         {
@@ -351,6 +394,22 @@ namespace Grandmaster21
             if (shooter == null) return;
             if (Gm21AimModeStore.Get(shooter) != Gm21AimMode.Downed) return;
             if (info.Weapon == null || !info.Weapon.IsRangedWeapon) return;
+
+            // The pawn going down must be the pawn that was actually aimed at.
+            //
+            // Without this, the suppression keyed only on "a Downed-mode Grandmaster fired a
+            // ranged weapon", which also matches a stray round, a friendly caught in the line, or
+            // anything else that happened to share the instigator. Those are not deliberate
+            // incapacitations and have no business being spared the storyteller's roll.
+            //
+            // DamageInfo already carries everything needed, so there is no attack-context object
+            // and nothing to clean up.
+            if (PawnField != null)
+            {
+                Pawn victim = PawnField.GetValue(__instance) as Pawn;
+                if (victim == null || info.IntendedTarget != victim) return;
+            }
+
             if (!Gm21Shooting.IsShootingGrandmaster(shooter)) return;
 
             object current = ForceDownedField.GetValue(__instance);

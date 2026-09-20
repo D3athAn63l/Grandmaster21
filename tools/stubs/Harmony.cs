@@ -33,6 +33,8 @@ namespace HarmonyLib
         public static MethodInfo Method(Type t, string name, Type[] args = null, Type[] generics = null)
         { const BindingFlags f = BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
           return args == null ? t.GetMethod(name, f) : t.GetMethod(name, f, null, args, null); }
+        public static MethodInfo PropertyGetter(Type t, string name)
+        { var p = Property(t, name); return p == null ? null : p.GetGetMethod(true); }
         public static PropertyInfo Property(Type t, string name)
         { return t.GetProperty(name, BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance); }
         public static ConstructorInfo Constructor(Type t, Type[] args = null)
