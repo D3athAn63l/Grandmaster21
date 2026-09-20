@@ -23,7 +23,11 @@ Level 21 can never be randomly generated. No colonist, raider, trader, refugee, 
 
 Level 21 is the absolute maximum. Level 22 cannot occur.
 
-Grandmaster is also the only pawn skill level capable of producing Legendary-quality work. Quality becomes deterministic by skill band, and Inspired Creativity and the Ideology Production Specialist role can no longer push a level-20 pawn to Legendary. Legendary items from quests, traders, map generation and other non-pawn sources are untouched.
+Once earned, level 21 is permanent. It does not decay, and ordinary gameplay cannot take it away - not skill decay, not negative experience, not another mod assigning a lower level, not negative aptitude.
+
+Grandmaster is also the only pawn skill level capable of producing Legendary-quality work. Quality becomes deterministic by skill band, and Inspired Creativity and the Ideology Production Specialist role can no longer push a level-20 pawn to Legendary. Turning deterministic quality off restores vanilla randomness for levels 0-20 but caps them at Masterwork; level 21 is always Legendary. Legendary items from quests, traders, map generation and other non-pawn sources are untouched.
+
+Before removing this mod, load your save and use "Prepare Save for Uninstall" at the bottom of Mod Settings. It converts every level 21 skill back to 20 and clears stored Grandmaster progress for the currently loaded game, so the save is safe to load without the mod.
 
 Incompatible with mods that also remove or replace the skill cap, such as unlimited-skill mods.</description>
 </ModMetaData>

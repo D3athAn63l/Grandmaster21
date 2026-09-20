@@ -18,10 +18,12 @@ class PatchAllTest {
       }
     }
     Console.WriteLine();
-    // Did the transpiler actually fire on the real method?
-    Type learnPatch = modAsm.GetType("Grandmaster21.Patch_SkillRecord_Learn");
-    var flag = learnPatch.GetField("TranspilerApplied", BindingFlags.Public|BindingFlags.Static);
-    Console.WriteLine("TranspilerApplied = " + flag.GetValue(null));
+    // Did the transpiler actually fire on the real method? Gm21.LearnPatchApplied is the
+    // authoritative flag -- Gm21.Promote is gated on it, so a false here means no Grandmaster
+    // can be created this session. (Patch_SkillRecord_Learn.TranspilerApplied mirrors it.)
+    Type gm21 = modAsm.GetType("Grandmaster21.Gm21");
+    var flag = gm21.GetField("LearnPatchApplied", BindingFlags.Public|BindingFlags.Static);
+    Console.WriteLine("LearnPatchApplied = " + flag.GetValue(null));
     Console.WriteLine("patch classes applied=" + okCount + "  failed=" + failCount);
     Environment.Exit(failCount==0 && (bool)flag.GetValue(null) ? 0 : 1);
   }

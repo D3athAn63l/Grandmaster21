@@ -56,10 +56,26 @@ namespace Grandmaster21
             p.xp += amount;
         }
 
-        public static void Clear(SkillRecord rec)
+        /// <summary>
+        /// Drops the record's Grandmaster progress entirely.
+        ///
+        /// Removes the weak-table entry rather than zeroing it, so a cleaned SkillRecord holds
+        /// no mod state at all. ExposeData writes "grandmasterXp" with a default of 0.0 and
+        /// forceSave=false, so after this call the element is omitted from the save file
+        /// completely -- which is what "Prepare Save for Uninstall" needs.
+        ///
+        /// Returns true if there was progress to remove.
+        /// </summary>
+        public static bool Clear(SkillRecord rec)
         {
-            if (rec == null) return;
-            Table.GetValue(rec, Factory).xp = 0.0;
+            if (rec == null) return false;
+            GmProgress p;
+            if (!Table.TryGetValue(rec, out p)) return false;
+            bool had = p.xp > 0.0;
+            // Zero the box first: anything still holding a reference to it sees 0, not stale XP.
+            p.xp = 0.0;
+            Table.Remove(rec);
+            return had;
         }
 
         /// <summary>Fraction of the configured requirement, 0..1.</summary>

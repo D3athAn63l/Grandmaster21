@@ -13,9 +13,12 @@ namespace Grandmaster21
 
         public double grandmasterXpRequirement = DefaultRequirement;
         public bool deterministicQuality = true;
-        public bool grandmasterPreventsDecay = true;
         public bool showGrandmasterProgress = true;
         public bool clampGeneratedPawns = true;
+
+        // NOTE: the former "grandmasterPreventsDecay" setting is gone. Level 21 never decays --
+        // it is an achieved state, not an option. Old config files still containing that element
+        // load fine; Scribe ignores elements with no matching field.
 
         /// <summary>Edit buffer for the requirement field; not saved.</summary>
         [Unsaved] public string requirementBuffer;
@@ -25,7 +28,6 @@ namespace Grandmaster21
             base.ExposeData();
             Scribe_Values.Look(ref grandmasterXpRequirement, "grandmasterXpRequirement", DefaultRequirement);
             Scribe_Values.Look(ref deterministicQuality, "deterministicQuality", true);
-            Scribe_Values.Look(ref grandmasterPreventsDecay, "grandmasterPreventsDecay", true);
             Scribe_Values.Look(ref showGrandmasterProgress, "showGrandmasterProgress", true);
             Scribe_Values.Look(ref clampGeneratedPawns, "clampGeneratedPawns", true);
 
@@ -99,9 +101,6 @@ namespace Grandmaster21
             list.CheckboxLabeled("GM21_Setting_DeterministicQuality".Translate(),
                 ref Settings.deterministicQuality, "GM21_Setting_DeterministicQualityDesc".Translate());
 
-            list.CheckboxLabeled("GM21_Setting_PreventDecay".Translate(),
-                ref Settings.grandmasterPreventsDecay, "GM21_Setting_PreventDecayDesc".Translate());
-
             list.CheckboxLabeled("GM21_Setting_ShowProgress".Translate(),
                 ref Settings.showGrandmasterProgress, "GM21_Setting_ShowProgressDesc".Translate());
 
@@ -115,8 +114,48 @@ namespace Grandmaster21
                 GUI.color = Color.white;
             }
 
+            list.Label("GM21_Setting_PermanenceNote".Translate());
+
+            DrawMaintenanceSection(list);
+
             list.End();
             base.DoSettingsWindowContents(inRect);
+        }
+
+        /// <summary>
+        /// The destructive maintenance section, kept at the very bottom behind its own heading.
+        ///
+        /// The button is deliberately awkward to hit by accident: it sits below everything else,
+        /// is narrower than the full settings width, and always routes through a confirmation
+        /// dialog before touching anything.
+        /// </summary>
+        private static void DrawMaintenanceSection(Listing_Standard list)
+        {
+            list.GapLine(24f);
+
+            Text.Font = GameFont.Medium;
+            list.Label("GM21_Maintenance_Header".Translate());
+            Text.Font = GameFont.Small;
+
+            GUI.color = new Color(0.75f, 0.75f, 0.75f);
+            list.Label("GM21_Maintenance_Desc".Translate());
+            GUI.color = Color.white;
+
+            if (Gm21Uninstall.CurrentGameIsPrepared)
+            {
+                GUI.color = new Color(0.45f, 0.85f, 0.45f);
+                list.Label("GM21_Maintenance_Prepared".Translate());
+                GUI.color = Color.white;
+            }
+
+            list.Gap(6f);
+
+            Rect row = list.GetRect(32f);
+            Rect button = new Rect(row.x, row.y, Mathf.Min(300f, row.width), row.height);
+            if (Widgets.ButtonText(button, "GM21_Uninstall_Button".Translate()))
+            {
+                Gm21Uninstall.PromptFromSettings();
+            }
         }
     }
 }

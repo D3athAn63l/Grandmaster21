@@ -7,7 +7,7 @@
   <GM21_BecameGrandmaster>{0} has become a Grandmaster of {1}.</GM21_BecameGrandmaster>
 
   <GM21_GrandmasterDescriptor>Grandmaster</GM21_GrandmasterDescriptor>
-  <GM21_TooltipAchieved>Grandmaster\nThis pawn has transcended normal mastery of this skill. Only a Grandmaster can produce Legendary-quality work.</GM21_TooltipAchieved>
+  <GM21_TooltipAchieved>Grandmaster\nThis pawn has transcended normal mastery of this skill. Only a Grandmaster can produce Legendary-quality work.\nThis level is permanent: it does not decay and cannot be lost.</GM21_TooltipAchieved>
 
   <!-- {0} current XP, {1} required XP, {2} percent -->
   <GM21_TooltipProgress>Grandmaster progress: {0} / {1} XP ({2}%)</GM21_TooltipProgress>
@@ -18,10 +18,7 @@
   <GM21_Setting_ResetRequirement>Reset to 1,000,000,000</GM21_Setting_ResetRequirement>
 
   <GM21_Setting_DeterministicQuality>Deterministic quality</GM21_Setting_DeterministicQuality>
-  <GM21_Setting_DeterministicQualityDesc>Pawn-created quality is decided by skill band instead of a random roll:\n0-3 Awful, 4-7 Poor, 8-10 Normal, 11-13 Good, 14-16 Excellent, 17-20 Masterwork, 21 Legendary.\nTurning this off restores vanilla's random roll, but Legendary still requires level 21.</GM21_Setting_DeterministicQualityDesc>
-
-  <GM21_Setting_PreventDecay>Grandmaster skills never decay</GM21_Setting_PreventDecay>
-  <GM21_Setting_PreventDecayDesc>A level 21 skill never falls back to 20. Skills below 21 decay exactly as in vanilla.</GM21_Setting_PreventDecayDesc>
+  <GM21_Setting_DeterministicQualityDesc>Pawn-created quality is decided by skill band instead of a random roll:\n0-3 Awful, 4-7 Poor, 8-10 Normal, 11-13 Good, 14-16 Excellent, 17-20 Masterwork, 21 Legendary.\nTurning this off restores vanilla's random roll for levels 0-20, capped at Masterwork. Level 21 always produces Legendary either way.</GM21_Setting_DeterministicQualityDesc>
 
   <GM21_Setting_ShowProgress>Show Grandmaster progress</GM21_Setting_ShowProgress>
   <GM21_Setting_ShowProgressDesc>Adds Grandmaster progress to the skill tooltip and a star beside a Grandmaster skill.</GM21_Setting_ShowProgressDesc>
@@ -29,5 +26,25 @@
   <GM21_Setting_ClampGenerated>Clamp generated pawns to level 20</GM21_Setting_ClampGenerated>
   <GM21_Setting_ClampGeneratedDesc>Newly generated pawns can never start above level 20. This is what makes level 21 meaningful and should normally stay on.</GM21_Setting_ClampGeneratedDesc>
   <GM21_Setting_ClampGeneratedWarning>Warning: with this off, pawn generation and other mods may create level 21 pawns directly. Level 21 will no longer prove anything was earned.</GM21_Setting_ClampGeneratedWarning>
+
+  <GM21_Setting_PermanenceNote>Level 21 is permanent. Once earned it never decays and ordinary gameplay cannot reduce it. Skills at level 20 and below decay exactly as in vanilla.</GM21_Setting_PermanenceNote>
+
+  <GM21_Maintenance_Header>Maintenance / Save cleanup</GM21_Maintenance_Header>
+  <GM21_Maintenance_Desc>Converts Grandmaster21-specific state back into vanilla-safe values for the current loaded game. Use this only before removing Grandmaster 21 from your mod list.</GM21_Maintenance_Desc>
+  <GM21_Maintenance_Prepared>Current game prepared for uninstall ✓</GM21_Maintenance_Prepared>
+
+  <GM21_Uninstall_Button>Prepare Save for Uninstall</GM21_Uninstall_Button>
+
+  <GM21_Uninstall_NoGameTitle>No game loaded</GM21_Uninstall_NoGameTitle>
+  <GM21_Uninstall_NoGame>Load the save you intend to clean before using Prepare Save for Uninstall.\n\nThis operation works on the game that is currently loaded. Nothing has been changed.</GM21_Uninstall_NoGame>
+
+  <GM21_Uninstall_ConfirmTitle>Prepare Grandmaster21 for uninstall?</GM21_Uninstall_ConfirmTitle>
+  <GM21_Uninstall_ConfirmBody>This operation is intended only before removing Grandmaster 21 from your mod list.\n\nIt will modify the currently loaded game by:\n\n  -  changing every level 21 skill to level 20\n  -  clearing all stored Grandmaster XP/progress\n  -  removing Grandmaster21-specific skill state where applicable\n\nThis cannot be undone except by reloading an earlier save.\n\nAfter cleanup:\n\n  1. Save the game.\n  2. Exit RimWorld.\n  3. Disable/remove Grandmaster 21.\n  4. Reload the cleaned save.</GM21_Uninstall_ConfirmBody>
+  <GM21_Uninstall_ConfirmYes>Prepare Save</GM21_Uninstall_ConfirmYes>
+  <GM21_Uninstall_ConfirmNo>Cancel</GM21_Uninstall_ConfirmNo>
+
+  <GM21_Uninstall_DoneTitle>Grandmaster21 cleanup complete</GM21_Uninstall_DoneTitle>
+  <!-- {0} skills demoted, {1} skill records cleared, {2} pawns processed -->
+  <GM21_Uninstall_DoneBody>Current save prepared for uninstall.\n\n  -  Grandmaster skills reduced to level 20: {0}\n  -  Skill records with Grandmaster progress cleared: {1}\n  -  Pawns processed: {2}\n\nSave the game now, exit RimWorld, then disable Grandmaster 21.\n\nThe game has NOT been saved automatically, so you can write to a new save slot if you prefer.</GM21_Uninstall_DoneBody>
 
 </LanguageData>
