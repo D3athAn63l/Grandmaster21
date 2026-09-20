@@ -645,11 +645,13 @@ the game. Still Beta because no gameplay session has been played.
   `Pawn_HealthTracker.forceDowned`, and all eight `BodyPartTagDef` defNames.
 * **The `Learn` transpiler matches exactly one site** in the shipped IL (`IL_0057`), and the two
   other literal `20`s — the level-up ceiling — are correctly left alone.
-* **18/18 Harmony patches bind to their real RimWorld methods, 0 failures** — applied live, one
+* **20/22 Harmony patches bind to their real RimWorld methods, 0 failures** — applied live, one
   target at a time, by `Tests/PatchAllTest.cs`. That covers every `ShotReport` property postfix,
-  both `Stance` constructor `ref int ticks` prefixes, `Pawn.PreApplyDamage` with `ref DamageInfo`,
-  the gizmo and aim-mode patches, and all nine core skill/quality patches. Four further targets
-  are BLOCKED headless rather than failed — see below.
+  `Verb_LaunchProjectile.TryCastShot` (prefix + finalizer),
+  `Pawn_HealthTracker.CheckForStateChange` (prefix + finalizer), both `Stance` constructor
+  `ref int ticks` prefixes, `Pawn.PreApplyDamage` with `ref DamageInfo`, the gizmo and aim-mode
+  patches, and all nine core skill/quality patches. The remaining two are BLOCKED rather than
+  failed — see below.
 * **26/26 progression checks pass against the real `SkillRecord`** and the real XP curve.
 * **105 offline logic checks pass** across the two stub harnesses.
 
@@ -666,16 +668,20 @@ Two design assumptions were confirmed directly in the shipped IL:
   (`IL_013d`) and the level-up branch (`IL_0150`) reach it. It therefore runs on *positive* XP too,
   which is exactly the hazard the `Learn` prefix normalises away at level 21.
 
-### Four patch targets cannot be bound headless
+### Two patch targets cannot be bound outside the game
 
-`Verb_LaunchProjectile.TryCastShot`, `Pawn_HealthTracker.CheckForStateChange`,
-`SkillUI.GetSkillDescription` and `SkillUI.DrawSkill` are reported BLOCKED, not failed. Their
-declaring types hold fields typed from `Assembly-CSharp-firstpass` and `UnityEngine.AudioModule`,
-which ship with the launcher rather than in `Managed/`, so the type cannot load outside the Unity
-player. Drop those two assemblies in alongside `Managed/` to clear them.
+`SkillUI.GetSkillDescription` and `SkillUI.DrawSkill` are reported BLOCKED, not failed, and no set
+of assemblies will clear them. Harmony must run a target's static constructor before patching it,
+and `SkillUI..cctor` loads textures:
 
-The *members* those four patches target were all confirmed present with the right signatures and
-parameter names by check 1, so what is unverified is the bind step alone.
+```
+SkillUI..cctor -> ContentFinder.Get -> Verse.UnityData..cctor -> Verse.Log.Warning
+               -> UnityEngine.Debug.ExtractStackTraceNoAlloc   (internal call, player only)
+```
+
+That needs the actual game process. Both patches are cosmetic — the tooltip text and the ★ marker —
+and both target members were confirmed present with the right signatures and parameter names by
+check 1, so what is unverified is the bind step alone.
 
 ### Not yet verified — requires actually playing
 

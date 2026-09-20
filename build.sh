@@ -13,9 +13,13 @@ MONO=/usr/lib/mono/4.5
 [ -f "$MANAGED/Assembly-CSharp.dll" ] || { echo "error: no Assembly-CSharp.dll in $MANAGED" >&2; exit 1; }
 [ -f "$HARMONY" ] || { echo "error: no Harmony assembly at $HARMONY" >&2; exit 1; }
 
+# Stamp with the last commit that touched Source/, not HEAD. Doc and test commits do not change
+# the assembly, so stamping HEAD would make a perfectly current DLL look stale. This way the check
+# is exact: if the stamp differs from `git log -1 --format=%h -- Source/`, rebuild.
 STAMP="$(date -u +%Y-%m-%dT%H:%MZ)"
-COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo 'no-git')"
-if ! git diff --quiet HEAD 2>/dev/null; then COMMIT="$COMMIT-dirty"; fi
+COMMIT="$(git log -1 --format=%h -- Source/ 2>/dev/null || echo 'no-git')"
+[ -n "$COMMIT" ] || COMMIT='no-git'
+if ! git diff --quiet HEAD -- Source/ 2>/dev/null; then COMMIT="$COMMIT-dirty"; fi
 
 cat > Source/Gm21BuildStamp.cs <<STAMPEOF
 namespace Grandmaster21

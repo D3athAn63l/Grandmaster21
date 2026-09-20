@@ -7,8 +7,15 @@ source commit it was built from. That stamp is logged at startup:
 [Grandmaster 21] 0.9.0 Beta (built 2026-09-20T13:52Z, commit de860da)  |  shooting: passive=True targeting=True
 ```
 
-If that line ever reads `unstamped build`, the DLL was not produced by `build.sh`. If the commit in
-the stamp is older than the source you are looking at, the DLL is stale — rebuild it.
+If that line ever reads `unstamped build`, the DLL was not produced by `build.sh`.
+
+The commit in the stamp is **the last commit that touched `Source/`**, not `HEAD` — documentation
+and test commits do not change the assembly, so stamping `HEAD` would make a current DLL look
+stale. That makes the staleness check exact:
+
+```bash
+git log -1 --format=%h -- Source/     # differs from the stamp? rebuild.
+```
 
 ## Rebuilding
 

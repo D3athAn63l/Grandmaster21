@@ -48,9 +48,9 @@ class PatchAllTest
             catch (Exception e)
             {
                 Exception root = e.GetBaseException();
-                bool headless = IsHeadlessLimit(root);
+                bool headless = IsHeadlessLimit(e);
                 Console.WriteLine((headless ? "BLOCKED    " : "FAILED     ") + t.Name + " -> "
-                                  + root.GetType().Name + ": " + Truncate(root.Message));
+                                  + Describe(root));
                 if (Environment.GetEnvironmentVariable("GM21_TRACE") != null)
                     Console.WriteLine(e.ToString());
                 if (headless) blockedCount++; else failCount++;
@@ -143,26 +143,50 @@ class PatchAllTest
         catch (Exception e)
         {
             Exception root = e.GetBaseException();
-            bool headless = IsHeadlessLimit(root);
+            bool headless = IsHeadlessLimit(e);
             Console.WriteLine((headless ? "BLOCKED    " : "FAILED     ") + what + "\n           "
-                              + root.GetType().Name + ": " + Truncate(root.Message));
+                              + Describe(root));
             if (Environment.GetEnvironmentVariable("GM21_TRACE") != null) Console.WriteLine(e.ToString());
             if (headless) blocked++; else fail++;
         }
     }
 
     /// <summary>
-    /// Some RimWorld types cannot load outside the Unity player: they hold fields typed from
-    /// assemblies that ship with the launcher rather than in Managed/ (Assembly-CSharp-firstpass,
-    /// UnityEngine.AudioModule, Steamworks.NET). That is an environment limit, not a finding.
+    /// Distinguishes "this patch cannot be applied outside RimWorld" from "this patch is broken".
+    ///
+    /// Two distinct headless limits produce these:
+    ///
+    ///  1. MISSING ASSEMBLIES. Some types hold fields typed from assemblies that ship with the
+    ///     launcher rather than in Managed/ (Assembly-CSharp-firstpass, UnityEngine.AudioModule,
+    ///     Steamworks.NET), so the type will not load. Supplying those assemblies clears this.
+    ///
+    ///  2. MISSING UNITY PLAYER. Harmony must run a target's static constructor before patching
+    ///     it. Any cctor that touches Unity content or logging dies on an internal call that only
+    ///     exists inside the player -- e.g. SkillUI..cctor -> ContentFinder.Get ->
+    ///     Verse.UnityData..cctor -> Verse.Log.Warning -> Debug.ExtractStackTraceNoAlloc. No set
+    ///     of assemblies fixes this; it needs the actual game process.
+    ///
+    /// The whole exception chain is searched, not just the base exception: mono surfaces a
+    /// missing internal call as a MissingMethodException with an empty message, so the useful
+    /// evidence is in the inner exceptions and stack frames.
     /// </summary>
-    static bool IsHeadlessLimit(Exception root)
+    static bool IsHeadlessLimit(Exception e)
     {
-        string m = root.Message ?? "";
-        return root is TypeLoadException
-            || m.Contains("Assembly-CSharp-firstpass")
-            || m.Contains("UnityEngine.AudioModule")
-            || m.IndexOf("steamworks", StringComparison.OrdinalIgnoreCase) >= 0;
+        if (e.GetBaseException() is TypeLoadException) return true;
+        string chain = e.ToString();
+        foreach (string marker in new[]
+        {
+            "Assembly-CSharp-firstpass",   // launcher-side assembly
+            "UnityEngine.AudioModule",     // launcher-side assembly
+            "Steamworks",                  // launcher-side assembly
+            "ExtractStackTraceNoAlloc",    // Unity player internal call
+            "Internal_Log",                // Unity player internal call
+            "Verse.UnityData"              // cctor that logs, so it needs the player
+        })
+        {
+            if (chain.IndexOf(marker, StringComparison.OrdinalIgnoreCase) >= 0) return true;
+        }
+        return false;
     }
 
     static MethodInfo Getter(Type t, params string[] names)
@@ -173,6 +197,16 @@ class PatchAllTest
             if (p != null && p.GetGetMethod(true) != null) return p.GetGetMethod(true);
         }
         throw new MissingMemberException(t.Name + " has none of: " + string.Join(", ", names));
+    }
+
+    static string Describe(Exception root)
+    {
+        string m = root.Message;
+        // Mono reports a missing Unity internal call as a MissingMethodException with an empty
+        // message; say what that actually means instead of printing "member:(null)".
+        if (string.IsNullOrEmpty(m) || m.Contains("member:(null)"))
+            m = "target's static constructor needs the Unity player";
+        return root.GetType().Name + ": " + Truncate(m);
     }
 
     static string Truncate(string s)

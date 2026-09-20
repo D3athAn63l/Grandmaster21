@@ -14,10 +14,11 @@
 #      it targets, one at a time, and the transpiler is confirmed to have rewritten its IL.
 #   4. Harness -- the progression suite, driven against the real SkillRecord and the real XP curve.
 #
-# Targets whose declaring type cannot load outside the Unity player (types holding fields typed
-# from Assembly-CSharp-firstpass, UnityEngine.AudioModule or Steamworks.NET, which ship with the
-# launcher rather than in Managed/) are reported as BLOCKED rather than failed. Copy those
-# assemblies in alongside Managed/ to clear them.
+# Targets that cannot be bound outside the game are reported as BLOCKED rather than failed. Two
+# causes: a declaring type holding fields typed from a launcher-side assembly
+# (Assembly-CSharp-firstpass, UnityEngine.AudioModule, Steamworks.NET) -- copy those in alongside
+# Managed/ to clear it -- or a static constructor that touches Unity content or logging, which
+# needs the actual player process and cannot be cleared by any set of assemblies.
 #
 # Not covered here at all: gameplay. Patches binding is not patches behaving.
 set -euo pipefail
@@ -49,7 +50,7 @@ fi
 echo; echo "=== 3. Live Harmony patching against real RimWorld methods ==="
 mcs -out:"$OUT/patchall.exe" $REFS Tests/PatchAllTest.cs
 ( cd "$OUT" && mono patchall.exe Grandmaster21.dll 2>&1 \
-    | grep -vE 'out of sync|update one from git|the other too|Do not report this|you probably have|If you see other|and you need to fix|Your mono runtime|The out of sync|^$' )
+    | grep -vE 'out of sync|update one from git|the other too|Do not report this|you probably have|If you see other|and you need to fix|Your mono runtime|The out of sync|cant resolve internal call|^$' )
 
 echo; echo "=== 4. Progression suite against the real SkillRecord ==="
 mcs -out:"$OUT/harness.exe" $REFS Tests/Harness.cs
