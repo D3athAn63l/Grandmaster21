@@ -1,29 +1,35 @@
-# Build the assembly before playing
+# Assemblies
 
-This folder is intentionally empty of binaries.
+`Grandmaster21.dll` is built by `build.sh` and committed here, stamped with its build time and the
+source commit it was built from. That stamp is logged at startup:
 
-`Grandmaster21.dll` is **not** checked in. The binary that used to live here was built from the
-Alpha source and no longer matches this repository; leaving it would have meant the mod silently
-ran old rules (demotable Grandmasters, a generated-pawn toggle, no Shooting Grandmaster) with
-nothing to indicate anything was wrong. A missing assembly fails loudly instead, which is the
-safer of the two.
+```
+[Grandmaster 21] 0.9.0 Beta (built 2026-09-20T13:52Z, commit de860da)  |  shooting: passive=True targeting=True
+```
 
-## Building
+If that line ever reads `unstamped build`, the DLL was not produced by `build.sh`. If the commit in
+the stamp is older than the source you are looking at, the DLL is stale — rebuild it.
+
+## Rebuilding
 
 ```bash
 ./build.sh /path/to/RimWorld/RimWorldWin64_Data/Managed /path/to/0Harmony.dll
 ```
 
-That writes `Assemblies/Grandmaster21.dll` and stamps it with the build time and git commit. The
-stamp is logged at startup:
+On Linux/Mono the `netstandard 2.1` facade is required (`mono-devel` provides it at
+`/usr/lib/mono/4.5/Facades/netstandard.dll`); without it `mcs` fails with CS0012 on
+`System.ValueType`.
 
-```
-[Grandmaster 21] 0.9.0 Beta (built 2026-09-20T12:00Z, commit 1a2b3c4)  |  shooting: passive=True targeting=True
+## Verifying a build
+
+```bash
+./tools/verify-real.sh /path/to/Managed /path/to/0Harmony.dll
 ```
 
-If that line ever reads `unstamped build`, the DLL was not produced by `build.sh`.
+Checks every reflectively-resolved member, every Harmony injection parameter name, the `Learn`
+transpiler's IL pattern, and the progression suite against the real `SkillRecord`.
 
 ## No RimWorld install?
 
-`./tools/build-stubs.sh` compile-checks the source and runs the offline test suites against
+`./tools/build-stubs.sh` compile-checks the source and runs the offline logic suites against
 reference stubs. It does **not** produce a usable assembly — see `tools/stubs/README.md`.

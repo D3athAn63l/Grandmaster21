@@ -587,9 +587,8 @@ factory so the hot path does not allocate.
 
 ## Building
 
-> **No assembly is checked in.** `Assemblies/Grandmaster21.dll` must be built before playing —
-> see `Assemblies/README.md`. The old Alpha binary was removed rather than left to silently run
-> outdated rules.
+`Assemblies/Grandmaster21.dll` is built by this script and committed, stamped with its build time
+and source commit — see `Assemblies/README.md`.
 
 ```bash
 ./build.sh /path/to/RimWorld/RimWorldWin64_Data/Managed /path/to/0Harmony.dll
@@ -626,19 +625,54 @@ hand-written approximations. Only a real build does that. See `tools/stubs/READM
 
 ## Release status
 
-**0.9.0 Beta.** Source compiles; the offline suites pass (131 checks across three harnesses). The
-in-game regression checklist has **not** been run end to end, so this is not 1.0.
+**0.9.0 Beta.** Builds clean against RimWorld 1.6 and passes every check that can be run outside
+the game. Still Beta because no gameplay session has been played.
 
-Not yet verified in RimWorld:
+### Verified against the real 1.6 assemblies
+
+```bash
+./tools/verify-real.sh /path/to/Managed /path/to/0Harmony.dll
+```
+
+* **Release build succeeds** — clean, no warnings.
+* **65/65 runtime targets resolve**, including every member looked up reflectively and every
+  Harmony injection *parameter name*. This matters more than it sounds: Harmony binds
+  prefix/postfix arguments by name, so a renamed vanilla parameter compiles perfectly and throws
+  at patch time. All confirmed: `ShotReport.AimOnTargetChance_IgnoringPosture` /
+  `PassCoverChance`, `Stance_Warmup`/`Stance_Cooldown(int ticks, LocalTargetInfo focusTarg, Verb
+  verb)`, `Pawn.PreApplyDamage(ref DamageInfo dinfo, ...)`,
+  `Pawn_HealthTracker.CheckForStateChange(DamageInfo? dinfo, Hediff hediff)`,
+  `Pawn_HealthTracker.forceDowned`, and all eight `BodyPartTagDef` defNames.
+* **The `Learn` transpiler matches exactly one site** in the shipped IL (`IL_0057`), and the two
+  other literal `20`s — the level-up ceiling — are correctly left alone.
+* **26/26 progression checks pass against the real `SkillRecord`** and the real XP curve.
+* **105 offline logic checks pass** across the two stub harnesses.
+
+Two design assumptions were confirmed directly in the shipped IL:
+
+* `Verb_LaunchProjectile.TryCastShot` rolls `Rand.Chance` against
+  `AimOnTargetChance_IgnoringPosture` (IL_02cc→02d1) and `PassCoverChance` (IL_03ce→03d3) — exactly
+  the two values the accuracy and cover patches modify, so the compensation lands on the real
+  hit/miss decision and cannot double-apply.
+* `SkillRecord.Interval` is `switch(levelInt - 10)` over 10–20 with `ret` as its default, so level
+  21 already falls through — the prefix makes that explicit rather than relying on the jump table's
+  size.
+* The down-level loop at `IL_0190` is `xpSinceLastLevel <= -1000f`, and **both** the at-cap branch
+  (`IL_013d`) and the level-up branch (`IL_0150`) reach it. It therefore runs on *positive* XP too,
+  which is exactly the hazard the `Learn` prefix normalises away at level 21.
+
+### Not yet verified — requires actually playing
+
+Live Harmony patching cannot be exercised headless: it needs the full Unity runtime (`Unity.Burst`,
+`Unity.Mathematics`, `UnityEngine.SharedInternalsModule`), which does not ship in `Managed/`.
 
 * the full earn → save → reload → permanence → cleanup → uninstall cycle
-* every Shooting Grandmaster behaviour (accuracy, cover, warmup/cooldown, Killer, Downed,
+* every Shooting Grandmaster behaviour in combat (accuracy, cover, warmup/cooldown, Killer, Downed,
   death-on-downed suppression, the gizmo)
-* that every RimWorld member named in the shooting code exists with that exact signature in 1.6 —
-  the offline stubs cannot prove this, only a real build can
 * `Player.log` free of Harmony patch failures
+* Combat Extended interaction
 
-The Learn transpiler's fail-safe is unchanged and still degrades to "no new Grandmasters" rather
+The `Learn` transpiler's fail-safe is unchanged and still degrades to "no new Grandmasters" rather
 than corrupting progression.
 
 ---

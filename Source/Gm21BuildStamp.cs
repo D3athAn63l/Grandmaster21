@@ -1,12 +1,11 @@
 namespace Grandmaster21
 {
     /// <summary>
-    /// Overwritten by build.sh on every build. The checked-in value below is what you get if the
-    /// assembly was built without build.sh -- which, if you see it in Player.log, is itself a
-    /// useful signal.
+    /// Overwritten by build.sh on every build. The checked-in value is "unstamped build" -- if you
+    /// see that in Player.log, the assembly was not produced by build.sh.
     /// </summary>
     public static class Gm21BuildStamp
     {
-        public const string Stamp = "unstamped build";
+        public const string Stamp = "built 2026-09-20T13:47Z, commit de860da";
     }
 }
