@@ -30,7 +30,7 @@ namespace Grandmaster21
 
             if (sk.levelInt >= Gm21.GrandmasterLevel)
             {
-                __result += "\n\n" + "GM21_TooltipAchieved".Translate();
+                __result += "\n\n" + AchievedTextFor(sk.def);
                 return;
             }
 
@@ -45,6 +45,27 @@ namespace Grandmaster21
                     required.ToString("N0", CultureInfo.InvariantCulture),
                     percent.ToString("0.####", CultureInfo.InvariantCulture));
             }
+        }
+
+        /// <summary>
+        /// Per-skill Grandmaster text.
+        ///
+        /// Each skill's Level 21 means something different, so the description has to follow the
+        /// skill. Shooting is a marksman, not a crafter: telling a Grandmaster Marksman they can
+        /// "make Legendary stuff" was simply wrong. Skills whose capstone ability has not been
+        /// designed yet get a neutral line rather than inheriting the crafting text.
+        ///
+        /// Looks up "GM21_Achieved_&lt;defName&gt;" and falls back to the generic key, so adding a
+        /// new skill's text later is a translation-file change with no code change.
+        /// </summary>
+        private static string AchievedTextFor(SkillDef def)
+        {
+            if (def != null && def.defName != null)
+            {
+                string key = "GM21_Achieved_" + def.defName;
+                if (key.CanTranslate()) return key.Translate();
+            }
+            return "GM21_Achieved_Default".Translate();
         }
     }
 

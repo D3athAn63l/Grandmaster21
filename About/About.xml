@@ -2,6 +2,7 @@
 <ModMetaData>
   <packageId>ared.grandmaster21</packageId>
   <name>Grandmaster 21</name>
+  <modVersion>0.9.0 Beta</modVersion>
   <author>aRed</author>
   <supportedVersions>
     <li>1.6</li>
@@ -23,9 +24,17 @@ Level 21 can never be randomly generated. No colonist, raider, trader, refugee, 
 
 Level 21 is the absolute maximum. Level 22 cannot occur.
 
+Newly generated pawns are capped at level 20 unconditionally - there is no setting that relaxes this.
+
 Once earned, level 21 is permanent. It does not decay, and ordinary gameplay cannot take it away - not skill decay, not negative experience, not another mod assigning a lower level, not negative aptitude.
 
 Grandmaster is also the only pawn skill level capable of producing Legendary-quality work. Quality becomes deterministic by skill band, and Inspired Creativity and the Ideology Production Specialist role can no longer push a level-20 pawn to Legendary. Turning deterministic quality off restores vanilla randomness for levels 0-20 but caps them at Masterwork; level 21 is always Legendary. Legendary items from quests, traders, map generation and other non-pawn sources are untouched.
+
+SHOOTING 21 - GRANDMASTER MARKSMAN
+
+The first skill-specific capstone. A Shooting Grandmaster compensates for almost all remaining weapon inaccuracy, ignores cover and ordinary environmental aim penalties, aims and recovers between shots 99% faster, and unlocks per-pawn aim modes: Normal, Killer (aim to kill) and Downed (aim to cripple, avoiding vital organs). Range, damage, armour and line of sight are untouched - the mastery is the marksman's, not the bullet's. Incompatible with Combat Extended, which disables the marksman package automatically.
+
+Other skills do not have Level 21 abilities yet.
 
 Before removing this mod, load your save and use "Prepare Save for Uninstall" at the bottom of Mod Settings. It converts every level 21 skill back to 20 and clears stored Grandmaster progress for the currently loaded game, so the save is safe to load without the mod.
 
