@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LanguageData>
+
+  <GM21_ModTitle>Grandmaster 21</GM21_ModTitle>
+
+  <!-- {0} pawn, {1} skill -->
+  <GM21_BecameGrandmaster>{0} has become a Grandmaster of {1}.</GM21_BecameGrandmaster>
+
+  <GM21_GrandmasterDescriptor>Grandmaster</GM21_GrandmasterDescriptor>
+  <GM21_TooltipAchieved>Grandmaster\nThis pawn has transcended normal mastery of this skill. Only a Grandmaster can produce Legendary-quality work.</GM21_TooltipAchieved>
+
+  <!-- {0} current XP, {1} required XP, {2} percent -->
+  <GM21_TooltipProgress>Grandmaster progress: {0} / {1} XP ({2}%)</GM21_TooltipProgress>
+
+  <GM21_Setting_Requirement>Grandmaster XP requirement</GM21_Setting_Requirement>
+  <!-- {0} current, {1} min, {2} max -->
+  <GM21_Setting_RequirementDesc>Extra experience a pawn must earn after reaching level 20 before becoming a Grandmaster.\nCurrent: {0} XP.  Allowed range: {1} - {2}.</GM21_Setting_RequirementDesc>
+  <GM21_Setting_ResetRequirement>Reset to 1,000,000,000</GM21_Setting_ResetRequirement>
+
+  <GM21_Setting_DeterministicQuality>Deterministic quality</GM21_Setting_DeterministicQuality>
+  <GM21_Setting_DeterministicQualityDesc>Pawn-created quality is decided by skill band instead of a random roll:\n0-3 Awful, 4-7 Poor, 8-10 Normal, 11-13 Good, 14-16 Excellent, 17-20 Masterwork, 21 Legendary.\nTurning this off restores vanilla's random roll, but Legendary still requires level 21.</GM21_Setting_DeterministicQualityDesc>
+
+  <GM21_Setting_PreventDecay>Grandmaster skills never decay</GM21_Setting_PreventDecay>
+  <GM21_Setting_PreventDecayDesc>A level 21 skill never falls back to 20. Skills below 21 decay exactly as in vanilla.</GM21_Setting_PreventDecayDesc>
+
+  <GM21_Setting_ShowProgress>Show Grandmaster progress</GM21_Setting_ShowProgress>
+  <GM21_Setting_ShowProgressDesc>Adds Grandmaster progress to the skill tooltip and a star beside a Grandmaster skill.</GM21_Setting_ShowProgressDesc>
+
+  <GM21_Setting_ClampGenerated>Clamp generated pawns to level 20</GM21_Setting_ClampGenerated>
+  <GM21_Setting_ClampGeneratedDesc>Newly generated pawns can never start above level 20. This is what makes level 21 meaningful and should normally stay on.</GM21_Setting_ClampGeneratedDesc>
+  <GM21_Setting_ClampGeneratedWarning>Warning: with this off, pawn generation and other mods may create level 21 pawns directly. Level 21 will no longer prove anything was earned.</GM21_Setting_ClampGeneratedWarning>
+
+</LanguageData>

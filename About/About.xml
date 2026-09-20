@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModMetaData>
+  <packageId>ared.grandmaster21</packageId>
+  <name>Grandmaster 21</name>
+  <author>aRed</author>
+  <supportedVersions>
+    <li>1.6</li>
+  </supportedVersions>
+  <modDependencies>
+    <li>
+      <packageId>brrainz.harmony</packageId>
+      <displayName>Harmony</displayName>
+      <steamWorkshopUrl>steam://url/CommunityFilePage/2009463077</steamWorkshopUrl>
+      <downloadUrl>https://github.com/pardeike/HarmonyRimWorld/releases/latest</downloadUrl>
+    </li>
+  </modDependencies>
+  <loadAfter>
+    <li>brrainz.harmony</li>
+  </loadAfter>
+  <description>RimWorld skills normally end at 20. This mod adds exactly one more level: 21, Grandmaster.
+
+Level 21 can never be randomly generated. No colonist, raider, trader, refugee, quest pawn, ancient, faction leader or modded super-soldier will ever spawn with it, no matter how many implants, genes, traits or backstory bonuses they have. It must be earned by accumulating an enormous amount of additional experience after a pawn has already reached level 20 - one billion XP by default, configurable in Mod Settings.
+
+Level 21 is the absolute maximum. Level 22 cannot occur.
+
+Grandmaster is also the only pawn skill level capable of producing Legendary-quality work. Quality becomes deterministic by skill band, and Inspired Creativity and the Ideology Production Specialist role can no longer push a level-20 pawn to Legendary. Legendary items from quests, traders, map generation and other non-pawn sources are untouched.
+
+Incompatible with mods that also remove or replace the skill cap, such as unlimited-skill mods.</description>
+</ModMetaData>
