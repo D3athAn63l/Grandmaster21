@@ -10,10 +10,16 @@
 #      renamed vanilla parameter compiles perfectly and throws at patch time. This catches that.
 #   2. VerifyTranspiler -- confirms the SkillRecord.Learn IL pattern still matches exactly one
 #      site in the shipped assembly, and that the level-up ceiling is left alone.
-#   3. Harness -- the progression suite, driven against the real SkillRecord and the real XP curve.
+#   3. PatchAllTest -- LIVE Harmony patching: every patch is applied to the real RimWorld method
+#      it targets, one at a time, and the transpiler is confirmed to have rewritten its IL.
+#   4. Harness -- the progression suite, driven against the real SkillRecord and the real XP curve.
 #
-# Not covered here: live Harmony patching, which needs the full Unity runtime (Burst, Mathematics,
-# SharedInternalsModule) that does not ship in Managed/. That is in-game testing.
+# Targets whose declaring type cannot load outside the Unity player (types holding fields typed
+# from Assembly-CSharp-firstpass, UnityEngine.AudioModule or Steamworks.NET, which ship with the
+# launcher rather than in Managed/) are reported as BLOCKED rather than failed. Copy those
+# assemblies in alongside Managed/ to clear them.
+#
+# Not covered here at all: gameplay. Patches binding is not patches behaving.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 MANAGED="${1:?usage: verify-real.sh <Managed dir> <0Harmony.dll>}"
@@ -40,6 +46,11 @@ else
   echo "=== 2. Learn transpiler IL pattern: SKIPPED (Mono.Cecil not installed) ==="
 fi
 
-echo; echo "=== 3. Progression suite against the real SkillRecord ==="
+echo; echo "=== 3. Live Harmony patching against real RimWorld methods ==="
+mcs -out:"$OUT/patchall.exe" $REFS Tests/PatchAllTest.cs
+( cd "$OUT" && mono patchall.exe Grandmaster21.dll 2>&1 \
+    | grep -vE 'out of sync|update one from git|the other too|Do not report this|you probably have|If you see other|and you need to fix|Your mono runtime|The out of sync|^$' )
+
+echo; echo "=== 4. Progression suite against the real SkillRecord ==="
 mcs -out:"$OUT/harness.exe" $REFS Tests/Harness.cs
 ( cd "$OUT" && mono harness.exe )

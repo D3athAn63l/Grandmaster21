@@ -645,6 +645,11 @@ the game. Still Beta because no gameplay session has been played.
   `Pawn_HealthTracker.forceDowned`, and all eight `BodyPartTagDef` defNames.
 * **The `Learn` transpiler matches exactly one site** in the shipped IL (`IL_0057`), and the two
   other literal `20`s — the level-up ceiling — are correctly left alone.
+* **18/18 Harmony patches bind to their real RimWorld methods, 0 failures** — applied live, one
+  target at a time, by `Tests/PatchAllTest.cs`. That covers every `ShotReport` property postfix,
+  both `Stance` constructor `ref int ticks` prefixes, `Pawn.PreApplyDamage` with `ref DamageInfo`,
+  the gizmo and aim-mode patches, and all nine core skill/quality patches. Four further targets
+  are BLOCKED headless rather than failed — see below.
 * **26/26 progression checks pass against the real `SkillRecord`** and the real XP curve.
 * **105 offline logic checks pass** across the two stub harnesses.
 
@@ -661,16 +666,26 @@ Two design assumptions were confirmed directly in the shipped IL:
   (`IL_013d`) and the level-up branch (`IL_0150`) reach it. It therefore runs on *positive* XP too,
   which is exactly the hazard the `Learn` prefix normalises away at level 21.
 
+### Four patch targets cannot be bound headless
+
+`Verb_LaunchProjectile.TryCastShot`, `Pawn_HealthTracker.CheckForStateChange`,
+`SkillUI.GetSkillDescription` and `SkillUI.DrawSkill` are reported BLOCKED, not failed. Their
+declaring types hold fields typed from `Assembly-CSharp-firstpass` and `UnityEngine.AudioModule`,
+which ship with the launcher rather than in `Managed/`, so the type cannot load outside the Unity
+player. Drop those two assemblies in alongside `Managed/` to clear them.
+
+The *members* those four patches target were all confirmed present with the right signatures and
+parameter names by check 1, so what is unverified is the bind step alone.
+
 ### Not yet verified — requires actually playing
 
-Live Harmony patching cannot be exercised headless: it needs the full Unity runtime (`Unity.Burst`,
-`Unity.Mathematics`, `UnityEngine.SharedInternalsModule`), which does not ship in `Managed/`.
+Patches binding is not patches behaving. None of the following has been exercised:
 
 * the full earn → save → reload → permanence → cleanup → uninstall cycle
 * every Shooting Grandmaster behaviour in combat (accuracy, cover, warmup/cooldown, Killer, Downed,
   death-on-downed suppression, the gizmo)
-* `Player.log` free of Harmony patch failures
-* Combat Extended interaction
+* `Player.log` free of Harmony patch failures in a real load
+* Combat Extended detection and opt-out
 
 The `Learn` transpiler's fail-safe is unchanged and still degrades to "no new Grandmasters" rather
 than corrupting progression.
