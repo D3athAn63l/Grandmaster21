@@ -150,6 +150,7 @@ static class OfflineHarness
         Gm21Mod.Settings = new Gm21Settings();
         Gm21Mod.Settings.Validate();
         SetLearnPatchApplied(true);
+        LoadShippedKeys();
 
         Console.WriteLine("=== A. Grandmaster XP accrual and promotion ===");
         Gm21Mod.Settings.grandmasterXpRequirement = 1000.0;
@@ -240,8 +241,14 @@ static class OfflineHarness
         Console.WriteLine("\n=== G. Aptitude semantics ===");
         SkillRecord apt = Rec(21); apt.aptitudeStub = -1;
         Check("stored 21 with -1 aptitude still DISPLAYS 21", UiLevel(apt) == 21, "ui=" + UiLevel(apt));
-        Check("stored 21 with -1 aptitude keeps the Grandmaster descriptor",
+        Check("stored 21 with -1 aptitude keeps a Grandmaster descriptor",
               Descriptor(apt) == "GM21_GrandmasterDescriptor", "desc=" + Descriptor(apt));
+        SkillRecord shootGm = Rec(21); shootGm.def = SkillDefOf.Shooting;
+        Check("Shooting 21 gets its own title, not the generic one",
+              Descriptor(shootGm) == "GM21_Descriptor_Shooting", "desc=" + Descriptor(shootGm));
+        SkillRecord medGm = Rec(21); medGm.def = new SkillDef { defName = "Medicine", label = "medicine" };
+        Check("a skill with no bespoke title falls back to the generic one",
+              Descriptor(medGm) == "GM21_GrandmasterDescriptor", "desc=" + Descriptor(medGm));
         Check("stored 21 with -1 aptitude is still IsGrandmaster", Gm21.IsGrandmaster(apt));
         Check("stored 21 with -1 aptitude has MECHANICAL level 20 (aptitude preserved)",
               LevelWithAptitude(apt) == 20, "mech=" + LevelWithAptitude(apt));
@@ -374,6 +381,27 @@ static class OfflineHarness
         Console.WriteLine("\n================================");
         Console.WriteLine("PASS: " + pass + "   FAIL: " + fail);
         Environment.Exit(fail == 0 ? 0 : 1);
+    }
+
+
+    /// <summary>
+    /// Loads the mod's real shipped translation keys into the stub, so CanTranslate answers the
+    /// same question RimWorld would and the per-skill lookup fallbacks are genuinely exercised.
+    /// </summary>
+    static void LoadShippedKeys()
+    {
+        string path = "Languages/English/Keyed/Grandmaster21.xml";
+        if (!System.IO.File.Exists(path))
+        {
+            Console.WriteLine("WARN  could not find " + path + "; translation-key tests are meaningless");
+            return;
+        }
+        System.Xml.XmlDocument doc = new System.Xml.XmlDocument();
+        doc.Load(path);
+        foreach (System.Xml.XmlNode n in doc.DocumentElement.ChildNodes)
+        {
+            if (n.NodeType == System.Xml.XmlNodeType.Element) Verse.Translator.KnownKeys.Add(n.Name);
+        }
     }
 
     static SkillRecord MakeRec(string defName, int level)

@@ -14,11 +14,12 @@ namespace Grandmaster21
         public double grandmasterXpRequirement = DefaultRequirement;
         public bool deterministicQuality = true;
         public bool showGrandmasterProgress = true;
-        public bool clampGeneratedPawns = true;
 
-        // NOTE: the former "grandmasterPreventsDecay" setting is gone. Level 21 never decays --
-        // it is an achieved state, not an option. Old config files still containing that element
-        // load fine; Scribe ignores elements with no matching field.
+        // NOTE: two former settings are gone, and neither is coming back.
+        //   "grandmasterPreventsDecay" -- level 21 never decays; it is an achieved state.
+        //   "clampGeneratedPawns"      -- generated pawns are capped at 20, unconditionally.
+        // Both were options that could switch off a defining rule of the mod. Old config files
+        // still containing those elements load fine; Scribe ignores elements with no field.
 
         /// <summary>Edit buffer for the requirement field; not saved.</summary>
         [Unsaved] public string requirementBuffer;
@@ -29,7 +30,6 @@ namespace Grandmaster21
             Scribe_Values.Look(ref grandmasterXpRequirement, "grandmasterXpRequirement", DefaultRequirement);
             Scribe_Values.Look(ref deterministicQuality, "deterministicQuality", true);
             Scribe_Values.Look(ref showGrandmasterProgress, "showGrandmasterProgress", true);
-            Scribe_Values.Look(ref clampGeneratedPawns, "clampGeneratedPawns", true);
 
             if (Scribe.mode == LoadSaveMode.PostLoadInit)
             {
@@ -104,16 +104,6 @@ namespace Grandmaster21
             list.CheckboxLabeled("GM21_Setting_ShowProgress".Translate(),
                 ref Settings.showGrandmasterProgress, "GM21_Setting_ShowProgressDesc".Translate());
 
-            list.CheckboxLabeled("GM21_Setting_ClampGenerated".Translate(),
-                ref Settings.clampGeneratedPawns, "GM21_Setting_ClampGeneratedDesc".Translate());
-
-            if (!Settings.clampGeneratedPawns)
-            {
-                GUI.color = Color.yellow;
-                list.Label("GM21_Setting_ClampGeneratedWarning".Translate());
-                GUI.color = Color.white;
-            }
-
             list.Label("GM21_Setting_PermanenceNote".Translate());
 
             DrawMaintenanceSection(list);
@@ -140,13 +130,6 @@ namespace Grandmaster21
             GUI.color = new Color(0.75f, 0.75f, 0.75f);
             list.Label("GM21_Maintenance_Desc".Translate());
             GUI.color = Color.white;
-
-            if (Gm21Uninstall.CurrentGameIsPrepared)
-            {
-                GUI.color = new Color(0.45f, 0.85f, 0.45f);
-                list.Label("GM21_Maintenance_Prepared".Translate());
-                GUI.color = Color.white;
-            }
 
             list.Gap(6f);
 

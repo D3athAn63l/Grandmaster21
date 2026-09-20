@@ -27,8 +27,9 @@ namespace Grandmaster21
     ///      Grandmaster is an achieved state; ordinary gameplay cannot revoke it. This covers
     ///      "Level = 22" (was already handled) and, crucially, "Level = 20", "Level = 5" and
     ///      "Level = 0" (which the previous clamp-based version let through).
-    ///   3. Everyone else -> vanilla behaviour, clamped at 20 (or 21 if the player has turned
-    ///      the generation clamp off).
+    ///   3. Everyone else -> clamped at 20, unconditionally. There is deliberately no setting
+    ///      for this: "generated pawns cannot be 21" is the rule that gives level 21 its meaning,
+    ///      so it is not the player's to switch off.
     /// </summary>
     [HarmonyPatch(typeof(SkillRecord), "set_Level")]
     public static class Patch_SkillRecord_SetLevel
@@ -48,8 +49,7 @@ namespace Grandmaster21
                 return false;
             }
 
-            int cap = Gm21Mod.Settings.clampGeneratedPawns ? Gm21.VanillaMaxLevel : Gm21.GrandmasterLevel;
-            __instance.levelInt = Mathf.Clamp(value, Gm21.MinLevel, cap);
+            __instance.levelInt = Mathf.Clamp(value, Gm21.MinLevel, Gm21.VanillaMaxLevel);
             return false;
         }
     }
@@ -126,10 +126,22 @@ namespace Grandmaster21
         [HarmonyPostfix]
         public static void Postfix(SkillRecord __instance, ref string __result)
         {
-            if (__instance.levelInt >= Gm21.GrandmasterLevel)
+            if (__instance.levelInt < Gm21.GrandmasterLevel) return;
+
+            // Per-skill title where one exists ("Grandmaster Marksman" for Shooting), generic
+            // otherwise. Same lookup convention as the tooltip text: adding a title for another
+            // skill later is a translation-file change, not a code change.
+            SkillDef def = __instance.def;
+            if (def != null && def.defName != null)
             {
-                __result = "GM21_GrandmasterDescriptor".Translate();
+                string key = "GM21_Descriptor_" + def.defName;
+                if (key.CanTranslate())
+                {
+                    __result = key.Translate();
+                    return;
+                }
             }
+            __result = "GM21_GrandmasterDescriptor".Translate();
         }
     }
 }

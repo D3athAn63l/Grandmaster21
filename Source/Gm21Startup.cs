@@ -12,6 +12,15 @@ namespace Grandmaster21
             Harmony harmony = new Harmony("ared.grandmaster21");
             harmony.PatchAll(Assembly.GetExecutingAssembly());
 
+            // Applied by hand, after PatchAll, so that an unresolvable combat internal disables
+            // one shooting feature instead of throwing out of PatchAll and taking the entire mod
+            // -- level 21 permanence included -- down with it.
+            Gm21ShootingPatches.Apply(harmony);
+
+            Log.Message("[Grandmaster 21] " + Gm21Version.Full
+                        + "  |  shooting: passive=" + Gm21Shooting.PassiveBonusesEnabled
+                        + " targeting=" + Gm21Shooting.AnatomicalTargetingEnabled);
+
             if (!Gm21.LearnPatchApplied)
             {
                 Log.Warning("[Grandmaster 21] The SkillRecord.Learn safety patch did not apply. "

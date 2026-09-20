@@ -2,6 +2,9 @@
 
 **RimWorld 1.6** — skills normally end at 20. This mod adds exactly one more level: **21, Grandmaster**.
 
+**Version 0.9.0 Beta.** Not 1.0: the source compiles and the offline suites pass, but the in-game
+regression checklist has not been run end to end. See [Release status](#release-status).
+
 Level 21 cannot be randomly generated. It must be earned by accumulating an enormous amount of
 experience *after* a pawn has already reached level 20. Level 21 represents Grandmaster mastery
 and is the only pawn skill level capable of producing **Legendary**-quality work.
@@ -123,10 +126,11 @@ Legendary weapon — they just can't *make* one.
 | Grandmaster XP requirement | 1,000,000,000 | Range 1,000 – 1,000,000,000,000. Invalid input is clamped; NaN resets to default. |
 | Deterministic quality | On | Off restores vanilla's random roll for levels 0–20, capped at Masterwork. Level 21 is Legendary either way. |
 | Show Grandmaster progress | On | Tooltip progress line plus a ★ beside a Grandmaster skill. |
-| Clamp generated pawns to 20 | On | Should normally stay on — it is what makes 21 mean something. |
 
-Grandmaster decay is **not** a setting. Level 21 never decays; there is no option to restore
-vanilla's behaviour for it.
+Two things are deliberately **not** settings, because both would switch off a defining rule:
+
+* **Grandmaster decay.** Level 21 never decays. There is no option to restore vanilla's behaviour.
+* **The generated-pawn cap.** Newly generated pawns can never receive level 21, unconditionally.
 
 The bottom of Mod Settings also holds a **Maintenance / Save cleanup** section containing the
 `Prepare Save for Uninstall` action — see [Removing Grandmaster 21 safely](#removing-grandmaster-21-safely).
@@ -145,7 +149,8 @@ In RimWorld 1.6 the two things are already separated by code path:
 * **Save/load restores levels by writing the `levelInt` field directly** via `Scribe_Values`,
   never touching the property.
 
-So the mod leaves the property setter clamped at 20 and leaves the field alone. Every generated
+So the mod leaves the property setter clamped at 20 — unconditionally, with no setting to relax
+it — and leaves the field alone. Every generated
 pawn — colonist, raider, visitor, trader, refugee, quest pawn, ancient, faction leader, slave,
 prisoner, world pawn, and any modded faction pawn that uses the normal pipeline — is capped at 20
 no matter how extreme its backstory, trait, gene or faction bonuses. An existing Grandmaster
@@ -196,6 +201,157 @@ Loading an older save works. Existing level-20 pawns simply start at Grandmaster
 
 ---
 
+## Shooting 21 — Grandmaster Marksman
+
+The first skill-specific capstone. Other skills' Level 21 abilities are not designed yet and are
+deliberately not invented here.
+
+> Shooting 20 is an elite marksman.
+> Shooting 21 is a pawn who decides where the bullet goes and what the shot is meant to accomplish.
+
+This is intentionally overpowered. At the default billion-XP requirement, nobody earns it casually.
+
+### What mastery covers — and what it doesn't
+
+A Grandmaster has near-perfect command of everything **the shooter** controls. Nothing here touches
+what **the projectile** controls.
+
+| The marksman controls | Untouched |
+|---|---|
+| Accuracy and aim compensation | Weapon range — a pistol is still a pistol |
+| Cover compensation | Weapon damage, armour penetration, ammunition |
+| Environmental compensation | Line of sight — walls still block shots |
+| Warmup and recovery speed | Burst timing, magazines, reloads |
+| Anatomical shot placement | Friendly fire — bullets do not phase through allies |
+
+### Passive bonuses
+
+Active whenever a pawn has a legitimate **stored** Shooting 21 — read from `levelInt`, so aptitude
+can neither grant nor remove marksman status.
+
+**1. Near-perfect accuracy compensation.** Not a flat +99 points, which would push a 30% pistol and
+a 90% rifle both to 100% and erase weapon differentiation. Instead 99% of the *remaining miss
+chance* is removed:
+
+```
+final = 1 − (1 − base) × 0.01
+```
+
+| Base | Grandmaster |
+|---|---|
+| 30% | 99.3% |
+| 60% | 99.6% |
+| 90% | 99.9% |
+
+The better weapon stays strictly better, and a 0% base is still not a guaranteed hit.
+
+**2. Cover is ignored.** `ShotReport.PassCoverChance` becomes 1 — sandbags, barricades and doorway
+edges contribute nothing. This is an *accuracy* term only: line of sight is resolved separately by
+`TryFindShootLineFromTo`, which is untouched. No shot path still means no shot.
+
+**3. Environmental penalties are compensated — through the accuracy formula, not by zeroing
+modifiers.** Darkness, weather, rain, fog, smoke, range and target size have all already been
+folded into the number the accuracy compensation acts on, so removing 99% of the remaining miss
+compensates for every one of them in a single place. This is deliberate: hunting down and zeroing
+individual modifiers is where double-application and mod conflicts come from. Anything a future
+mod models as a *physical obstruction* rather than an accuracy penalty is unaffected, which is the
+correct outcome.
+
+**4 & 5. Warmup and cooldown mastery.** 99% off both, floored at one tick so the engine never gets
+a zero- or negative-tick stance. Implemented by prefixing the `Stance_Warmup` and `Stance_Cooldown`
+constructors — the narrowest possible intervention. Burst timing (`ticksBetweenBurstShots`),
+magazines and reloads are separate mechanisms and are left alone. Gated to `Verb_LaunchProjectile`,
+so a Grandmaster's psycasts and melee are unaffected.
+
+**6. The body still matters.** The passive package requires the pawn to be capable of both
+`Consciousness` and `Manipulation`. Without that gate the compensation curve would erase every
+capacity penalty, because it works on whatever miss chance is left regardless of where it came
+from — a pawn with no functional arms would shoot perfectly. A pawn who cannot work a weapon falls
+straight back to vanilla accuracy. The mastery is extraordinary; the pawn is not telekinetic.
+
+### Grandmaster Aim modes
+
+A Shooting Grandmaster gets one vanilla-style gizmo — **Grandmaster Aim** — opening a three-entry
+float menu. The gizmo appears only for player-faction colonists with a stored Shooting 21.
+
+| Mode | Behaviour |
+|---|---|
+| **Normal** (default) | Vanilla body-part resolution. All passive bonuses still apply. |
+| **Killer** | Deliberately aim for the anatomy most likely to kill quickly. |
+| **Downed** | Deliberately aim to cripple, avoiding vital organs where possible. |
+
+Newly promoted pawns start on **Normal**, so a colonist reaching 21 does not silently begin
+executing every enemy. Killer and Downed are opt-in, per pawn.
+
+#### How a body part is chosen
+
+Scoring is generic, by `BodyPartTagDef`, never by part name. RimWorld ships humanlikes, animals and
+mechanoids, and mods add races with multiple hearts, no head, six legs, or anatomy nobody
+anticipated; hardcoding `Brain`/`Heart`/`LeftLeg` would work for colonists and silently no-op or
+crash for everything else. Tags are how RimWorld itself expresses "this is what makes the creature
+conscious / pumps its blood / moves it", and every body def uses them.
+
+**Killer** prefers, in order: the consciousness source (brain) → the part *containing* it (the
+"head", derived structurally, not by name) → breathing pathway (neck) → blood pump (heart) →
+breathing source (lungs) → blood filtration. Ties break toward the larger, easier-to-hit part.
+
+**Downed** prefers mobility anatomy — `MovingLimbCore` → `MovingLimbSegment` → `MovingLimbDigit` —
+and **excludes every vital-tagged part outright**. Ties break toward the *healthiest* remaining
+limb, because taking out a working leg removes more Moving than finishing off a ruined one. Missing
+parts and parts already at zero health are filtered every shot, so a Grandmaster never keeps firing
+into a leg that is already gone.
+
+Either mode returns "no opinion" if the creature has no sensible target — a mechanoid with no
+vitals, a blob with no limbs — and vanilla resolution takes over unchanged. Nothing crashes because
+a modded creature lacks a brain.
+
+#### Killer mode is not guaranteed death
+
+No bonus damage is added. The Grandmaster chooses *where* to shoot; the weapon still decides what
+that does. A weak pistol round into a heavily armoured skull may simply not kill, and that is
+correct. Every shot still flows through RimWorld's normal armour, damage, hediff, part-destruction
+and death/downing systems — the patch only sets `dinfo.HitPart`. No fake impacts, no direct health
+edits.
+
+#### Death-on-downed suppression
+
+RimWorld may convert a downed hostile into a death. Downed mode would be pointless if a successful
+deliberate incapacitation were then rolled into a corpse, so that roll is suppressed — **narrowly**:
+only while resolving a state change caused by a Grandmaster's ranged shot in Downed mode, by setting
+`Pawn_HealthTracker.forceDowned` for the duration of that one call and restoring it in a finalizer.
+
+This is **not immortality**, and global death-on-downed is untouched for everything else. RimWorld
+checks "should be dead" *before* "should be downed", so a genuinely lethal wound still kills;
+`forceDowned` only decides which branch is taken once the pawn is already going down. Blood loss,
+destroyed organs, fire and untreated wounds all still kill normally, afterwards.
+
+### Friendly fire, range and damage
+
+Friendly fire is **not** disabled. Grandmaster accuracy governs whether a shot goes where it was
+aimed; it does not make allies transparent. Anatomical targeting explicitly refuses to redirect any
+hit whose `IntendedTarget` is not the pawn being damaged, so a stray or friendly-fire hit is never
+turned into a headshot.
+
+Range and damage are untouched, full stop. A Grandmaster with a pistol is near-perfect *inside
+pistol range* and cannot reach sniper distances.
+
+### Hunting
+
+Normal and Killer behave sensibly for hunting — Killer naturally prioritises lethal anatomy, which
+is what a hunter wants. Downed mode on a hunt will tend to cripple rather than kill, which is
+usually not what you want; it is left enabled rather than special-cased, because the mode is an
+explicit per-pawn choice the player made. Switch a hunter to Normal or Killer.
+
+### Storage
+
+The aim mode is one byte per pawn in a `ConditionalWeakTable`, persisted from a postfix on
+`Pawn.ExposeData` — the same architecture as Grandmaster XP. It therefore rides along with the pawn
+through save/load, map transitions, caravans, world-pawn conversion and despawn/respawn with no
+extra code, no manager and nothing to prune. Normal is the default and is never written, so a pawn
+in Normal mode adds nothing at all to the save file.
+
+---
+
 ## Removing Grandmaster 21 safely
 
 > **Do not remove the mod while a save still contains level 21 skills.**
@@ -233,7 +389,9 @@ For every skill record on every relevant pawn in the currently loaded game:
   route permitted to move a Grandmaster down;
 * **all banked Grandmaster XP is dropped**, including partial progress on skills that never reached
   21. The weak-table entry is removed rather than zeroed, so `SkillRecord.ExposeData` omits the
-  `grandmasterXp` element from the save entirely rather than writing a `0`.
+  `grandmasterXp` element from the save entirely rather than writing a `0`;
+* **the Grandmaster aim mode is cleared**, for the same reason — a cleaned save should contain no
+  `gm21AimMode` element either.
 
 Afterwards the save contains no meaningful Grandmaster 21 state. The operation is idempotent:
 running it twice reports zero on the second pass.
@@ -255,12 +413,12 @@ one unavailable container cannot abort the run.
 Sources 2–5 are redundant with source 1 by design: if `PawnsFinder`'s composition ever changes,
 maps, world pawns, caravans and corpses are still covered directly.
 
-#### Session status
+#### No "prepared" status is shown
 
-After a successful run, Mod Settings shows `Current game prepared for uninstall ✓`. This is tracked
-through a `WeakReference` to the specific `Game` object that was cleaned, so it disappears when you
-load a different save and is never stored as a global preference. It is a statement about the game
-currently loaded, not a claim that every save is clean.
+Deliberately. Cleanup is a point-in-time operation, not a property of the save: the moment you keep
+playing, a pawn can bank new Grandmaster XP or earn a new level 21, and any "prepared ✓" marker
+becomes a lie. The result dialog reports what was done and tells you to save and quit — that is the
+whole contract. If you play on after cleaning, run it again before you save for real.
 
 #### Uninstall safety — what is and isn't claimed
 
@@ -293,6 +451,19 @@ otherwise have rolled *worse than level 0*) and `SkillRecord.LevelDescriptor` (2
 so level 21 already falls through to its default and never decays; the mod patches it anyway so the
 guarantee is explicit rather than an accident of the jump table's size.
 
+### Combat overhauls
+
+**Combat Extended and the Shooting Grandmaster are mutually exclusive, by design.** CE replaces the
+shooting pipeline these patches depend on. If a mod whose package id contains `combatextended` is
+active, the *entire* marksman package — accuracy compensation, cover negation, warmup/cooldown
+mastery and Killer/Downed targeting — is not applied at all, and a warning is logged. Level 21
+itself, its permanence and the quality rules are unaffected.
+
+This is graceful degradation, not tested compatibility. **No CE compatibility is claimed** — the
+interaction has not been run. The same applies to any other combat overhaul: only CE is detected by
+name, so a different overhaul would not trigger the opt-out and the patches would be applied on top
+of it.
+
 **Tested against:** RimWorld 1.6, `Assembly-CSharp.dll` build supplied by the mod author.
 No other version is claimed. No compatibility with any specific third-party mod is claimed,
 because none was tested.
@@ -312,8 +483,41 @@ because none was tested.
 | `SkillRecord.ExposeData` | Postfix | Persists `grandmasterXp` |
 | `QualityUtility.GenerateQualityCreatedByPawn(int, bool)` | Prefix + Postfix | Deterministic bands; Legendary only at 21 |
 | `QualityUtility.GenerateQualityCreatedByPawn(Pawn, SkillDef, bool)` | Postfix | Re-clamps after the Production Specialist offset |
-| `SkillUI.GetSkillDescription` | Postfix | Progress / achieved text |
+| `SkillUI.GetSkillDescription` | Postfix | Progress / per-skill achieved text |
 | `SkillUI.DrawSkill` | Postfix | ★ marker (cosmetic) |
+| `Pawn.ExposeData` | Postfix | Persists the Grandmaster aim mode |
+| `Pawn.GetGizmos` | Postfix | The Grandmaster Aim gizmo |
+
+### Shooting Grandmaster patches
+
+These are applied **manually**, after `PatchAll`, rather than by attribute. They target combat
+internals, several of them private, and a couple were renamed across versions (`ShotReport`'s
+chance properties were `ChanceToNotGoWild`/`ChanceToNotHitCover` before 1.3). An attribute patch
+whose target cannot be resolved throws out of `PatchAll` and takes the *whole mod* down with it,
+including level 21 permanence, which has nothing to do with shooting. Resolving each target by hand
+lets a missing method disable one feature, log once, and leave everything else running.
+
+| Target | Kind | Why |
+|---|---|---|
+| `Verb_LaunchProjectile.TryCastShot` | Prefix + **Finalizer** | Opens/closes the shot context. A finalizer, not a postfix, so the context cannot be left open if the cast throws |
+| `ShotReport.HitReportFor` | Postfix | Sets the shot context for the targeting UI, which builds a report and reads it immediately |
+| `ShotReport.AimOnTargetChance_IgnoringPosture` | Postfix | The accuracy compensation — applied at the single value `TryCastShot` rolls against, so it cannot double-apply |
+| `ShotReport.PassCoverChance` | Postfix | Cover negation |
+| `ShotReport.TotalEstimatedHitChance` | Postfix | Cosmetic: keeps the targeting readout consistent |
+| `Stance_Warmup..ctor` | Prefix (`ref int ticks`) | Warmup mastery, without touching burst or reload timing |
+| `Stance_Cooldown..ctor` | Prefix (`ref int ticks`) | Cooldown mastery, same |
+| `Pawn.PreApplyDamage` | Prefix (`ref DamageInfo`) | Killer/Downed shot placement — sets `HitPart` only, before armour, so the shot still flows through every normal system |
+| `Pawn_HealthTracker.CheckForStateChange` | Prefix + Finalizer | Narrow death-on-downed suppression |
+
+**Why a shot context is needed at all:** `ShotReport` is a struct of precomputed factors. By the
+time its hit-chance properties are read, the caster is no longer reachable from the report, so a
+postfix on those properties cannot tell whose shot it is looking at. The context is set at the two
+places that *do* know the caster, and the "is a Grandmaster" answer is computed once per shot, so
+the property postfixes are a single bool read. An ordinary shooter pays essentially nothing.
+
+One known wart: after the targeting UI builds a report, the observed flag stays set until the next
+shot or hover. That can only affect a *displayed* hit chance, never a rolled one — real shots always
+recompute the context — but it is a heuristic, not a guarantee.
 
 ### The single transpiler
 
@@ -383,9 +587,9 @@ factory so the hot path does not allocate.
 
 ## Building
 
-> **`Assemblies/Grandmaster21.dll` in this repository is stale.** It predates the Beta repair pass
-> and still contains the Alpha behaviour. Rebuild it before playing, or the mod will silently run
-> the old rules.
+> **No assembly is checked in.** `Assemblies/Grandmaster21.dll` must be built before playing —
+> see `Assemblies/README.md`. The old Alpha binary was removed rather than left to silently run
+> outdated rules.
 
 ```bash
 ./build.sh /path/to/RimWorld/RimWorldWin64_Data/Managed /path/to/0Harmony.dll
@@ -400,12 +604,42 @@ On Linux/Mono the `netstandard 2.1` facade is required (`mono-devel` provides it
 `Tests/Harness.cs` runs the compiled assembly against RimWorld's real `SkillRecord` type and needs
 a RimWorld install.
 
-`Tests/OfflineHarness.cs` needs no RimWorld install. It drives the mod's real Harmony
-prefix/postfix bodies against a stub API whose signatures mirror `Assembly-CSharp`, covering
-promotion, the transpiler fail-safe, permanence, the generation cap, decay, aptitude semantics,
-both quality overloads, the per-pawn cleanup and the authorised-scope's exception safety. It does
-**not** run inside RimWorld and does not exercise Harmony patching, real IL, pawn generation or
-saving — those are verified in-game.
+`Tests/OfflineHarness.cs` and `Tests/OfflineHarness_Shooting.cs` need no RimWorld install:
+
+```bash
+./tools/build-stubs.sh
+```
+
+That compile-checks the source and runs both suites against reference stubs whose signatures mirror
+`Assembly-CSharp`. Between them they cover promotion, the transpiler fail-safe, permanence, the
+generation cap, decay, aptitude semantics, both quality overloads, the per-pawn cleanup, the
+authorised scope's exception safety, the accuracy and delay maths, aim-mode storage, Killer/Downed
+part selection across several anatomies, the targeting patch's gating, and that every translation
+key the code looks up is actually shipped.
+
+They do **not** run inside RimWorld. They do not exercise Harmony patching, real IL, combat,
+projectiles, pawn generation, the gizmo or saving — and critically, they **cannot prove that the
+RimWorld members named in the source exist with those signatures**, because the stubs are
+hand-written approximations. Only a real build does that. See `tools/stubs/README.md`.
+
+---
+
+## Release status
+
+**0.9.0 Beta.** Source compiles; the offline suites pass (131 checks across three harnesses). The
+in-game regression checklist has **not** been run end to end, so this is not 1.0.
+
+Not yet verified in RimWorld:
+
+* the full earn → save → reload → permanence → cleanup → uninstall cycle
+* every Shooting Grandmaster behaviour (accuracy, cover, warmup/cooldown, Killer, Downed,
+  death-on-downed suppression, the gizmo)
+* that every RimWorld member named in the shooting code exists with that exact signature in 1.6 —
+  the offline stubs cannot prove this, only a real build can
+* `Player.log` free of Harmony patch failures
+
+The Learn transpiler's fail-safe is unchanged and still degrades to "no new Grandmasters" rather
+than corrupting progression.
 
 ---
 

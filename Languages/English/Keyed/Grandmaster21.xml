@@ -7,7 +7,31 @@
   <GM21_BecameGrandmaster>{0} has become a Grandmaster of {1}.</GM21_BecameGrandmaster>
 
   <GM21_GrandmasterDescriptor>Grandmaster</GM21_GrandmasterDescriptor>
-  <GM21_TooltipAchieved>Grandmaster\nThis pawn has transcended normal mastery of this skill. Only a Grandmaster can produce Legendary-quality work.\nThis level is permanent: it does not decay and cannot be lost.</GM21_TooltipAchieved>
+  <!-- Per-skill Grandmaster titles. Falls back to GM21_GrandmasterDescriptor. -->
+  <GM21_Descriptor_Shooting>Grandmaster Marksman</GM21_Descriptor_Shooting>
+
+  <!-- Per-skill Grandmaster tooltips, looked up as GM21_Achieved_&lt;SkillDef defName&gt;.
+       Skills with no entry fall back to GM21_Achieved_Default. Do NOT give a skill the
+       Legendary-crafting line unless that skill actually creates items. -->
+  <GM21_Achieved_Default>Grandmaster\nThis pawn has achieved Grandmaster mastery in this skill.\nThis level is permanent: it does not decay and cannot be lost.</GM21_Achieved_Default>
+
+  <GM21_Achieved_Shooting>Grandmaster Marksman\nThis pawn has transcended ordinary ranged combat mastery. They compensate almost perfectly for weapon inaccuracy, ignore cover and ordinary environmental aim penalties, aim and recover between shots with extraordinary speed, and may deliberately target lethal or incapacitating anatomy.\nRange, damage and armour are unchanged: the mastery is the marksman's, not the bullet's.\nThis level is permanent: it does not decay and cannot be lost.</GM21_Achieved_Shooting>
+
+  <GM21_Achieved_Crafting>Grandmaster\nThis pawn has transcended normal mastery of this skill. Only a Grandmaster can produce Legendary-quality work.\nThis level is permanent: it does not decay and cannot be lost.</GM21_Achieved_Crafting>
+  <GM21_Achieved_Artistic>Grandmaster\nThis pawn has transcended normal mastery of this skill. Only a Grandmaster can produce Legendary-quality work.\nThis level is permanent: it does not decay and cannot be lost.</GM21_Achieved_Artistic>
+  <GM21_Achieved_Construction>Grandmaster\nThis pawn has transcended normal mastery of this skill. Only a Grandmaster can produce Legendary-quality work.\nThis level is permanent: it does not decay and cannot be lost.</GM21_Achieved_Construction>
+
+  <!-- Grandmaster Aim gizmo (Shooting 21 only) -->
+  <!-- {0} current mode name -->
+  <GM21_AimMode_GizmoLabel>Grandmaster Aim: {0}</GM21_AimMode_GizmoLabel>
+  <GM21_AimMode_GizmoDesc>Choose where this Grandmaster Marksman aims.\n\nAll modes keep the passive Grandmaster bonuses. Only shot placement changes.</GM21_AimMode_GizmoDesc>
+
+  <GM21_AimMode_Normal>Normal</GM21_AimMode_Normal>
+  <GM21_AimMode_NormalDesc>Ordinary shot placement.</GM21_AimMode_NormalDesc>
+  <GM21_AimMode_Killer>Killer</GM21_AimMode_Killer>
+  <GM21_AimMode_KillerDesc>Deliberately aim for the anatomy most likely to kill the target quickly. The weapon still decides the damage.</GM21_AimMode_KillerDesc>
+  <GM21_AimMode_Downed>Downed</GM21_AimMode_Downed>
+  <GM21_AimMode_DownedDesc>Deliberately aim to cripple, avoiding vital organs where possible. The target may still die of blood loss or untreated wounds.</GM21_AimMode_DownedDesc>
 
   <!-- {0} current XP, {1} required XP, {2} percent -->
   <GM21_TooltipProgress>Grandmaster progress: {0} / {1} XP ({2}%)</GM21_TooltipProgress>
@@ -23,15 +47,11 @@
   <GM21_Setting_ShowProgress>Show Grandmaster progress</GM21_Setting_ShowProgress>
   <GM21_Setting_ShowProgressDesc>Adds Grandmaster progress to the skill tooltip and a star beside a Grandmaster skill.</GM21_Setting_ShowProgressDesc>
 
-  <GM21_Setting_ClampGenerated>Clamp generated pawns to level 20</GM21_Setting_ClampGenerated>
-  <GM21_Setting_ClampGeneratedDesc>Newly generated pawns can never start above level 20. This is what makes level 21 meaningful and should normally stay on.</GM21_Setting_ClampGeneratedDesc>
-  <GM21_Setting_ClampGeneratedWarning>Warning: with this off, pawn generation and other mods may create level 21 pawns directly. Level 21 will no longer prove anything was earned.</GM21_Setting_ClampGeneratedWarning>
 
   <GM21_Setting_PermanenceNote>Level 21 is permanent. Once earned it never decays and ordinary gameplay cannot reduce it. Skills at level 20 and below decay exactly as in vanilla.</GM21_Setting_PermanenceNote>
 
   <GM21_Maintenance_Header>Maintenance / Save cleanup</GM21_Maintenance_Header>
   <GM21_Maintenance_Desc>Converts Grandmaster21-specific state back into vanilla-safe values for the current loaded game. Use this only before removing Grandmaster 21 from your mod list.</GM21_Maintenance_Desc>
-  <GM21_Maintenance_Prepared>Current game prepared for uninstall ✓</GM21_Maintenance_Prepared>
 
   <GM21_Uninstall_Button>Prepare Save for Uninstall</GM21_Uninstall_Button>
 

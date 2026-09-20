@@ -34,23 +34,11 @@ namespace Grandmaster21
     /// </summary>
     public static class Gm21Uninstall
     {
-        /// <summary>
-        /// Which Game object was last cleaned. A WeakReference so returning to the main menu
-        /// does not pin a whole Game in memory, and so the status cannot survive as a
-        /// misleading global "every save is clean" claim -- it is only ever a statement about
-        /// the game object currently loaded.
-        /// </summary>
-        private static readonly WeakReference LastCleanedGame = new WeakReference(null);
-
-        /// <summary>True only while the exact game that was cleaned is still the loaded one.</summary>
-        public static bool CurrentGameIsPrepared
-        {
-            get
-            {
-                Game game = Current.Game;
-                return game != null && ReferenceEquals(LastCleanedGame.Target, game);
-            }
-        }
+        // DELIBERATELY NOT TRACKED: there is no "this game is prepared for uninstall" status.
+        // Cleanup is a point-in-time operation, not a property of the save. The moment the player
+        // keeps playing, a pawn can bank new Grandmaster XP or earn a new level 21, and any stored
+        // "prepared" marker becomes a lie. The result dialog reports what was done and tells the
+        // player to save and quit; that is the whole contract.
 
         /// <summary>A playable save is loaded, so there is something to clean.</summary>
         public static bool GameIsLoaded
@@ -95,8 +83,6 @@ namespace Grandmaster21
 
             Gm21CleanupReport report = Run();
 
-            LastCleanedGame.Target = Current.Game;
-
             Log.Message("[Grandmaster 21] Prepare Save for Uninstall: "
                         + report.pawnsProcessed + " pawns processed, "
                         + report.skillsDemoted + " skills demoted 21 -> 20, "
@@ -127,6 +113,11 @@ namespace Grandmaster21
                 if (tracker == null || tracker.skills == null) continue;
 
                 report.pawnsProcessed++;
+
+                // The aim mode is Grandmaster-only state; once the pawn is back to level 20 it is
+                // meaningless, and leaving it behind would write a gm21AimMode element into a save
+                // that is meant to contain no Grandmaster21 state at all.
+                Gm21AimModeStore.Clear(pawn);
 
                 List<SkillRecord> records = tracker.skills;
                 for (int i = 0; i < records.Count; i++)
