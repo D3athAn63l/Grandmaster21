@@ -121,12 +121,30 @@ static class VerifyRuntimeTargets
            forceDowned == null ? "" : forceDowned.FieldType.Name);
         Ok("  ...and is a bool", forceDowned != null && forceDowned.FieldType == typeof(bool));
 
+        Console.WriteLine("\n=== Burst discipline (protected members, read reflectively) ===");
+        FieldInfo burstLeft = AccessTools.Field(typeof(Verb), "burstShotsLeft");
+        Ok("Verb.burstShotsLeft resolves", burstLeft != null, burstLeft == null ? "" : burstLeft.FieldType.Name);
+        Ok("  ...and is an int", burstLeft != null && burstLeft.FieldType == typeof(int));
+        MethodInfo shotsPerBurst = AccessTools.PropertyGetter(typeof(Verb), "ShotsPerBurst");
+        Ok("Verb.ShotsPerBurst getter resolves", shotsPerBurst != null);
+        Ok("  ...and returns int", shotsPerBurst != null && shotsPerBurst.ReturnType == typeof(int));
+        Ok("Verb.CurrentTarget exists", AccessTools.Property(typeof(Verb), "CurrentTarget") != null);
+        FieldInfo trackerPawn = AccessTools.Field(typeof(Pawn_HealthTracker), "pawn");
+        Ok("Pawn_HealthTracker.pawn resolves (intended-target check)", trackerPawn != null);
+        Ok("  ...and is a Pawn", trackerPawn != null && trackerPawn.FieldType == typeof(Pawn));
+        Ok("Pawn_HealthTracker.Downed exists", AccessTools.Property(typeof(Pawn_HealthTracker), "Downed") != null);
+        Ok("BodyPartRecord.parts exists (leaf detection)", typeof(BodyPartRecord).GetField("parts") != null);
+        Ok("BodyPartRecord.depth exists", typeof(BodyPartRecord).GetField("depth") != null);
+
         Console.WriteLine("\n=== Body part tags (defNames, via BodyPartTagDefOf) ===");
         Type tagDefOf = AccessTools.TypeByName("RimWorld.BodyPartTagDefOf");
         Ok("BodyPartTagDefOf exists", tagDefOf != null);
         foreach (string tag in new[] { "ConsciousnessSource", "BreathingPathway", "BloodPumpingSource",
                                        "BreathingSource", "BloodFiltrationSource",
-                                       "MovingLimbCore", "MovingLimbSegment", "MovingLimbDigit" })
+                                       "MovingLimbCore", "MovingLimbSegment", "MovingLimbDigit",
+                                       "Pelvis", "Spine",
+                                       "ManipulationLimbCore", "ManipulationLimbSegment",
+                                       "ManipulationLimbDigit" })
         {
             bool good = tagDefOf != null && tagDefOf.GetField(tag) != null;
             Ok("  tag defName '" + tag + "'", good);

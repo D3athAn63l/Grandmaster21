@@ -15,7 +15,7 @@
        Legendary-crafting line unless that skill actually creates items. -->
   <GM21_Achieved_Default>Grandmaster\nThis pawn has achieved Grandmaster mastery in this skill.\nThis level is permanent: it does not decay and cannot be lost.</GM21_Achieved_Default>
 
-  <GM21_Achieved_Shooting>Grandmaster Marksman\nThis pawn has transcended ordinary ranged combat mastery. They compensate almost perfectly for weapon inaccuracy, ignore cover and ordinary environmental aim penalties, aim and recover between shots with extraordinary speed, and may deliberately target lethal or incapacitating anatomy.\nRange, damage and armour are unchanged: the mastery is the marksman's, not the bullet's.\nThis level is permanent: it does not decay and cannot be lost.</GM21_Achieved_Shooting>
+  <GM21_Achieved_Shooting>Grandmaster Marksman\nThis pawn has transcended ordinary ranged combat mastery. They compensate almost perfectly for weapon inaccuracy, ignore cover and ordinary environmental aim penalties, aim and recover between shots with extraordinary speed, and may deliberately target lethal or incapacitating anatomy - re-aiming between every shot of a burst.\nRange, damage and armour are unchanged: the mastery is the marksman's, not the bullet's.\nThis level is permanent: it does not decay and cannot be lost.</GM21_Achieved_Shooting>
 
   <GM21_Achieved_Crafting>Grandmaster\nThis pawn has transcended normal mastery of this skill. Only a Grandmaster can produce Legendary-quality work.\nThis level is permanent: it does not decay and cannot be lost.</GM21_Achieved_Crafting>
   <GM21_Achieved_Artistic>Grandmaster\nThis pawn has transcended normal mastery of this skill. Only a Grandmaster can produce Legendary-quality work.\nThis level is permanent: it does not decay and cannot be lost.</GM21_Achieved_Artistic>
@@ -31,7 +31,7 @@
   <GM21_AimMode_Killer>Killer</GM21_AimMode_Killer>
   <GM21_AimMode_KillerDesc>Deliberately aim for the anatomy most likely to kill the target quickly. The weapon still decides the damage.</GM21_AimMode_KillerDesc>
   <GM21_AimMode_Downed>Downed</GM21_AimMode_Downed>
-  <GM21_AimMode_DownedDesc>Deliberately aim to cripple, avoiding vital organs where possible. The target may still die of blood loss or untreated wounds.</GM21_AimMode_DownedDesc>
+  <GM21_AimMode_DownedDesc>Dynamically aim for the least-lethal useful anatomy - mobility first, then manipulation, then non-vital extremities - avoiding vital organs. Re-aimed after every shot, and firing stops once the target is down.\n\nNot a guarantee of survival: the target may still die of blood loss or untreated wounds.</GM21_AimMode_DownedDesc>
 
   <!-- {0} current XP, {1} required XP, {2} percent -->
   <GM21_TooltipProgress>Grandmaster progress: {0} / {1} XP ({2}%)</GM21_TooltipProgress>

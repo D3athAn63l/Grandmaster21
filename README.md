@@ -2,8 +2,8 @@
 
 **RimWorld 1.6** — skills normally end at 20. This mod adds exactly one more level: **21, Grandmaster**.
 
-**Version 0.9.0 Beta.** Not 1.0: the source compiles and the offline suites pass, but the in-game
-regression checklist has not been run end to end. See [Release status](#release-status).
+**Version 0.9.1 Beta.** Verified in real RimWorld 1.6 gameplay — see
+[Release status](#release-status).
 
 Level 21 cannot be randomly generated. It must be earned by accumulating an enormous amount of
 experience *after* a pawn has already reached level 20. Level 21 represents Grandmaster mastery
@@ -295,15 +295,65 @@ conscious / pumps its blood / moves it", and every body def uses them.
 "head", derived structurally, not by name) → breathing pathway (neck) → blood pump (heart) →
 breathing source (lungs) → blood filtration. Ties break toward the larger, easier-to-hit part.
 
-**Downed** prefers mobility anatomy — `MovingLimbCore` → `MovingLimbSegment` → `MovingLimbDigit` —
-and **excludes every vital-tagged part outright**. Ties break toward the *healthiest* remaining
-limb, because taking out a working leg removes more Moving than finishing off a ruined one. Missing
-parts and parts already at zero health are filtered every shot, so a Grandmaster never keeps firing
-into a leg that is already gone.
+**Downed** is *least-lethal targeting*, not "aim at the legs". For every projectile it asks: of
+everything still attached, which single part most reduces this creature's ability to fight or flee
+while being least likely to kill it?
 
-Either mode returns "no opinion" if the creature has no sensible target — a mechanoid with no
-vitals, a blob with no limbs — and vanilla resolution takes over unchanged. Nothing crashes because
-a modded creature lacks a brain.
+| Tier | Target |
+|---|---|
+| 1 | Mobility limbs — core → segment → digit |
+| 2 | Manipulation limbs — core → segment → digit |
+| 3 | External extremities — a leaf part with nothing attached beyond it: ear, nose, tail, horn, digit, genitalia |
+| 4 | Any other external non-vital part |
+| 5 | Pelvis/spine, then any other internal non-vital part |
+
+Ties break toward the *healthiest* candidate: shooting a working leg removes more Moving than
+finishing off one already ruined, and it stops a burst being wasted on a limb that is nearly off.
+
+**Internal parts rank last, even mobility-critical ones.** A spine is non-vital and wrecks Moving,
+which by function alone would put it near the top — but a bullet into the torso cavity can spill
+damage onto the parent part on the way, and the torso is where bleeding out happens. External
+anatomy carries no such risk, so outside beats inside whenever "most disabling" and "least lethal"
+disagree.
+
+**Exclusion is one generic rule**: any part whose own subtree contains a vital organ. No name
+lists. On a human that removes the brain, the head holding it, the neck and the entire torso; on a
+modded six-legged creature with three hearts it removes exactly the parts wrapping those hearts. It
+is also what stops Downed mode ever choosing centre mass, which is the whole point.
+
+Killer returns "no opinion" if the creature has no vital anatomy at all — a mechanoid with no
+organs — and vanilla resolution takes over unchanged. Nothing crashes because a modded creature
+lacks a brain.
+
+Downed only runs out when a creature has **no non-vital part anywhere**, and then it does not hand
+back to vanilla: the Grandmaster stops firing instead. The player's doctrine is "down this target",
+not "down this target unless it gets inconvenient, then shoot centre mass".
+
+#### Burst discipline
+
+Targeting is re-evaluated for **every projectile**, never chosen once and reused, because the
+anatomy changes between shots. A Grandmaster also releases the trigger once the objective is met:
+
+```
+Bullet 1  front-left leg      -> destroyed
+Bullet 2  re-evaluate         -> front-right leg
+Bullet 3  target now downed   -> rest of the burst withheld
+```
+
+The burst is stopped by making `TryCastShot` return false, which is not a hack — it is the same
+outcome vanilla produces whenever a shot line is lost mid-burst. `TryCastNextBurstShot` zeroes
+`burstShotsLeft` and falls through to the ordinary end-of-burst path, so the cooldown stance is
+still applied, the completion callback still fires, and the verb still returns to Idle. No burst
+counter is poked directly and no lifecycle step is skipped.
+
+**The opening shot of a burst is never withheld.** If a Grandmaster could decline to fire at all, a
+job that keeps re-issuing the attack would spin — aim, decline, aim, decline. Requiring at least
+one shot per burst guarantees forward progress while still delivering the behaviour that matters,
+which is about not emptying the rest of a magazine into someone already on the ground. Single-shot
+weapons therefore never hold fire, which is correct: there is no "rest of the burst" to withhold.
+
+Killer mode shares the same machinery and stops once the target is dead, purely as an ammo
+courtesy.
 
 #### Killer mode is not guaranteed death
 
@@ -320,10 +370,18 @@ deliberate incapacitation were then rolled into a corpse, so that roll is suppre
 only while resolving a state change caused by a Grandmaster's ranged shot in Downed mode, by setting
 `Pawn_HealthTracker.forceDowned` for the duration of that one call and restoring it in a finalizer.
 
-This is **not immortality**, and global death-on-downed is untouched for everything else. RimWorld
-checks "should be dead" *before* "should be downed", so a genuinely lethal wound still kills;
-`forceDowned` only decides which branch is taken once the pawn is already going down. Blood loss,
-destroyed organs, fire and untreated wounds all still kill normally, afterwards.
+This is **not immortality**, and that is not an assumption — it is visible in 1.6's IL.
+`CheckForStateChange` tests `ShouldBeDead()` first and only reaches the downed branch if that is
+false, where `forceDowned` short-circuits past the death roll straight to `MakeDowned`. Blood loss,
+destroyed organs, fire and untreated wounds all still kill normally, afterwards. Global
+death-on-downed is untouched for everything else.
+
+The suppression also requires that **the pawn going down is the pawn that was actually aimed at**
+(`dinfo.IntendedTarget`). Without that check it keyed only on "a Downed-mode Grandmaster fired a
+ranged weapon", which also matches a stray round or a friendly caught in the line — neither of
+which is a deliberate incapacitation, and neither of which has any business being spared the
+storyteller's roll. `DamageInfo` already carries everything needed, so there is no attack-context
+object and nothing to clean up.
 
 ### Friendly fire, range and damage
 
@@ -625,8 +683,32 @@ hand-written approximations. Only a real build does that. See `tools/stubs/READM
 
 ## Release status
 
-**0.9.0 Beta.** Builds clean against RimWorld 1.6 and passes every check that can be run outside
-the game. Still Beta because no gameplay session has been played.
+**0.9.1 Beta.** Builds clean against RimWorld 1.6, passes every check that can be run outside the
+game, and has now been played.
+
+### Runtime test — PASS (RimWorld 1.6, 0.9.0)
+
+Verified in an actual gameplay session:
+
+| Test | Result |
+|---|---|
+| Level 21 survives saving | **PASS** |
+| Level 21 survives loading | **PASS** |
+| Grandmaster Shooting passives activate in combat | **PASS** |
+| Killer mode targets lethal anatomy | **PASS** — brain; target killed very quickly |
+| Downed mode targets mobility anatomy | **PASS** — assault rifle vs. raccoon, front-left leg destroyed |
+
+#### Known issue found by that test, fixed in 0.9.1
+
+In the same raccoon test, only the *first* projectile of the burst stayed under Downed-mode
+control. The rest resolved through vanilla body-part selection, hit the body, and killed the
+target — the opposite of what Downed mode is for.
+
+0.9.1 addresses it with per-projectile re-evaluation, a much deeper less-lethal ladder, a refusal
+to ever hand back to vanilla while in Downed mode, and burst discipline that stops firing once the
+target is down. **That new burst behaviour is `NOT YET RUNTIME TESTED`** — it is covered by the
+offline suites and the patches bind against the real assembly, but no gameplay session has
+exercised it yet.
 
 ### Verified against the real 1.6 assemblies
 
@@ -635,14 +717,15 @@ the game. Still Beta because no gameplay session has been played.
 ```
 
 * **Release build succeeds** — clean, no warnings.
-* **65/65 runtime targets resolve**, including every member looked up reflectively and every
+* **80/80 runtime targets resolve**, including every member looked up reflectively and every
   Harmony injection *parameter name*. This matters more than it sounds: Harmony binds
   prefix/postfix arguments by name, so a renamed vanilla parameter compiles perfectly and throws
   at patch time. All confirmed: `ShotReport.AimOnTargetChance_IgnoringPosture` /
   `PassCoverChance`, `Stance_Warmup`/`Stance_Cooldown(int ticks, LocalTargetInfo focusTarg, Verb
   verb)`, `Pawn.PreApplyDamage(ref DamageInfo dinfo, ...)`,
   `Pawn_HealthTracker.CheckForStateChange(DamageInfo? dinfo, Hediff hediff)`,
-  `Pawn_HealthTracker.forceDowned`, and all eight `BodyPartTagDef` defNames.
+  `Pawn_HealthTracker.forceDowned` and `.pawn`, `Verb.burstShotsLeft` / `ShotsPerBurst` /
+  `CurrentTarget`, and all thirteen `BodyPartTagDef` defNames.
 * **The `Learn` transpiler matches exactly one site** in the shipped IL (`IL_0057`), and the two
   other literal `20`s — the level-up ceiling — are correctly left alone.
 * **20/22 Harmony patches bind to their real RimWorld methods, 0 failures** — applied live, one
@@ -653,7 +736,9 @@ the game. Still Beta because no gameplay session has been played.
   patches, and all nine core skill/quality patches. The remaining two are BLOCKED rather than
   failed — see below.
 * **26/26 progression checks pass against the real `SkillRecord`** and the real XP curve.
-* **105 offline logic checks pass** across the two stub harnesses.
+* **131 offline logic checks pass** across the two stub harnesses, including a reconstruction of
+  the raccoon burst: four projectiles, four different mobility limbs, none falling through to
+  vanilla and none choosing the torso or head.
 
 Two design assumptions were confirmed directly in the shipped IL:
 
@@ -685,11 +770,12 @@ check 1, so what is unverified is the bind step alone.
 
 ### Not yet verified — requires actually playing
 
-Patches binding is not patches behaving. None of the following has been exercised:
+Patches binding is not patches behaving. Still unexercised:
 
-* the full earn → save → reload → permanence → cleanup → uninstall cycle
-* every Shooting Grandmaster behaviour in combat (accuracy, cover, warmup/cooldown, Killer, Downed,
-  death-on-downed suppression, the gizmo)
+* **the 0.9.1 burst behaviour** — per-projectile re-evaluation in a live burst, burst
+  cancellation once the target is down, and the "no safe target → hold fire" path
+* the cleanup → uninstall → reload-without-the-mod cycle
+* death-on-downed suppression, and its new intended-target narrowing
 * `Player.log` free of Harmony patch failures in a real load
 * Combat Extended detection and opt-out
 

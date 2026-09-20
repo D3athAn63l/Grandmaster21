@@ -2,7 +2,7 @@
 <ModMetaData>
   <packageId>ared.grandmaster21</packageId>
   <name>Grandmaster 21</name>
-  <modVersion>0.9.0 Beta</modVersion>
+  <modVersion>0.9.1 Beta</modVersion>
   <author>aRed</author>
   <supportedVersions>
     <li>1.6</li>
@@ -32,7 +32,7 @@ Grandmaster is also the only pawn skill level capable of producing Legendary-qua
 
 SHOOTING 21 - GRANDMASTER MARKSMAN
 
-The first skill-specific capstone. A Shooting Grandmaster compensates for almost all remaining weapon inaccuracy, ignores cover and ordinary environmental aim penalties, aims and recovers between shots 99% faster, and unlocks per-pawn aim modes: Normal, Killer (aim to kill) and Downed (aim to cripple, avoiding vital organs). Range, damage, armour and line of sight are untouched - the mastery is the marksman's, not the bullet's. Incompatible with Combat Extended, which disables the marksman package automatically.
+The first skill-specific capstone. A Shooting Grandmaster compensates for almost all remaining weapon inaccuracy, ignores cover and ordinary environmental aim penalties, aims and recovers between shots 99% faster, and unlocks per-pawn aim modes: Normal, Killer (aim to kill) and Downed (least-lethal targeting - mobility first, then manipulation, then non-vital extremities, re-aimed after every shot, and firing stops once the target is down). Range, damage, armour and line of sight are untouched - the mastery is the marksman's, not the bullet's. Incompatible with Combat Extended, which disables the marksman package automatically.
 
 Other skills do not have Level 21 abilities yet.
 
