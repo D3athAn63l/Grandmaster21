@@ -9,12 +9,13 @@ source commit it was built from. That stamp is logged at startup:
 
 If that line ever reads `unstamped build`, the DLL was not produced by `build.sh`.
 
-The commit in the stamp is **the last commit that touched `Source/`**, not `HEAD` — documentation
-and test commits do not change the assembly, so stamping `HEAD` would make a current DLL look
-stale. That makes the staleness check exact:
+The commit in the stamp is **the last commit that changed real source** — not `HEAD`, and not
+counting `Source/Gm21BuildStamp.cs`, which every build rewrites. Documentation and test commits do
+not change the assembly, so stamping `HEAD` would make a current DLL look stale. That makes the
+staleness check exact:
 
 ```bash
-git log -1 --format=%h -- Source/     # differs from the stamp? rebuild.
+git log -1 --format=%h -- Source ':!Source/Gm21BuildStamp.cs'   # differs from the stamp? rebuild.
 ```
 
 ## Rebuilding

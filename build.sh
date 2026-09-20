@@ -13,13 +13,15 @@ MONO=/usr/lib/mono/4.5
 [ -f "$MANAGED/Assembly-CSharp.dll" ] || { echo "error: no Assembly-CSharp.dll in $MANAGED" >&2; exit 1; }
 [ -f "$HARMONY" ] || { echo "error: no Harmony assembly at $HARMONY" >&2; exit 1; }
 
-# Stamp with the last commit that touched Source/, not HEAD. Doc and test commits do not change
-# the assembly, so stamping HEAD would make a perfectly current DLL look stale. This way the check
-# is exact: if the stamp differs from `git log -1 --format=%h -- Source/`, rebuild.
+# Stamp with the last commit that changed real source, not HEAD, and not counting this file --
+# which every build rewrites, and which would otherwise make the reference point to itself.
+# Doc and test commits do not change the assembly, so stamping HEAD would make a current DLL look
+# stale. The result is an exact staleness check; see Assemblies/README.md.
+SRC=(Source ':!Source/Gm21BuildStamp.cs')
 STAMP="$(date -u +%Y-%m-%dT%H:%MZ)"
-COMMIT="$(git log -1 --format=%h -- Source/ 2>/dev/null || echo 'no-git')"
+COMMIT="$(git log -1 --format=%h -- "${SRC[@]}" 2>/dev/null)"
 [ -n "$COMMIT" ] || COMMIT='no-git'
-if ! git diff --quiet HEAD -- Source/ 2>/dev/null; then COMMIT="$COMMIT-dirty"; fi
+if ! git diff --quiet HEAD -- "${SRC[@]}" 2>/dev/null; then COMMIT="$COMMIT-dirty"; fi
 
 cat > Source/Gm21BuildStamp.cs <<STAMPEOF
 namespace Grandmaster21
