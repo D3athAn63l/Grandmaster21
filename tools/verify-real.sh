@@ -12,7 +12,9 @@
 #      site in the shipped assembly, and that the level-up ceiling is left alone.
 #   3. PatchAllTest -- LIVE Harmony patching: every patch is applied to the real RimWorld method
 #      it targets, one at a time, and the transpiler is confirmed to have rewritten its IL.
-#   4. Harness -- the progression suite, driven against the real SkillRecord and the real XP curve.
+#   4. VerifyFinalizerSemantics -- proves by execution that the mod's cleanup finalizers do not
+#      suppress exceptions thrown by RimWorld or by other mods' patches on the same methods.
+#   5. Harness -- the progression suite, driven against the real SkillRecord and the real XP curve.
 #
 # Targets that cannot be bound outside the game are reported as BLOCKED rather than failed. Two
 # causes: a declaring type holding fields typed from a launcher-side assembly
@@ -52,6 +54,10 @@ mcs -out:"$OUT/patchall.exe" $REFS Tests/PatchAllTest.cs
 ( cd "$OUT" && mono patchall.exe Grandmaster21.dll 2>&1 \
     | grep -vE 'out of sync|update one from git|the other too|Do not report this|you probably have|If you see other|and you need to fix|Your mono runtime|The out of sync|cant resolve internal call|^$' )
 
-echo; echo "=== 4. Progression suite against the real SkillRecord ==="
+echo; echo "=== 4. Harmony finalizer semantics (no exception suppression) ==="
+mcs -out:"$OUT/fin.exe" $REFS Tests/VerifyFinalizerSemantics.cs
+( cd "$OUT" && mono fin.exe )
+
+echo; echo "=== 5. Progression suite against the real SkillRecord ==="
 mcs -out:"$OUT/harness.exe" $REFS Tests/Harness.cs
 ( cd "$OUT" && mono harness.exe )
