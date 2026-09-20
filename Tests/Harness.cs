@@ -35,7 +35,8 @@ class Harness
         // --- mod PREFIX ---
         if (r.levelInt >= 21)
         {
-            if (xp < 0f && Gm21Mod.Settings.grandmasterPreventsDecay) return; // swallow decay
+            if (xp < 0f) return;                             // swallow decay, unconditionally
+            if (r.xpSinceLastLevel < 0f) r.xpSinceLastLevel = 0f;  // keep the -1000 loop unreachable
         }
         else if (r.levelInt == 20 && xp > 0f)
         {
@@ -77,13 +78,15 @@ class Harness
 
         // --- mod POSTFIX ---
         if (r.levelInt == 20 && GrandmasterStore.Get(r) >= Gm21Mod.Settings.grandmasterXpRequirement)
-            Gm21.Promote(r);
+            Gm21.Promote(r);   // itself refuses unless Gm21.LearnPatchApplied is set
     }
 
     static void Main()
     {
         Gm21Mod.Settings = new Gm21Settings();
         Gm21Mod.Settings.Validate();
+        // Stands in for the transpiler having applied; Gm21.Promote is gated on it.
+        Gm21.LearnPatchApplied = true;
 
         Console.WriteLine("=== environment ===");
         Console.WriteLine("SkillRecord.MaxLevel (vanilla const) = " + SkillRecord.MaxLevel);
@@ -138,12 +141,12 @@ class Harness
         Check("21 survives 2000 decay ticks", gm.levelInt == 21, "levelInt=" + gm.levelInt);
         SimulateLearn(gm, -500000f, 1f, true);
         Check("21 survives a huge negative XP event", gm.levelInt == 21, "levelInt=" + gm.levelInt);
-        // and with the setting off, vanilla-style decay is allowed again
-        Gm21Mod.Settings.grandmasterPreventsDecay = false;
-        SkillRecord gm2 = NewRec(21, 0f);
-        SimulateLearn(gm2, -200000f, 1f, true);
-        Check("with preventDecay OFF, 21 can fall (setting honoured)", gm2.levelInt < 21, "levelInt=" + gm2.levelInt);
-        Gm21Mod.Settings.grandmasterPreventsDecay = true;
+        // Level 21 permanence is unconditional now -- there is no longer a setting to turn off.
+        SkillRecord gm2 = NewRec(21, -50000f);
+        SimulateLearn(gm2, 1f, 1f, false);
+        Check("21 with a poisoned negative xpSinceLastLevel survives positive XP",
+              gm2.levelInt == 21 && gm2.xpSinceLastLevel >= 0f,
+              "levelInt=" + gm2.levelInt + " xp=" + gm2.xpSinceLastLevel);
         Console.WriteLine();
 
         Console.WriteLine("=== T6  ordinary levelling still stops at 20 ===");

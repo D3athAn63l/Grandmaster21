@@ -12,11 +12,13 @@ namespace Grandmaster21
             Harmony harmony = new Harmony("ared.grandmaster21");
             harmony.PatchAll(Assembly.GetExecutingAssembly());
 
-            if (!Patch_SkillRecord_Learn.TranspilerApplied)
+            if (!Gm21.LearnPatchApplied)
             {
-                Log.Warning("[Grandmaster 21] SkillRecord.Learn transpiler did not apply. "
-                            + "Grandmaster promotion (20 -> 21) is disabled this session. "
-                            + "Vanilla skill progression is unaffected.");
+                Log.Warning("[Grandmaster 21] The SkillRecord.Learn safety patch did not apply. "
+                            + "Grandmaster promotion (20 -> 21) is DISABLED this session: creating a "
+                            + "level 21 pawn would not be safe from vanilla's level-up handling. "
+                            + "Grandmaster XP is still tracked and saved, and existing Grandmasters "
+                            + "keep their level. Vanilla skill progression is unaffected.");
             }
             else
             {
