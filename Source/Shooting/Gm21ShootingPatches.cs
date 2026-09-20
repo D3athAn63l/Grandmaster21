@@ -195,12 +195,22 @@ namespace Grandmaster21
 
         /// <summary>
         /// Finalizer, not postfix: it runs even when the cast throws, so the context can never be
-        /// left open. Returns null so any original exception continues to propagate untouched.
+        /// left open.
+        ///
+        /// VOID ON PURPOSE. A Harmony finalizer that returns Exception does not "report" the
+        /// exception -- its return value REPLACES the pending one, so `return null` means "there
+        /// is no exception any more". This method used to do exactly that, which silently ate any
+        /// error thrown inside TryCastShot by RimWorld or by another mod's patch. A void finalizer
+        /// cannot alter exception state at all, which is precisely what cleanup wants: clean up,
+        /// change nothing. (Returning Exception while taking __exception and handing it straight
+        /// back would also be correct, but there is nothing here to transform.)
+        ///
+        /// Verified by execution in Tests/VerifyFinalizerSemantics.cs against the real Harmony
+        /// assembly, because this distinction is invisible on inspection.
         /// </summary>
-        internal static Exception Finalizer_CloseShotContext()
+        internal static void Finalizer_CloseShotContext()
         {
             Gm21ShotContext.Close();
-            return null;
         }
 
         /// <summary>Covers the targeting UI, which builds a report and reads it immediately.</summary>
@@ -419,13 +429,18 @@ namespace Grandmaster21
             __state = true;
         }
 
-        internal static Exception Finalizer(Pawn_HealthTracker __instance, bool __state)
+        /// <summary>
+        /// Restores forceDowned. Void for the same reason as Finalizer_CloseShotContext: an
+        /// Exception-returning finalizer replaces the pending exception, so returning null here
+        /// was swallowing anything CheckForStateChange threw -- including other mods' errors on a
+        /// code path that runs on every damage event. Cleanup only; exception state untouched.
+        /// </summary>
+        internal static void Finalizer(Pawn_HealthTracker __instance, bool __state)
         {
             if (__state && ForceDownedField != null)
             {
                 ForceDownedField.SetValue(__instance, false);
             }
-            return null;
         }
     }
 }

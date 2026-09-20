@@ -1,13 +1,24 @@
 # Assemblies
 
 `Grandmaster21.dll` is built by `build.sh` and committed here, stamped with its build time and the
-source commit it was built from. That stamp is logged at startup:
+source commit it was built from. That stamp is logged at startup, in this shape:
 
 ```
-[Grandmaster 21] 0.9.0 Beta (built 2026-09-20T13:52Z, commit de860da)  |  shooting: passive=True targeting=True
+[Grandmaster 21] <version> Beta (built <timestamp>, commit <sha>)  |  shooting: passive=True targeting=True
 ```
 
-If that line ever reads `unstamped build`, the DLL was not produced by `build.sh`.
+No concrete version or SHA is written down here on purpose: any example would be wrong again after
+the next build. To read the values the shipped binary actually carries:
+
+```bash
+# from Player.log -- the startup line above
+grep 'Grandmaster 21' Player.log
+
+# or straight from the assembly, without launching the game
+monodis --assembly Assemblies/Grandmaster21.dll | grep -i version
+```
+
+If the startup line ever reads `unstamped build`, the DLL was not produced by `build.sh`.
 
 The commit in the stamp is **the last commit that changed real source** — not `HEAD`, and not
 counting `Source/Gm21BuildStamp.cs`, which every build rewrites. Documentation and test commits do

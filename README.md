@@ -753,6 +753,23 @@ Two design assumptions were confirmed directly in the shipped IL:
   (`IL_013d`) and the level-up branch (`IL_0150`) reach it. It therefore runs on *positive* XP too,
   which is exactly the hazard the `Learn` prefix normalises away at level 21.
 
+### Cleanup finalizers never swallow exceptions
+
+Both Harmony finalizers in the mod exist purely to undo temporary state: closing the shot context,
+and restoring `forceDowned`. Both are **void**.
+
+That matters more than it looks. A Harmony finalizer that returns `Exception` does not *report*
+the exception — its return value **replaces** the pending one, so `return null` means "there is no
+exception any more". Through 0.9.1 both finalizers did exactly that, which silently ate anything
+thrown inside `TryCastShot` or `CheckForStateChange`, whether by RimWorld or by another mod's
+patch on the same method. A mod that hides other mods' errors is close to undebuggable.
+
+A void finalizer cannot alter exception state at all, which is exactly what cleanup wants: clean
+up, change nothing. `Tests/VerifyFinalizerSemantics.cs` pins the contract down by execution rather
+than by comment — it patches throwing methods with each finalizer shape and asserts which ones
+propagate — and then audits the shipped assembly to confirm every registered finalizer is either
+void or returns `__exception` unchanged.
+
 ### Two patch targets cannot be bound outside the game
 
 `SkillUI.GetSkillDescription` and `SkillUI.DrawSkill` are reported BLOCKED, not failed, and no set

@@ -36,7 +36,7 @@ The first skill-specific capstone. A Shooting Grandmaster compensates for almost
 
 Other skills do not have Level 21 abilities yet.
 
-Before removing this mod, load your save and use "Prepare Save for Uninstall" at the bottom of Mod Settings. It converts every level 21 skill back to 20 and clears stored Grandmaster progress for the currently loaded game, so the save is safe to load without the mod.
+Before removing this mod, load your save and use "Prepare Save for Uninstall" at the bottom of Mod Settings. It prepares the current save for removal by reducing every level 21 skill to 20 and clearing stored Grandmaster progression. Then save, exit, disable the mod and reload the cleaned save. Keep a backup: the full remove-and-reload sequence has not yet been verified in gameplay testing.
 
 Incompatible with mods that also remove or replace the skill cap, such as unlimited-skill mods.</description>
 </ModMetaData>
