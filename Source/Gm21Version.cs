@@ -18,9 +18,9 @@ namespace Grandmaster21
     public static class Gm21Version
     {
         /// <summary>Must be a plain numeric assembly version -- attributes reject suffixes.</summary>
-        public const string Assembly = "0.10.2.0";
+        public const string Assembly = "0.10.3.0";
 
-        public const string Number = "0.10.2";
+        public const string Number = "0.10.3";
         public const string Stage = "Beta";
         public const string Display = Number + " " + Stage;
 

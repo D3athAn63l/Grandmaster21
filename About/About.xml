@@ -2,7 +2,7 @@
 <ModMetaData>
   <packageId>ared.grandmaster21</packageId>
   <name>Grandmaster 21</name>
-  <modVersion>0.10.2 Beta</modVersion>
+  <modVersion>0.10.3 Beta</modVersion>
   <author>aRed</author>
   <supportedVersions>
     <li>1.6</li>
@@ -40,7 +40,7 @@ The second skill-specific capstone, and a deliberately overpowered one. A Melee 
 
 The Guardian is threat-aware: it does NOT intercept every projectile within three tiles. It reacts only to projectiles that credibly threaten the Grandmaster or a protected ally, so a hundred-round minigun burst that mostly misses produces a handful of reactions rather than a hundred. Hostile fire may be returned to the sender. An ally's accidental friendly fire is instead corrected back toward the enemy it was aimed at, and the ally keeps the shot. A friendly who deliberately force-attacks the Grandmaster with a direct shot is not having an accident, and may find the round coming straight back.
 
-Friendly EXPLOSIVES are handled differently on purpose. An area weapon has no single aim point worth reasoning about, so the Guardian does not try to guess intent: any friendly grenade, rocket or shell that threatens the Grandmaster or a protected ally is treated as a dangerous accident, redirected toward the best available hostile group, or thrown somewhere safe if none is reachable. It is never sent back at the ally who launched it. The fuse, blast radius and payload all survive - the Guardian decides where it goes off, not whether. Interception never moves the pawn: jobs, pathing and melee engagement are untouched.
+Friendly EXPLOSIVES are handled differently on purpose. An area weapon has no single aim point worth reasoning about, so the Guardian does not try to guess intent: any friendly grenade, rocket or shell that threatens the Grandmaster or a protected ally is treated as a dangerous accident, redirected toward the best available hostile group, or thrown somewhere safe if none is reachable. Protected-pawn safety is a hard constraint, not a preference: a destination that would catch one of your own in the blast, or that the projectile would have to fly through one of them to reach, is rejected outright before anything is weighed. No number of raiders makes a colonist acceptable collateral. It is never sent back at the ally who launched it. The fuse, blast radius and payload all survive - the Guardian decides where it goes off, not whether. Interception never moves the pawn: jobs, pathing and melee engagement are untouched.
 
 Every one of those abilities is driven by the pawn's OWN stats, so no two Grandmasters fight alike. A fast pawn excels at interception and projectile defence. A precise, perceptive one excels at disarming, criticals and returning projectiles to their sender. A physically powerful one excels at cleaving and at hurling deflected explosives absurd distances. A heavily modded pawn becomes correspondingly absurd, and that is intended. A pawn who is downed, unconscious, asleep, stunned, blind or armless loses the abilities that body part was providing.
 

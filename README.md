@@ -2,7 +2,7 @@
 
 **RimWorld 1.6** — skills normally end at 20. This mod adds exactly one more level: **21, Grandmaster**.
 
-**Version 0.10.2 Beta.** The Shooting capstone has been verified in real RimWorld 1.6 gameplay.
+**Version 0.10.3 Beta.** The Shooting capstone has been verified in real RimWorld 1.6 gameplay.
 The Melee capstone has **not** — see [Release status](#release-status).
 
 Level 21 cannot be randomly generated. It must be earned by accumulating an enormous amount of
@@ -414,7 +414,7 @@ in Normal mode adds nothing at all to the save file.
 
 The second skill-specific capstone, new in **0.10.0** and **not yet runtime tested**; its Guardian
 projectile doctrine was tightened in **0.10.1** and its friendly-explosive ruling simplified in
-**0.10.2**. Deliberately
+**0.10.2**, and its protected-pawn safety made a hard constraint in **0.10.3**. Deliberately
 overpowered, and deliberately *different in kind* from Melee 20. Skills other than Shooting and
 Melee have no Level 21 ability yet, and none is invented here.
 
@@ -733,24 +733,79 @@ redirected doom rocket can still kill the Grandmaster who redirected it.
 Unlike direct recovery, an explosive does **not** go back to the original intended target — there is
 no shot to reconstruct. The Grandmaster picks the best place for it to go off instead.
 
-Candidates are the hostiles already on the map, capped at 24, each scored against two small pawn
-lists gathered in a single pass. There is no cell-by-cell search and no global optimisation.
+Candidates are the hostiles already on the map, capped at 24. Each is first **vetoed or not**, and
+only the survivors are scored. There is no cell-by-cell search and no global optimisation.
 
-| Term | Weight |
+**Protected-pawn safety is a hard constraint, not a score.** See
+[Guardian safety is not an economic calculation](#guardian-safety-is-not-an-economic-calculation)
+below for why, and what it replaced.
+
+| Stage | Rule |
 |---|---|
-| Hostile caught inside the blast | +30 each |
-| **Protected pawn** inside the blast (radius + 1.5 tile margin) | **−400 each** |
-| Protected pawn on the redirected flight path (8 samples) | −120 each |
+| **Veto 1** | Any protected pawn within `explosionRadius + 1.5` tiles of the destination → **rejected, unscored** |
+| **Veto 2** | Any protected pawn on the redirected flight path, for a direct-flight projectile → **rejected, unscored** |
+| Score | +30 per hostile caught in the blast — and nothing else |
 
-The protected-pawn penalty is an order of magnitude above the hostile bonus on purpose: three
-raiders (+90) can never outweigh one colonist (−400), so a tempting cluster with one of our own
-beside it is simply never chosen. Clustering needs no special pass — counting hostiles in the blast
-*is* the cluster search, so three raiders together outscore one isolated raider automatically.
+There is deliberately no protected-pawn term in the score. Protected pawns are not weighed against
+raiders at any point; they are removed from consideration before weighing happens. Clustering needs
+no special pass — counting hostiles in the blast *is* the cluster search, so three raiders together
+outscore one isolated raider automatically, **among destinations that are already safe**.
 
 A destination must also be within the Grandmaster's actual throw range (`RedirectDistance`, already
 strength-scaled for thrown objects and fixed for rockets) and have line of sight from the
 interception point, so nothing is ever lobbed through a wall and a weak colonist cannot hurl a
 grenade across the map.
+
+If no destination survives the vetoes, **there is no hostile redirect** and the explosive goes to
+safe disposal. The Guardian's hierarchy is *protect people → exploit a safe hostile redirect →
+dispose safely*, in that order.
+
+##### Guardian safety is not an economic calculation
+
+A protected pawn is not a large negative number. They are **do not intentionally hit this person**.
+
+Through 0.10.2 the redirect chooser scored candidates: a hostile in the blast was worth +30, a
+protected pawn in the blast −400, one on the flight path −120. Those numbers were compared, which
+means they could be *traded* — and the trade was reachable:
+
+```text
+14 hostiles × +30  =  +420
+ 1 colonist        =  −400
+                      ------
+                       +20   -> "killing Alice is acceptable, enough raiders die too"
+```
+
+That is a weighted-utility answer to a question that is not economic, and it inverted the entire
+point of a Guardian. The fix is not a bigger negative number — that is the same bug with a higher
+threshold — and it is not `float.MinValue`, which is the same bug plus NaN risk.
+
+Safety is now a **predicate evaluated before scoring**. A candidate that would endanger one of ours
+is not a bad candidate; it is **not a candidate**. Priority is lexicographic, not weighted:
+
+1. do not knowingly endanger a protected pawn
+2. among the choices that survive that, do the most good
+
+Structurally, the veto function cannot see hostiles at all — no hostile count can enter it, because
+it is not a parameter. The test suite asserts that directly, alongside a 20-raider-around-one-
+colonist scenario re-run at 60 raiders to show the answer does not move.
+
+`Gm21ProtectedSafety` holds the whole rule and is shared by explosive disposal and safe deflection,
+so the definition of "protected" cannot drift between them. It is the same
+`Gm21GuardianThreat.Protects` predicate threat detection uses: the Grandmaster themselves, their
+faction, and formal allies.
+
+**Two vetoes.** *Blast:* any protected pawn within `explosionRadius + 1.5` tiles of the destination.
+The margin exists because a pawn standing exactly on the edge of a blast is not "clear" — they may
+step, explosions resolve over cells rather than points, and the Guardian is *choosing* this outcome
+rather than having it happen to them. *Path:* any protected pawn on the trajectory, walked exactly
+with `GenSight.BresenhamCellsBetween` rather than sampled, because a coarse sample down a forty-tile
+line can step over a single pawn standing in it.
+
+The path veto applies only to **direct-flight** projectiles (`!flyOverhead && arcHeightFactor <= 0`).
+A thrown grenade arcs *over* the pawns between thrower and landing point — that is what
+`arcHeightFactor` means — so vetoing it for them would paralyse the Guardian whenever an ally stood
+next to the Grandmaster, on the strength of a collision that physically cannot happen. A projectile
+whose def declares no arc is treated as direct, which is the conservative direction.
 
 ##### Safe Disposal
 
@@ -810,25 +865,27 @@ literally true rather than approximately true: the Grandmaster redirects the sho
 improve it.
 
 **Safe deflection** is what happens when the precision redirect fails, and it is still a success:
-the Grandmaster and everyone near them are out of the object's way. Sixteen bearings are scored by
-what stands near where it would land — weighted by its blast radius — **and by what it would have to
-fly through to get there**. Scoring only the destination would happily fire a deflected bullet down
-a corridor full of colonists as long as the far end was empty, which is a different way of doing
-exactly the harm this code exists to avoid.
+the Grandmaster and everyone near them are out of the object's way. Sixteen bearings are tried, each
+**vetoed or not** by the same hard rule explosive disposal uses, and only the survivors are scored.
 
-| Term | Weight |
+| Stage | Rule |
 |---|---|
-| Protected pawn in the landing area | −100 |
-| Protected pawn in the flight path (12 samples along the line) | −60 each |
-| Hostile pawn in the landing area | +25 |
-| Tile of separation from the pawn just rescued | +3 |
-| Tile of separation from the Grandmaster | +2 |
+| **Veto 1** | Protected pawn within `explosionRadius + 1.5` tiles of the landing cell → **rejected, unscored** |
+| **Veto 2** | Protected pawn on the flight path, for a direct-flight projectile → **rejected, unscored** |
+| Score | +25 per hostile in the landing area, +3 per tile from the pawn just rescued, +2 per tile from the Grandmaster |
 
 Priority therefore comes out as the design specifies: *away from the threatened pawn → away from the
 Grandmaster → away from other friendlies → a clear flight path → open space → hostile space where
 safe*. Nobody swats a grenade into the hospital, and nobody fires a deflected round through the
-surgeon to reach an empty field. "Protected" here is the same rule the threat model uses, so the
-pawns a Guardian refuses to endanger are exactly the pawns a Guardian would have defended.
+surgeon to reach an empty field.
+
+**The one fallback, and why it is not the same bug.** If *every* bearing is vetoed, safe deflection
+still returns the least dangerous of them. Declining to choose here does not mean nothing happens —
+it means the projectile carries on to the destination that was already about to hurt the people the
+Guardian is protecting. So the fallback is pure damage minimisation: hostiles are **not counted in
+it at all**, and it can never express "hit one of ours to hit more of theirs". Offensive value never
+reaches across the veto; only harm reduction does. Explosive *hostile redirect* has no such
+fallback — there, no safe destination simply means no redirect.
 
 ```text
 slow objects (< 30 c/s):  distance = 4 × Power × (1 + weaponMass / 4)     capped at 200 tiles
@@ -1279,6 +1336,15 @@ to safe disposal when no destination qualifies, and the guarantee that the ally 
 never the target — alongside explicit regression guards that Bob's *rifle* still classifies as
 hostile and his stray bullet still as an accident.
 
+The protected-pawn veto has its own regression set, written to assert **categorical rejection**
+rather than score magnitude — a test checking `score < 0` would have passed against the bug it
+exists to prevent. It covers 20 raiders packed around one colonist (re-run at 60 to show the answer
+does not move), an unsafe horde losing to two clean raiders, a rocket refusing to fly through a
+colonist while a thrown grenade correctly arcs over one, every raider being shielded producing no
+hostile redirect at all, safe deflection rejecting a raider-filled bearing that also holds one of
+ours, and the structural proof that the veto function takes no hostile input and so cannot be
+outvoted by one.
+
 They do **not** run inside RimWorld. They do not exercise Harmony patching, real IL, combat,
 projectiles, pawn generation, the gizmo or saving — and critically, they **cannot prove that the
 RimWorld members named in the source exist with those signatures**, because the stubs are
@@ -1288,13 +1354,13 @@ hand-written approximations. Only a real build does that. See `tools/stubs/READM
 
 ## Release status
 
-**0.10.2 Beta.** Builds clean against RimWorld 1.6 and passes every check that could be run in the
+**0.10.3 Beta.** Builds clean against RimWorld 1.6 and passes every check that could be run in the
 environment it was built in.
 
 **The Melee Grandmaster package has had NO runtime gameplay testing.** Every RimWorld member it
 touches is confirmed present with the right signature and parameter names against the real 1.6
-assembly metadata, and its decision logic is covered by 239 offline checks — but patches resolving
-is not patches binding, and patches binding is not patches behaving. Treat 0.10.2 as untested in
+assembly metadata, and its decision logic is covered by 260 offline checks — but patches resolving
+is not patches binding, and patches binding is not patches behaving. Treat 0.10.3 as untested in
 play, and keep a backup save.
 
 The Shooting package is unchanged in this version and retains its 0.9.0 runtime result below.
@@ -1337,19 +1403,19 @@ need real bodies are reported `NOT RUN`, not passed.
 | Check | 0.10.0 result |
 |---|---|
 | Release build against 1.6 | **PASS** — clean, no warnings |
-| 1. Runtime targets and Harmony parameter names | **PASS** — 164/164, 0 skipped |
+| 1. Runtime targets and Harmony parameter names | **PASS** — 169/169, 0 skipped |
 | 2. `Learn` transpiler IL pattern | **NOT RUN** — needs method bodies |
 | 3. Live Harmony patch binding | **NOT RUN** — needs method bodies |
 | 4. Finalizer semantics | **PASS** — 12/12, all four shipped finalizers |
 | 5. Progression suite vs. real `SkillRecord` | **NOT RUN** — needs method bodies |
-| Offline logic suites | **PASS** — 370/370 (57 core + 74 shooting + 239 melee) |
+| Offline logic suites | **PASS** — 391/391 (57 core + 74 shooting + 260 melee) |
 
 Checks 2, 3 and 5 all fail with `Method has zero rva` against reference assemblies. That is the
 environment, not a finding: **run `verify-real.sh` against a real RimWorld install to clear them.**
 They passed against real assemblies at 0.9.2 for everything that existed then; the melee patch
 groups added to `Tests/PatchAllTest.cs` in this version compile but have never been bound.
 
-**164/164 runtime targets resolve**, including every member looked up reflectively and every
+**169/169 runtime targets resolve**, including every member looked up reflectively and every
 Harmony injection *parameter name*. This matters more than it sounds: Harmony binds prefix/postfix
 arguments by name, so a renamed vanilla parameter compiles perfectly and throws at patch time. Newly
 confirmed for melee: `Verb_MeleeAttack.GetNonMissChance` / `GetDodgeChance(LocalTargetInfo target)`
@@ -1462,10 +1528,10 @@ Guardian doctrine, added in 0.10.1 — likewise none of it observed in a running
 | Accidental friendly fire → recovery toward the original enemy | `NOT RUN` (offline: PASS) |
 | Correct friendly shot at an enemy → Guardian does nothing | `NOT RUN` (offline: PASS) |
 | Harmless friendly miss → ignored | `NOT RUN` (offline: PASS) |
-| Deliberate friendly force-attack on the GM → Return to Sender | `NOT RUN` (offline: PASS) |
-| Deliberate friendly force-attack on a protected ally → hostile handling | `NOT RUN` (offline: PASS) |
+| Deliberate friendly force-attack on the GM **with a direct shot** → Return to Sender | `NOT RUN` (offline: PASS) |
+| Deliberate friendly force-attack on a protected ally **with a direct shot** → hostile handling | `NOT RUN` (offline: PASS) |
 | Friendly rocket drifting onto the GM → recovery, never returned to the ally | `NOT RUN` (offline: PASS) |
-| Deliberate friendly rocket at the GM → hostile handling | `NOT RUN` (offline: PASS) |
+| Deliberate friendly rocket at the GM → still Friendly Explosive Recovery, never returned | `NOT RUN` (offline: PASS) |
 | Multiple Guardians: best candidate selected, not grid order | `NOT RUN` (offline: PASS both directions) |
 | Redirected shot avoids passing through protected friendlies | `NOT RUN` (offline: PASS) |
 | GM and ally separated by a wall → no micro-dash | `NOT RUN` (offline: PASS) |
@@ -1489,6 +1555,19 @@ Friendly-explosive ruling, added in 0.10.2 — likewise nothing observed in a ru
 | **Regression:** Bob force-attacking with a rifle → still hostile, Return-to-Sender | `NOT RUN` (offline: PASS) |
 | **Regression:** Bob's stray bullet → still Friendly Recovery toward the original raider | `NOT RUN` (offline: PASS) |
 | Redirected warhead keeps fuse, radius, damage, def and launcher | `NOT RUN` (offline: def/launcher PASS; fuse preserved by the same code path as 0.10.0) |
+
+Protected-pawn hard veto, added in 0.10.3 — likewise nothing observed in a running game:
+
+| Safety test | Status |
+|---|---|
+| 20 raiders around one colonist → destination rejected, colonist not collateral | `NOT RUN` (offline: PASS) |
+| Re-run at 60 raiders → answer does not move | `NOT RUN` (offline: PASS) |
+| 20-raider unsafe cluster vs 2 clean raiders → the clean pair wins | `NOT RUN` (offline: PASS) |
+| Rocket never redirected *through* a colonist; clear-line raider chosen instead | `NOT RUN` (offline: PASS) |
+| Thrown grenade arcs over an in-line ally and is **not** vetoed for them | `NOT RUN` (offline: PASS) |
+| Every raider shielded → no hostile redirect at all → safe disposal | `NOT RUN` (offline: PASS) |
+| Safe deflection rejects a bearing landing on colonists, even one full of raiders | `NOT RUN` (offline: PASS) |
+| Safety and threat detection agree on who counts as protected | `NOT RUN` (offline: PASS) |
 
 Also still unexercised, from previous versions:
 
