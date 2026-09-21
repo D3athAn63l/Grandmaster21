@@ -67,7 +67,19 @@ namespace Grandmaster21
 
             if (!BypassCooldown(actor)) return;
 
-            actor.meleeVerbs.TryMeleeAttack(target, verb, false);
+            // A cleave is a follow-through and must not follow through again -- see
+            // Gm21MeleeFrame.isFollowThrough. A riposte is a genuine fresh swing and is not
+            // marked, so it cleaves like any other. The flag is consumed by the frame this attack
+            // opens, and cleared in a finally so a throw cannot leak it onto someone else's swing.
+            Gm21MeleeContext.NextIsFollowThrough = kind == Gm21ActionKind.Cleave;
+            try
+            {
+                actor.meleeVerbs.TryMeleeAttack(target, verb, false);
+            }
+            finally
+            {
+                Gm21MeleeContext.NextIsFollowThrough = false;
+            }
         }
 
         /// <summary>

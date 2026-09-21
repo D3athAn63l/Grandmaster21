@@ -556,6 +556,10 @@ hit and dodge are rolled, armour resolves, a body part is chosen, and the target
 not a fake AoE pulse. Only pawns hostile to the attacker are ever candidates, so a cleave cannot
 become friendly fire no matter how crowded the melee is.
 
+A cleave does **not** cleave again. One swing carries into the enemies standing around the one it
+hit; it does not start a new swing that spreads further. A riposte is a genuine fresh swing and does
+cleave normally.
+
 ### Ally melee interception — the 3-tile zone
 
 When an enemy swings at an ally within three tiles, a Grandmaster may take the attack instead.
@@ -1087,7 +1091,7 @@ environment it was built in.
 
 **The Melee Grandmaster package has had NO runtime gameplay testing.** It is new in this version.
 Every RimWorld member it touches is confirmed present with the right signature and parameter names
-against the real 1.6 assembly metadata, and its decision logic is covered by 154 offline checks —
+against the real 1.6 assembly metadata, and its decision logic is covered by 157 offline checks —
 but patches resolving is not patches binding, and patches binding is not patches behaving. Treat
 0.10.0 as untested in play, and keep a backup save.
 
@@ -1131,19 +1135,19 @@ need real bodies are reported `NOT RUN`, not passed.
 | Check | 0.10.0 result |
 |---|---|
 | Release build against 1.6 | **PASS** — clean, no warnings |
-| 1. Runtime targets and Harmony parameter names | **PASS** — 144/144, 0 skipped |
+| 1. Runtime targets and Harmony parameter names | **PASS** — 146/146, 0 skipped |
 | 2. `Learn` transpiler IL pattern | **NOT RUN** — needs method bodies |
 | 3. Live Harmony patch binding | **NOT RUN** — needs method bodies |
 | 4. Finalizer semantics | **PASS** — 12/12, all four shipped finalizers |
 | 5. Progression suite vs. real `SkillRecord` | **NOT RUN** — needs method bodies |
-| Offline logic suites | **PASS** — 285/285 (57 core + 74 shooting + 154 melee) |
+| Offline logic suites | **PASS** — 288/288 (57 core + 74 shooting + 157 melee) |
 
 Checks 2, 3 and 5 all fail with `Method has zero rva` against reference assemblies. That is the
 environment, not a finding: **run `verify-real.sh` against a real RimWorld install to clear them.**
 They passed against real assemblies at 0.9.2 for everything that existed then; the melee patch
 groups added to `Tests/PatchAllTest.cs` in this version compile but have never been bound.
 
-**144/144 runtime targets resolve**, including every member looked up reflectively and every
+**146/146 runtime targets resolve**, including every member looked up reflectively and every
 Harmony injection *parameter name*. This matters more than it sounds: Harmony binds prefix/postfix
 arguments by name, so a renamed vanilla parameter compiles perfectly and throws at patch time. Newly
 confirmed for melee: `Verb_MeleeAttack.GetNonMissChance` / `GetDodgeChance(LocalTargetInfo target)`

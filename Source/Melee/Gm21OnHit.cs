@@ -30,7 +30,13 @@ namespace Grandmaster21
             // Cleave is scheduled, never executed here, for the same reason ripostes are: a
             // follow-through that resolved inside the swing it follows would put a second melee
             // attack on the current call stack, and a crowded fight would nest them.
-            Gm21Cleave.TryCleave(attacker, frame.target, verb, frame.atkPower);
+            //
+            // And a follow-through does not follow through again: one swing carries into the
+            // enemies around the one it hit, it does not start a new swing that spreads further.
+            if (!frame.isFollowThrough)
+            {
+                Gm21Cleave.TryCleave(attacker, frame.target, verb, frame.atkPower);
+            }
         }
     }
 }

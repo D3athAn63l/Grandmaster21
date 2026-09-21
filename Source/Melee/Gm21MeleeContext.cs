@@ -66,8 +66,16 @@ namespace Grandmaster21
         /// <summary>Guards against the same strike applying its on-hit effects twice.</summary>
         public bool onHitResolved;
 
-        /// <summary>True while this frame is a scheduled riposte or cleave, not a fresh attack.</summary>
-        public bool isReaction;
+        /// <summary>
+        /// This attack is itself a scheduled follow-through, so it does not follow through again.
+        ///
+        /// A cleave is a real melee attack, which means it lands, rolls its own critical, can
+        /// disarm -- and, without this, would roll its OWN cleave and spread off a spread. That is
+        /// not what a follow-through is: one swing carries into the enemies standing around the
+        /// one it hit, it does not start a new swing that does the same. A riposte is a genuine
+        /// fresh swing and is deliberately NOT marked, so it cleaves normally.
+        /// </summary>
+        public bool isFollowThrough;
 
         public void Clear()
         {
@@ -84,7 +92,7 @@ namespace Grandmaster21
             critMultiplier = 1f;
             critRolled = false;
             onHitResolved = false;
-            isReaction = false;
+            isFollowThrough = false;
         }
     }
 
@@ -121,6 +129,14 @@ namespace Grandmaster21
         }
 
         /// <summary>
+        /// Set by Gm21MeleeAction immediately before it drives a scheduled follow-through, and
+        /// consumed by the very next frame that opens. A thread-static hand-off is used because
+        /// the frame is opened inside RimWorld's own TryCastShot, which takes no argument this
+        /// could ride on.
+        /// </summary>
+        [System.ThreadStatic] internal static bool NextIsFollowThrough;
+
+        /// <summary>
         /// Opens a frame. ALWAYS balanced by Close from a Harmony finalizer, so an exception
         /// thrown anywhere inside the attack cannot leave the stack wedged.
         /// </summary>
@@ -140,6 +156,8 @@ namespace Grandmaster21
             frame.Clear();
             frame.attacker = attacker;
             frame.target = target;
+            frame.isFollowThrough = NextIsFollowThrough;
+            NextIsFollowThrough = false;   // consumed by exactly one frame
             return frame;
         }
 

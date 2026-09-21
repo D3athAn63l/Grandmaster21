@@ -759,6 +759,32 @@ static class MeleeHarness
         Check("cleave reached the other enemies", struck.Contains(enemy2) && struck.Contains(enemy3));
         Check("cleave never struck the ally", !struck.Contains(friend));
         Check("cleave never re-struck the primary target", !struck.Contains(primary));
+
+        // A follow-through does not follow through again. Executing a scheduled cleave must mark
+        // the frame it opens, so the on-hit package skips TryCleave for it.
+        Call("Gm21CombatScheduler", "Reset");
+        Call("Gm21MeleeAction", "Execute", gm, enemy2, Enum.Parse(T("Gm21ActionKind"), "Cleave"));
+        Check("a scheduled cleave leaves no follow-through flag latched",
+              !(bool)T("Gm21MeleeContext").GetField("NextIsFollowThrough", Any).GetValue(null));
+
+        object cleaveFrame = OpenFrame(gm, enemy2);
+        T("Gm21MeleeFrame").GetField("isFollowThrough").SetValue(cleaveFrame, true);
+        int before = QueueCount();
+        Rand.ForcedValueStub = 0f;
+        Call("Gm21OnHit", "Resolve", cleaveFrame, verb);
+        Rand.ForcedValueStub = null;
+        CloseFrame();
+        Check("a cleave never cleaves again", QueueCount() == before, "queued=" + QueueCount());
+
+        object riposteFrame = OpenFrame(gm, enemy2);
+        before = QueueCount();
+        Rand.ForcedValueStub = 0f;
+        Call("Gm21OnHit", "Resolve", riposteFrame, verb);
+        Rand.ForcedValueStub = null;
+        CloseFrame();
+        Check("a riposte is a real swing and still cleaves", QueueCount() > before,
+              "queued=" + QueueCount());
+
         Call("Gm21CombatScheduler", "Reset");
         TheMap = saved;
     }

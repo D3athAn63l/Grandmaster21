@@ -168,6 +168,14 @@ static class VerifyRuntimeTargets
 
         Ok("DamageInfo.SetAmount exists", AccessTools.Method(typeof(DamageInfo), "SetAmount") != null);
 
+        // Cleave hands a Pawn straight to Verb.CanHitTarget, which takes LocalTargetInfo. That
+        // only compiles because of this implicit conversion, so it is a real dependency.
+        Ok("LocalTargetInfo has an implicit conversion from Thing",
+           typeof(LocalTargetInfo).GetMethod("op_Implicit", BindingFlags.Public | BindingFlags.Static,
+               null, new[] { typeof(Thing) }, null) != null);
+        Ok("Verb.CanHitTarget(LocalTargetInfo) resolves",
+           AccessTools.Method(typeof(Verb), "CanHitTarget", new[] { typeof(LocalTargetInfo) }) != null);
+
         Console.WriteLine("\n=== Melee stats and capacities ===");
         foreach (string stat in new[] { "MoveSpeed", "Mass", "MeleeDamageFactor",
                                         "MeleeDodgeChance", "MeleeHitChance" })

@@ -122,6 +122,11 @@ namespace Verse
         public IntVec3 Cell;
         public LocalTargetInfo(Thing t) { Thing = t; Cell = t == null ? IntVec3.Invalid : t.Position; }
         public LocalTargetInfo(IntVec3 c) { Thing = null; Cell = c; }
+        // RimWorld really does define these, and the melee code relies on the Thing one to pass a
+        // Pawn straight to Verb.CanHitTarget. Verified against the shipped assembly by
+        // Tests/VerifyRuntimeTargets.cs.
+        public static implicit operator LocalTargetInfo(Thing t) { return new LocalTargetInfo(t); }
+        public static implicit operator LocalTargetInfo(IntVec3 c) { return new LocalTargetInfo(c); }
     }
     public class Verb
     {
@@ -130,10 +135,11 @@ namespace Verse
         // Test hook: the real CanHitTarget resolves reach and line of sight. Tests set the
         // predicate; the SIGNATURE the mod calls is identical.
         public Func<Thing, bool> canHitStub;
+        // ONE overload, matching RimWorld exactly. A Thing argument reaches it through the
+        // implicit conversion above, which is the real call path -- adding a Thing overload here
+        // would have hidden a signature mismatch instead of exposing one.
         public virtual bool CanHitTarget(LocalTargetInfo t)
         { return canHitStub == null || canHitStub(t.Thing); }
-        public virtual bool CanHitTarget(Thing t)
-        { return canHitStub == null || canHitStub(t); }
         protected internal int burstShotsLeft;          // protected in RimWorld; read reflectively
         protected internal virtual int ShotsPerBurst { get { return shotsPerBurstStub; } }
         public int shotsPerBurstStub = 1;               // test hook
