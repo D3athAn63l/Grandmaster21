@@ -2,7 +2,7 @@
 
 **RimWorld 1.6** — skills normally end at 20. This mod adds exactly one more level: **21, Grandmaster**.
 
-**Version 0.10.1 Beta.** The Shooting capstone has been verified in real RimWorld 1.6 gameplay.
+**Version 0.10.2 Beta.** The Shooting capstone has been verified in real RimWorld 1.6 gameplay.
 The Melee capstone has **not** — see [Release status](#release-status).
 
 Level 21 cannot be randomly generated. It must be earned by accumulating an enormous amount of
@@ -413,7 +413,8 @@ in Normal mode adds nothing at all to the save file.
 ## Melee 21 — Grandmaster of Combat
 
 The second skill-specific capstone, new in **0.10.0** and **not yet runtime tested**; its Guardian
-projectile doctrine was tightened in **0.10.1**. Deliberately
+projectile doctrine was tightened in **0.10.1** and its friendly-explosive ruling simplified in
+**0.10.2**. Deliberately
 overpowered, and deliberately *different in kind* from Melee 20. Skills other than Shooting and
 Melee have no Level 21 ability yet, and none is invented here.
 
@@ -660,24 +661,28 @@ melee interception so both Guardian systems answer reachability identically.
 Chance is the shared interception curve — **8 m/s → 90%** at one tile, ~81% at three — on
 `MoveSpeed × Reaction ÷ projectile difficulty`.
 
-#### Stage 5 — intent decides the redirect
+#### Stage 5 — how the redirect is chosen
 
-**Intent outranks faction identity.**
+**For direct shots, intent outranks faction identity. For explosives, intent is not consulted at
+all.**
 
-| Shooter | Intended target | Actual threat | Guardian behaviour |
-|---|---|---|---|
-| Hostile | anyone | GM / protected ally | **Return to Sender** → Safe Deflection |
-| Hostile | other target | harmless miss | *ignored* |
-| Friendly | a hostile enemy | GM / protected ally, accidentally | **Friendly Recovery** → original enemy → Safe Deflection |
-| Friendly | a hostile enemy | still hits that enemy | *ignored* |
-| Friendly | GM / protected ally, deliberately | GM / protected ally | **treated as hostile** → Return to Sender |
-| Friendly | anything | nobody | *ignored* |
+| Shooter | Payload | Intended target | Actual threat | Guardian behaviour |
+|---|---|---|---|---|
+| Hostile | any | anyone | GM / protected ally | **Return to Sender** → Safe Deflection |
+| Hostile | any | other target | harmless miss | *ignored* |
+| Friendly | **direct** | a hostile enemy | GM / protected ally, accidentally | **Friendly Recovery** → original enemy → Safe Deflection |
+| Friendly | **direct** | a hostile enemy | still hits that enemy | *ignored* |
+| Friendly | **direct** | GM / protected ally, deliberately | GM / protected ally | **treated as hostile** → Return to Sender |
+| Friendly | **explosive** | *anything at all* | GM / protected ally | **Friendly Explosive Recovery** → best hostile destination → Safe Disposal |
+| Friendly | any | anything | nobody | *ignored* |
+
+##### Friendly direct fire — intent-aware
 
 **Friendly Recovery** is corrective, not offensive. An ally's mis-resolved shot is salvaged back
 toward the **original intended hostile target** — never returned to the ally who fired it, and never
 handed to some other convenient enemy. Redirecting toward a better target would turn the Grandmaster
-into a free targeting computer for low-Shooting pawns, which is precisely what the anti-abuse rules
-exist to prevent. If the original target is dead, gone or no longer hostile, there is nothing to
+into a free targeting computer for low-Shooting pawns, which is precisely what the anti-abuse rule
+exists to prevent. If the original target is dead, gone or no longer hostile, there is nothing to
 salvage toward and the shot falls through to Safe Deflection.
 
 Recovery difficulty is **angular**:
@@ -691,12 +696,70 @@ p          = Opposed(quality, difficulty × factor, ReturnHardness, 0.95)
 A nearly-correct shot needs a nudge and is *easier* to save than a return-to-sender. A round flying
 in completely the wrong direction has to be turned around and is far harder.
 
-**The anti-abuse rule.** A friendly who deliberately aims at the Grandmaster or a protected ally is
-not having an accident, whatever faction they belong to. Order Bob to force-attack Mark and Mark
-classifies it as hostile intent — **Return to Sender applies**. The same holds for explosives:
-aiming a warhead at a *cell* whose blast covers a protected pawn is aiming at that pawn, so
-deliberately rocketing a Melee Grandmaster can send the rocket back. Trying to exploit a Guardian
-should be a very bad idea.
+**The anti-abuse rule, and it still applies to bullets.** A friendly who deliberately aims a *direct
+shot* at the Grandmaster or a protected ally is not having an accident, whatever faction they belong
+to. Order Bob to force-attack Mark with a rifle and Mark classifies it as hostile intent — **Return
+to Sender applies**. Trying to exploit a Guardian with gunfire should be a very bad idea.
+
+##### Friendly explosives — intent-agnostic
+
+**A friendly explosive that threatens a protected pawn is *always* Friendly Explosive Recovery, and
+is never returned to the ally who launched it.** Not when the blast merely overlaps protected pawns,
+not when the intended cell contains the Grandmaster, not when the player deliberately force-targeted
+the ground next to them, not when a grenade was thrown straight at them.
+
+Why the rule differs: an area weapon has no single aim point worth reasoning about. Whether a
+grenade landing two tiles from the Grandmaster was malice, a misthrow, a force-targeted cell or a
+perfectly reasonable shot at a raider standing just past them is **genuinely ambiguous** — and the
+heuristics needed to guess were ambiguous too, which is why they are gone. The immediate problem is
+not whether Bob deserves to be doom-rocketed. It is that there is a live warhead next to people the
+Grandmaster is protecting.
+
+Classification is therefore a cheap early decision: *friendly launcher + explosive payload +
+protected pawn threatened* → done. No intended-cell inspection, no weighing nearby hostiles against
+nearby friendlies, no reconstruction of what the thrower "really meant".
+
+Explosive is read from `props.explosionRadius > 0`, so a thrown grenade, a launched grenade, a
+rocket, an explosive shell and any modded projectile with a real payload all qualify — no weapon-name
+list anywhere.
+
+**None of this is automatic.** Reaching it (stage 3) and getting hold of it (stage 4) can still
+fail, the redirect roll can still fail, the fuse keeps running throughout, a rocket can still
+detonate during interception, and the blast radius is still the blast radius. A successfully
+redirected doom rocket can still kill the Grandmaster who redirected it.
+
+##### Hostile destination scoring
+
+Unlike direct recovery, an explosive does **not** go back to the original intended target — there is
+no shot to reconstruct. The Grandmaster picks the best place for it to go off instead.
+
+Candidates are the hostiles already on the map, capped at 24, each scored against two small pawn
+lists gathered in a single pass. There is no cell-by-cell search and no global optimisation.
+
+| Term | Weight |
+|---|---|
+| Hostile caught inside the blast | +30 each |
+| **Protected pawn** inside the blast (radius + 1.5 tile margin) | **−400 each** |
+| Protected pawn on the redirected flight path (8 samples) | −120 each |
+
+The protected-pawn penalty is an order of magnitude above the hostile bonus on purpose: three
+raiders (+90) can never outweigh one colonist (−400), so a tempting cluster with one of our own
+beside it is simply never chosen. Clustering needs no special pass — counting hostiles in the blast
+*is* the cluster search, so three raiders together outscore one isolated raider automatically.
+
+A destination must also be within the Grandmaster's actual throw range (`RedirectDistance`, already
+strength-scaled for thrown objects and fixed for rockets) and have line of sight from the
+interception point, so nothing is ever lobbed through a wall and a weak colonist cannot hurl a
+grenade across the map.
+
+##### Safe Disposal
+
+If no hostile destination scores acceptably — none in range, none without our own people nearby,
+none with a clear line — the explosive falls through to the existing **safe-vector** logic and goes
+to open ground away from the Grandmaster and everyone they protect.
+
+Safe disposal does not nullify anything. The fuse, blast radius, damage, projectile def and
+launcher attribution all survive; the Guardian is deciding *where* it goes off, not *whether*.
 
 #### Attribution
 
@@ -706,7 +769,8 @@ Grandmaster bent a trajectory; they did not fire Bob's weapon, and pretending ot
 rewrite attribution across every mod that inspects a projectile.
 
 Exactly one case overrides that: **return-to-sender**, because a projectile cannot hit its own
-launcher and leaving the sender in place would make the manoeuvre silently impossible. Either way the
+launcher and leaving the sender in place would make the manoeuvre silently impossible. A friendly
+explosive is never returned, so it always keeps its original launcher. Either way the
 Grandmaster is recorded in a separate weak table, so the information is kept without being forged
 into the projectile.
 
@@ -1208,6 +1272,13 @@ including both deliberate-friendly-attack cases, best-Guardian selection in both
 sealed-wall and downed-Guardian rejections, the angular recovery curve, recovery attribution, the
 path-aware safe vector, and a hundred consecutive micro-dashes asserting the pawn never moves.
 
+Friendly-explosive handling is covered separately: every way a friendly warhead can arrive resolving
+to the same classification, an enemy warhead still resolving to hostile, cluster preference,
+the refusal to accept any protected pawn as collateral, throw-range and wall bounds, the fall-through
+to safe disposal when no destination qualifies, and the guarantee that the ally who launched it is
+never the target — alongside explicit regression guards that Bob's *rifle* still classifies as
+hostile and his stray bullet still as an accident.
+
 They do **not** run inside RimWorld. They do not exercise Harmony patching, real IL, combat,
 projectiles, pawn generation, the gizmo or saving — and critically, they **cannot prove that the
 RimWorld members named in the source exist with those signatures**, because the stubs are
@@ -1217,13 +1288,13 @@ hand-written approximations. Only a real build does that. See `tools/stubs/READM
 
 ## Release status
 
-**0.10.1 Beta.** Builds clean against RimWorld 1.6 and passes every check that could be run in the
+**0.10.2 Beta.** Builds clean against RimWorld 1.6 and passes every check that could be run in the
 environment it was built in.
 
 **The Melee Grandmaster package has had NO runtime gameplay testing.** Every RimWorld member it
 touches is confirmed present with the right signature and parameter names against the real 1.6
-assembly metadata, and its decision logic is covered by 211 offline checks — but patches resolving
-is not patches binding, and patches binding is not patches behaving. Treat 0.10.1 as untested in
+assembly metadata, and its decision logic is covered by 239 offline checks — but patches resolving
+is not patches binding, and patches binding is not patches behaving. Treat 0.10.2 as untested in
 play, and keep a backup save.
 
 The Shooting package is unchanged in this version and retains its 0.9.0 runtime result below.
@@ -1271,7 +1342,7 @@ need real bodies are reported `NOT RUN`, not passed.
 | 3. Live Harmony patch binding | **NOT RUN** — needs method bodies |
 | 4. Finalizer semantics | **PASS** — 12/12, all four shipped finalizers |
 | 5. Progression suite vs. real `SkillRecord` | **NOT RUN** — needs method bodies |
-| Offline logic suites | **PASS** — 342/342 (57 core + 74 shooting + 211 melee) |
+| Offline logic suites | **PASS** — 370/370 (57 core + 74 shooting + 239 melee) |
 
 Checks 2, 3 and 5 all fail with `Method has zero rva` against reference assemblies. That is the
 environment, not a finding: **run `verify-real.sh` against a real RimWorld install to clear them.**
@@ -1402,6 +1473,22 @@ Guardian doctrine, added in 0.10.1 — likewise none of it observed in a running
 | Micro-dash never relocates the pawn, over a sustained burst | `NOT RUN` (offline: 100 dashes, 0 movement, PASS) |
 | Guardian visual effects appear and sound plays | `NOT RUN` — cosmetic; offline asserts the calls are made |
 | No new persistent Guardian state; melee doctrine still saves | `NOT RUN` (offline: store round-trip PASS) |
+
+Friendly-explosive ruling, added in 0.10.2 — likewise nothing observed in a running game:
+
+| Explosive test | Status |
+|---|---|
+| Friendly grenade threatening the GM with raiders nearby → redirect at hostiles, never returned | `NOT RUN` (offline: PASS) |
+| Friendly grenade with no valid hostile → safe disposal, never returned | `NOT RUN` (offline: PASS) |
+| Grenade thrown deliberately at the GM → still Friendly Explosive Recovery | `NOT RUN` (offline: PASS) |
+| Rocket force-fired deliberately at the GM → still Friendly Explosive Recovery | `NOT RUN` (offline: PASS) |
+| Friendly rocket with an enemy cluster → favours the cluster, minimises friendly risk | `NOT RUN` (offline: PASS) |
+| Friendly rocket with no enemies → safe disposal | `NOT RUN` (offline: PASS) |
+| Friendly explosive threatening nobody protected → ignored | `NOT RUN` (offline: PASS) |
+| Enemy rocket → unchanged Return-to-Sender → Safe Deflection | `NOT RUN` (offline: PASS) |
+| **Regression:** Bob force-attacking with a rifle → still hostile, Return-to-Sender | `NOT RUN` (offline: PASS) |
+| **Regression:** Bob's stray bullet → still Friendly Recovery toward the original raider | `NOT RUN` (offline: PASS) |
+| Redirected warhead keeps fuse, radius, damage, def and launcher | `NOT RUN` (offline: def/launcher PASS; fuse preserved by the same code path as 0.10.0) |
 
 Also still unexercised, from previous versions:
 
