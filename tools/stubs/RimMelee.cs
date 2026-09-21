@@ -56,6 +56,26 @@ namespace Verse
 
     public static class GenSight
     {
+        /// <summary>
+        /// Mirrors the real one closely enough for the safety veto: the cells a straight line
+        /// crosses, endpoints included. RimWorld reuses a static buffer here; so does this, so a
+        /// test that holds the result across calls fails the same way the game would.
+        /// </summary>
+        private static readonly List<IntVec3> tmpCells = new List<IntVec3>();
+        public static List<IntVec3> BresenhamCellsBetween(IntVec3 a, IntVec3 b)
+        {
+            tmpCells.Clear();
+            int steps = Mathf.Max(System.Math.Abs(b.x - a.x), System.Math.Abs(b.z - a.z));
+            for (int i = 0; i <= steps; i++)
+            {
+                float t = steps == 0 ? 0f : (float)i / steps;
+                tmpCells.Add(new IntVec3(
+                    a.x + Mathf.RoundToInt((b.x - a.x) * t), a.y,
+                    a.z + Mathf.RoundToInt((b.z - a.z) * t)));
+            }
+            return tmpCells;
+        }
+
         /// <summary>Straight-line sampling, mirroring what the real Bresenham walk answers.</summary>
         public static bool LineOfSight(IntVec3 start, IntVec3 end, Map map)
         {
@@ -123,6 +143,7 @@ namespace Verse
         public float speed = 20f;
         public float explosionRadius;
         public bool flyOverhead;
+        public float arcHeightFactor;   // > 0 means the projectile arcs over pawns in its way
         public DamageDef damageDef;
         public float SpeedTilesPerTick { get { return speed / 60f; } }
     }

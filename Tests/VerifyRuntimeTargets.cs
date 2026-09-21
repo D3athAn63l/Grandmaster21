@@ -247,6 +247,19 @@ static class VerifyRuntimeTargets
            System.Enum.IsDefined(typeof(FactionRelationKind), "Ally"));
         Ok("Pawn.Faction exists", AccessTools.Property(typeof(Pawn), "Faction") != null);
 
+        Console.WriteLine("\n=== Protected-pawn safety veto ===");
+        MethodInfo bresenham = AccessTools.Method(typeof(GenSight), "BresenhamCellsBetween",
+            new[] { typeof(IntVec3), typeof(IntVec3) });
+        Ok("GenSight.BresenhamCellsBetween(IntVec3, IntVec3) resolves (exact path veto)",
+           bresenham != null, Params(bresenham));
+        Ok("  ...and returns a cell list",
+           bresenham != null && bresenham.ReturnType == typeof(System.Collections.Generic.List<IntVec3>));
+        Ok("ProjectileProperties.arcHeightFactor is public (arcing projectiles skip the path veto)",
+           typeof(ProjectileProperties).GetField("arcHeightFactor") != null);
+        Ok("MapPawns.AllPawnsSpawned resolves (one-pass protected gather)",
+           AccessTools.Property(typeof(MapPawns), "AllPawnsSpawned") != null);
+        Ok("Map.mapPawns field is public", typeof(Map).GetField("mapPawns") != null);
+
         Console.WriteLine("\n=== Guardian micro-dash effects (cosmetic, null-checked at runtime) ===");
         Ok("FleckMaker.ConnectingLine resolves",
            AccessTools.Method(typeof(FleckMaker), "ConnectingLine") != null);

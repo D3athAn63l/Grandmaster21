@@ -104,13 +104,25 @@ static class MeleeHarness
 
     static void Equip(Pawn p, ThingWithComps w) { p.equipment.Primary = w; }
 
-    static ThingDef ProjectileDef(string name, float speed, float explosionRadius = 0f)
+    static ThingDef ProjectileDef(string name, float speed, float explosionRadius = 0f,
+                                  float arcHeightFactor = 0f)
     {
         return new ThingDef
         {
             defName = name,
-            projectile = new ProjectileProperties { speed = speed, explosionRadius = explosionRadius }
+            projectile = new ProjectileProperties
+            {
+                speed = speed,
+                explosionRadius = explosionRadius,
+                arcHeightFactor = arcHeightFactor
+            }
         };
+    }
+
+    /// <summary>A thrown grenade: arcs over anyone between the thrower and the landing point.</summary>
+    static ThingDef ArcingDef(string name, float speed, float explosionRadius)
+    {
+        return ProjectileDef(name, speed, explosionRadius, 0.6f);
     }
 
     // =======================================================================================
@@ -156,6 +168,7 @@ static class MeleeHarness
         GuardianSafePath();
         GuardianMicroDash();
         ExplosiveDisposal();
+        ProtectedPawnHardVeto();
         TranslationKeys();
 
         Console.WriteLine("\n================================");
@@ -1832,11 +1845,15 @@ static class MeleeHarness
         Pawn clusterB = MakePawn("ClusterB", 0, new IntVec3(71, 0, 50), Raiders);
         Pawn clusterC = MakePawn("ClusterC", 0, new IntVec3(70, 0, 51), Raiders);
 
-        Func<IntVec3, float, float, IntVec3> choose = (from, blast, range) =>
-            (IntVec3)Call("Gm21ExplosiveDisposal", "ChooseHostileDestination",
-                          mark, m, from, blast, range);
+        // A THROWN grenade: it arcs over anyone standing between thrower and landing point, so
+        // only where it lands matters. The direct-flight case gets its own section below.
+        ThingDef thrown = ArcingDef("ThrownGrenade", 12f, 2.9f);
 
-        IntVec3 pick = choose(mark.Position, 2.9f, 40f);
+        Func<IntVec3, float, IntVec3> choose = (from, range) =>
+            (IntVec3)Call("Gm21ExplosiveDisposal", "ChooseHostileDestination",
+                          mark, m, from, thrown.projectile, range);
+
+        IntVec3 pick = choose(mark.Position, 40f);
         Check("a hostile destination is chosen", pick.IsValid, pick.ToString());
         Check("a cluster of three outscores an isolated raider",
               pick.IsValid && pick != lone.Position, pick.ToString());
@@ -1848,14 +1865,14 @@ static class MeleeHarness
 
         // A colonist standing in the middle of the cluster makes it untouchable, however tempting.
         Pawn hostage = MakePawn("Hostage", 0, new IntVec3(70, 0, 50), Colony);
-        IntVec3 guarded = choose(mark.Position, 2.9f, 40f);
+        IntVec3 guarded = choose(mark.Position, 40f);
         Check("a cluster with a colonist inside the blast is rejected",
               guarded.IsValid && guarded == lone.Position, guarded.ToString());
         Check("  ...and the isolated raider is chosen instead", guarded == lone.Position);
 
         // Now put a colonist beside the lone raider too: nothing is safe to throw at.
         Pawn hostage2 = MakePawn("Hostage2", 0, new IntVec3(62, 0, 51), Colony);
-        IntVec3 nothing = choose(mark.Position, 2.9f, 40f);
+        IntVec3 nothing = choose(mark.Position, 40f);
         Check("with every raider shielded by our own, no destination is chosen",
               !nothing.IsValid, nothing.ToString());
         Check("  ...which is the signal to fall through to safe disposal", !nothing.IsValid);
@@ -1868,19 +1885,20 @@ static class MeleeHarness
         Equip(thrower, Weapon("Longsword", 2.2f));
         Pawn distant = MakePawn("DistantRaider", 0, new IntVec3(90, 0, 50), Raiders);
 
-        Func<Pawn, IntVec3, float, float, IntVec3> chooseFor = (g, from, blast, range) =>
+        ThingDef thrown2 = ArcingDef("ThrownGrenade2", 12f, 2.9f);
+        Func<Pawn, IntVec3, float, IntVec3> chooseFor = (g, from, range) =>
             (IntVec3)Call("Gm21ExplosiveDisposal", "ChooseHostileDestination",
-                          g, m2, from, blast, range);
+                          g, m2, from, thrown2.projectile, range);
 
         Check("a raider beyond the Grandmaster's throw range is not a destination",
-              !chooseFor(thrower, thrower.Position, 2.9f, 10f).IsValid);
+              !chooseFor(thrower, thrower.Position, 10f).IsValid);
         Check("  ...and is one once the throw is long enough",
-              chooseFor(thrower, thrower.Position, 2.9f, 60f) == distant.Position);
+              chooseFor(thrower, thrower.Position, 60f) == distant.Position);
 
         // A wall between the Grandmaster and the raider: the warhead cannot fly through it.
         for (int z = 40; z <= 60; z++) m2.blockedStub.Add(new IntVec3(70, 0, z));
         Check("a warhead is never thrown through a wall",
-              !chooseFor(thrower, thrower.Position, 2.9f, 60f).IsValid);
+              !chooseFor(thrower, thrower.Position, 60f).IsValid);
 
         Console.WriteLine("\n=== M44. No enemies at all -> safe disposal ===");
 
@@ -1890,8 +1908,9 @@ static class MeleeHarness
         Equip(alone, Weapon("Longsword", 2.2f));
         MakePawn("AloneAlly", 0, new IntVec3(51, 0, 50), Colony);
 
+        ThingDef thrown3 = ArcingDef("ThrownGrenade3", 12f, 2.9f);
         IntVec3 none = (IntVec3)Call("Gm21ExplosiveDisposal", "ChooseHostileDestination",
-                                     alone, m3, alone.Position, 2.9f, 60f);
+                                     alone, m3, alone.Position, thrown3.projectile, 60f);
         Check("with no hostiles on the map there is no destination", !none.IsValid);
 
         // ...and the safe vector still has an answer, which is what disposal falls through to.
@@ -1964,6 +1983,205 @@ static class MeleeHarness
               warhead.def == rocketDef && warhead.def.projectile.explosionRadius == 3.9f);
         Check("  ...and is still in the world, not deleted",
               !warhead.Destroyed && warhead.Spawned);
+
+        TheMap = saved;
+    }
+
+    // =======================================================================================
+    //  M47-M52. PROTECTED-PAWN SAFETY IS A HARD CONSTRAINT
+    //
+    //  These assert CATEGORICAL rejection, never score magnitude. The requirement is not "an
+    //  unsafe candidate scores badly" -- it is "an unsafe candidate is not a candidate". A test
+    //  that checked `score < 0` would have passed against the bug these exist to prevent.
+    // =======================================================================================
+    static void ProtectedPawnHardVeto()
+    {
+        Console.WriteLine("\n=== M47. No number of enemies buys a protected pawn ===");
+
+        Map m = new Map();
+        Map saved = TheMap;
+        TheMap = m;
+
+        Pawn mark = MakePawn("VetoMark", 21, new IntVec3(50, 0, 50), Colony);
+        Equip(mark, Weapon("Longsword", 2.2f));
+
+        // CANDIDATE A: a huge cluster of raiders packed TIGHTLY around Alice, so that every
+        // single one of them is inside the danger radius of her. There is no edge of this horde
+        // that is safe to aim at -- which is the case the veto has to get right. (A horde with a
+        // safe edge is not a dilemma: aiming at the safe edge is the correct answer, and the code
+        // already does that.)
+        Pawn alice = MakePawn("VetoAlice", 0, new IntVec3(80, 0, 50), Colony);
+        for (int i = 0; i < 20; i++)
+        {
+            MakePawn("Horde" + i, 0, new IntVec3(79 + (i % 3), 0, 49 + (i % 3)), Raiders);
+        }
+
+        // CANDIDATE B: a mere two raiders, and nobody of ours anywhere near them.
+        Pawn pairA = MakePawn("PairA", 0, new IntVec3(50, 0, 72), Raiders);
+        MakePawn("PairB", 0, new IntVec3(51, 0, 72), Raiders);
+
+        ThingDef thrown = ArcingDef("VetoGrenade", 12f, 2.9f);
+        IntVec3 pick = (IntVec3)Call("Gm21ExplosiveDisposal", "ChooseHostileDestination",
+                                     mark, m, mark.Position, thrown.projectile, 60f);
+
+        Check("a destination is chosen", pick.IsValid, pick.ToString());
+        Check("the 20-raider cluster containing Alice is NOT chosen",
+              pick.DistanceTo(alice.Position) > 2.9f + 1.5f,
+              pick.ToString() + ", alice at " + alice.Position);
+        Check("  ...the two clean raiders win instead, on safety not arithmetic",
+              pick.DistanceTo(pairA.Position) <= 2.9f, pick.ToString());
+
+        // The structural proof: the veto cannot see hostiles at all, so no count can enter it.
+        var vetoParams = T("Gm21ProtectedSafety")
+            .GetMethod("BlastEndangersProtected", Any).GetParameters();
+        bool takesHostiles = false;
+        foreach (var prm in vetoParams)
+        {
+            if (prm.Name.ToLowerInvariant().Contains("hostile")) takesHostiles = true;
+        }
+        Check("the blast veto takes no hostile input, so hostile count cannot enter it",
+              !takesHostiles);
+        Check("  ...and it answers bool, not a score",
+              T("Gm21ProtectedSafety").GetMethod("BlastEndangersProtected", Any).ReturnType
+              == typeof(bool));
+
+        Console.WriteLine("\n=== M48. The veto is independent of how tempting the target is ===");
+
+        // Same geometry, scaled up: the answer must not move as the horde grows.
+        for (int extra = 0; extra < 40; extra++)
+        {
+            MakePawn("Extra" + extra, 0, new IntVec3(79 + (extra % 3), 0, 49 + (extra % 3)), Raiders);
+        }
+        IntVec3 pickAgain = (IntVec3)Call("Gm21ExplosiveDisposal", "ChooseHostileDestination",
+                                          mark, m, mark.Position, thrown.projectile, 60f);
+        Check("with 60 raiders around Alice, she is still not collateral",
+              !pickAgain.IsValid || pickAgain.DistanceTo(alice.Position) > 2.9f + 1.5f,
+              pickAgain.ToString());
+
+        Console.WriteLine("\n=== M49. Direct-flight path veto ===");
+
+        Map m2 = new Map();
+        TheMap = m2;
+        Pawn gm = MakePawn("PathGm", 21, new IntVec3(50, 0, 50), Colony);
+        Equip(gm, Weapon("Longsword", 2.2f));
+        Pawn bob = MakePawn("PathBob", 0, new IntVec3(55, 0, 50), Colony);   // directly in the line
+        Pawn blocked = MakePawn("BlockedRaider", 0, new IntVec3(60, 0, 50), Raiders);
+        Pawn clear = MakePawn("ClearRaider", 0, new IntVec3(50, 0, 62), Raiders);
+
+        ThingDef rocket = ProjectileDef("VetoRocket", 40f, 3.9f);   // direct flight, no arc
+        IntVec3 rocketPick = (IntVec3)Call("Gm21ExplosiveDisposal", "ChooseHostileDestination",
+                                           gm, m2, gm.Position, rocket.projectile, 60f);
+
+        Check("a rocket is never redirected THROUGH a colonist",
+              rocketPick != blocked.Position, rocketPick.ToString());
+        Check("  ...the raider with a clear line is chosen instead",
+              rocketPick == clear.Position, rocketPick.ToString());
+
+        // The same geometry with a THROWN grenade: it arcs over Bob, so nothing is vetoed.
+        ThingDef arcing = ArcingDef("VetoArc", 12f, 2.9f);
+        IntVec3 arcPick = (IntVec3)Call("Gm21ExplosiveDisposal", "ChooseHostileDestination",
+                                        gm, m2, gm.Position, arcing.projectile, 60f);
+        Check("a THROWN grenade arcs over him, so his cell does not veto the throw",
+              arcPick.IsValid, arcPick.ToString());
+
+        // And the path helper directly, both ways.
+        var friends = new List<Pawn> { bob };
+        Check("path veto: direct flight through a colonist is rejected",
+              (bool)Call("Gm21ProtectedSafety", "PathEndangersProtected",
+                         gm.Position, blocked.Position, friends, true));
+        Check("path veto: the same line arcing over them is not",
+              !(bool)Call("Gm21ProtectedSafety", "PathEndangersProtected",
+                          gm.Position, blocked.Position, friends, false));
+        Check("path veto: a clear line is never rejected",
+              !(bool)Call("Gm21ProtectedSafety", "PathEndangersProtected",
+                          gm.Position, clear.Position, friends, true));
+
+        Console.WriteLine("\n=== M50. No safe hostile option -> no hostile redirect ===");
+
+        Map m3 = new Map();
+        TheMap = m3;
+        Pawn gm3 = MakePawn("NoSafeGm", 21, new IntVec3(50, 0, 50), Colony);
+        Equip(gm3, Weapon("Longsword", 2.2f));
+
+        // Every raider on the map has one of ours standing next to them.
+        for (int i = 0; i < 6; i++)
+        {
+            MakePawn("Shielded" + i, 0, new IntVec3(60 + i * 4, 0, 50), Raiders);
+            MakePawn("Human" + i, 0, new IntVec3(60 + i * 4, 0, 51), Colony);
+        }
+
+        ThingDef thrown3 = ArcingDef("NoSafeGrenade", 12f, 2.9f);
+        IntVec3 noneSafe = (IntVec3)Call("Gm21ExplosiveDisposal", "ChooseHostileDestination",
+                                         gm3, m3, gm3.Position, thrown3.projectile, 60f);
+        Check("with every raider shielded, NO hostile destination is returned",
+              !noneSafe.IsValid, noneSafe.ToString());
+        Check("  ...which is what makes the caller fall through to safe disposal",
+              !noneSafe.IsValid);
+
+        Console.WriteLine("\n=== M51. Safe-vector disposal vetoes too ===");
+
+        Map m4 = new Map();
+        TheMap = m4;
+        Pawn gm4 = MakePawn("SvGm", 21, new IntVec3(100, 0, 100), Colony);
+        Pawn rescued = MakePawn("SvRescued", 0, new IntVec3(101, 0, 100), Colony);
+
+        // A ring of colonists to the east at exactly the disposal distance; open ground west.
+        for (int dz = -4; dz <= 4; dz++) MakePawn("Ring" + dz, 0, new IntVec3(110, 0, 100 + dz), Colony);
+
+        ThingDef grenade = ArcingDef("SvGrenade", 12f, 2.9f);
+        Projectile proj = new Projectile
+        { def = grenade, Position = gm4.Position, Map = m4, Spawned = true };
+        IntVec3 dump = (IntVec3)Call("Gm21SafeVector", "Choose",
+                                     proj, grenade.projectile, gm4, rescued, m4, 10f);
+
+        Check("safe disposal finds a bearing", dump.IsValid, dump.ToString());
+        Check("  ...and never the one that lands on the colonists", dump.x < gm4.Position.x,
+              dump.ToString());
+
+        // Even a bearing that would catch hostiles is rejected if one of ours is in the blast.
+        Map m5 = new Map();
+        TheMap = m5;
+        Pawn gm5 = MakePawn("SvGm2", 21, new IntVec3(100, 0, 100), Colony);
+        for (int i = 0; i < 8; i++) MakePawn("SvRaider" + i, 0, new IntVec3(109 + (i % 2), 0, 100 + i / 2), Raiders);
+        Pawn hostage = MakePawn("SvHostage", 0, new IntVec3(110, 0, 100), Colony);
+
+        Projectile proj2 = new Projectile
+        { def = grenade, Position = gm5.Position, Map = m5, Spawned = true };
+        IntVec3 dump2 = (IntVec3)Call("Gm21SafeVector", "Choose",
+                                      proj2, grenade.projectile, gm5, null, m5, 10f);
+        Check("a bearing full of raiders is still rejected when one of ours is in it",
+              dump2.IsValid && dump2.DistanceTo(hostage.Position) > 2.9f + 1.5f,
+              dump2.ToString() + ", hostage at " + hostage.Position);
+
+        Console.WriteLine("\n=== M52. The shared definition of 'protected' ===");
+
+        Map m6 = new Map();
+        TheMap = m6;
+        Pawn gm6 = MakePawn("ShareGm", 21, new IntVec3(50, 0, 50), Colony);
+        MakePawn("ShareColonist", 0, new IntVec3(52, 0, 50), Colony);
+        MakePawn("ShareRaider", 0, new IntVec3(54, 0, 50), Raiders);
+        if (Allies != null) MakePawn("ShareAlly", 0, new IntVec3(56, 0, 50), Allies);
+
+        var gathered = new List<Pawn>();
+        Call("Gm21ProtectedSafety", "GatherProtected", gm6, m6, gathered);
+
+        Check("the Grandmaster protects themselves and is in the list",
+              gathered.Contains(gm6));
+        Check("  ...their own faction is in it", gathered.Count >= 2);
+        bool anyHostile = false;
+        for (int i = 0; i < gathered.Count; i++)
+        {
+            if (GenHostility.HostileTo(gathered[i], gm6)) anyHostile = true;
+        }
+        Check("  ...and no hostile ever is", !anyHostile);
+
+        // Same predicate as threat detection -- one definition, not three.
+        bool agrees = true;
+        for (int i = 0; i < gathered.Count; i++)
+        {
+            if (!(bool)Call("Gm21GuardianThreat", "Protects", gm6, gathered[i])) agrees = false;
+        }
+        Check("safety and threat detection agree on who is protected", agrees);
 
         TheMap = saved;
     }
