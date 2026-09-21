@@ -11,42 +11,41 @@ namespace Grandmaster21
     /// "Do not randomly swat a grenade into the colony hospital." This is the file that keeps that
     /// promise, and the promise is what makes safe deflection a success rather than a coin flip.
     ///
-    /// THE METHOD. Sixteen candidate bearings are tried around the interception point. Each one is
-    /// scored by what is standing near where the object would land AND by what it would have to
-    /// fly through to get there, and the best-scoring bearing wins. Protected pawns count heavily
-    /// against a bearing, hostiles count for it, and separation from the Grandmaster and from the
-    /// pawn just saved is worth something on its own -- so the priority order comes out as the
-    /// brief specifies: away from the threatened pawn, away from the Grandmaster, away from other
-    /// friendlies, a clear flight path, open space, hostile space where safe.
+    /// THE METHOD. Sixteen candidate bearings are tried around the interception point. Each is
+    /// first VETOED or not -- would it land on one of our own, or have to fly through one of them
+    /// to get there? -- and only the survivors are then scored, by how far they get the object
+    /// away from the Grandmaster and the pawn just rescued, and by whether it lands on something
+    /// hostile on the way to being harmless.
     ///
-    /// WHY THE FLIGHT PATH IS SCORED, NOT JUST THE LANDING POINT. A bullet deflected forty tiles
-    /// "somewhere safe" travels through forty tiles on the way. Scoring only the destination would
-    /// happily fire it down a corridor full of colonists as long as the far end was empty, which
-    /// is a different way of doing exactly the harm this code exists to avoid.
+    /// SAFETY IS NOT A PENALTY TERM. It used to be: protected pawns subtracted points and hostiles
+    /// added them, which meant a large enough pile of raiders could outvote a colonist. That is a
+    /// weighted-utility answer to a question that is not economic, and it is gone. See
+    /// Gm21ProtectedSafety, which both this and explosive disposal now share so the definition of
+    /// "protected" cannot drift between them.
     ///
-    /// DELIBERATELY LOCAL AND CHEAP. Sixteen bearings times a handful of cells each is a few
-    /// hundred grid lookups, and it runs only at the moment a deflection actually happens -- not
-    /// per tick, not per projectile, and never for an ordinary pawn. No pathfinding, no map scan,
-    /// no allocation beyond one reused list.
+    /// THE ONE EXCEPTION, AND WHY IT IS NOT THE SAME BUG. If every single bearing is unsafe, this
+    /// still returns the least dangerous of them. Declining to choose here does not mean nothing
+    /// happens -- it means the projectile carries on to the destination that was already about to
+    /// hurt the people the Guardian is protecting. So the fallback is pure damage minimisation:
+    /// hostiles are not counted in it at all, and it can never express "hit one of ours to hit
+    /// more of theirs". Offensive value never reaches across the veto; only harm reduction does.
+    ///
+    /// DELIBERATELY LOCAL AND CHEAP. Sixteen bearings against one pawn list gathered in a single
+    /// pass, and it runs only at the moment a deflection actually happens -- not per tick, not per
+    /// projectile, and never for an ordinary pawn. No pathfinding, no map scan.
     /// </summary>
     internal static class Gm21SafeVector
     {
         /// <summary>Bearings tried, evenly spaced. Sixteen is fine enough to always find a gap.</summary>
         private const int Bearings = 16;
 
-        /// <summary>Score lost for each protected pawn in the landing area.</summary>
-        private const float AllyPenalty = 100f;
-
         /// <summary>
-        /// Score lost for each protected pawn the redirected projectile would fly THROUGH.
+        /// Score gained for each hostile pawn in the landing area.
         ///
-        /// Lower than the landing penalty on purpose: a pawn standing in the flight path of a fast
-        /// projectile is at real but not certain risk, whereas a pawn standing where it lands is
-        /// where the damage or the blast actually happens.
+        /// The only offensive term, and it is only ever summed over bearings that have ALREADY
+        /// passed the safety veto. There is no protected-pawn penalty for it to compete with,
+        /// because protected pawns are not scored here at all.
         /// </summary>
-        private const float PathPenalty = 60f;
-
-        /// <summary>Score gained for each hostile pawn in the landing area.</summary>
         private const float HostileBonus = 25f;
 
         /// <summary>Score per tile of separation between the landing point and the Grandmaster.</summary>
@@ -60,22 +59,15 @@ namespace Grandmaster21
         /// </summary>
         private const float SavedDistanceWeight = 3f;
 
-        /// <summary>
-        /// How many points along a candidate flight path are examined. The path can be forty tiles
-        /// long, and walking every cell of sixteen bearings would be thousands of grid reads for a
-        /// question a coarse sample answers just as well -- a pawn occupies a cell, and a sample
-        /// every couple of tiles cannot miss a group of them.
-        /// </summary>
-        private const int PathSamples = 12;
-
-        /// <summary>Path sampling starts past the Grandmaster's own cell, not on top of it.</summary>
-        private const float PathSampleStart = 1.5f;
-
         /// <summary>Minimum area examined around a candidate landing point, for inert projectiles.</summary>
         private const float MinBlastCheckRadius = 1.5f;
 
         /// <summary>A landing point closer than this to the Grandmaster is never chosen.</summary>
         private const float MinSeparation = 2f;
+
+        // Reused across calls on the main thread; deflection never runs concurrently with itself.
+        [System.ThreadStatic] private static List<Pawn> protectedBuffer;
+        [System.ThreadStatic] private static List<Pawn> hostileBuffer;
 
         /// <summary>
         /// Picks the least dangerous landing cell at the given distance, or an invalid cell if
@@ -90,9 +82,24 @@ namespace Grandmaster21
             float checkRadius = props.explosionRadius > MinBlastCheckRadius
                 ? props.explosionRadius
                 : MinBlastCheckRadius;
+            float dangerRadius = Gm21ProtectedSafety.DangerRadius(props.explosionRadius);
+            bool directFlight = Gm21ProtectedSafety.IsDirectFlight(props);
+
+            List<Pawn> friends = protectedBuffer;
+            if (friends == null) friends = protectedBuffer = new List<Pawn>(16);
+            List<Pawn> hostiles = hostileBuffer;
+            if (hostiles == null) hostiles = hostileBuffer = new List<Pawn>(16);
+            friends.Clear();
+            hostiles.Clear();
+            Gather(guardian, map, friends, hostiles);
 
             IntVec3 best = IntVec3.Invalid;
             float bestScore = float.NegativeInfinity;
+
+            // The last-resort tier, used only if every bearing is vetoed. Kept separate from
+            // `best` so an unsafe bearing can never win a comparison against a safe one.
+            IntVec3 leastBad = IntVec3.Invalid;
+            float leastBadDanger = float.PositiveInfinity;
 
             for (int i = 0; i < Bearings; i++)
             {
@@ -114,8 +121,22 @@ namespace Grandmaster21
                     continue;   // never land it back on the pawn we just rescued
                 }
 
-                float score = Score(candidate, map, guardian, saved, checkRadius, separation)
-                            + PathScore(from, candidate, map, guardian);
+                // ---- HARD VETO, BEFORE ANY SCORING --------------------------------------
+                if (Gm21ProtectedSafety.EndangersProtected(from, candidate, dangerRadius, friends,
+                                                           directFlight))
+                {
+                    float danger = Gm21ProtectedSafety.DangerScore(from, candidate, dangerRadius,
+                                                                   friends, directFlight);
+                    if (danger < leastBadDanger)
+                    {
+                        leastBadDanger = danger;
+                        leastBad = candidate;
+                    }
+                    continue;
+                }
+
+                // ---- only safe bearings are scored --------------------------------------
+                float score = Score(candidate, guardian, saved, hostiles, checkRadius, separation);
                 if (score > bestScore)
                 {
                     bestScore = score;
@@ -123,7 +144,31 @@ namespace Grandmaster21
                 }
             }
 
-            return best;
+            friends.Clear();
+            hostiles.Clear();
+
+            // A safe bearing always wins. The least-bad one is reached only when there was none.
+            return best.IsValid ? best : leastBad;
+        }
+
+        /// <summary>
+        /// One pass over the map's spawned pawns, split by the same protection rule the rest of
+        /// the Guardian uses.
+        /// </summary>
+        private static void Gather(Pawn guardian, Map map, List<Pawn> friends, List<Pawn> hostiles)
+        {
+            Gm21ProtectedSafety.GatherProtected(guardian, map, friends);
+
+            if (map == null || map.mapPawns == null) return;
+            IReadOnlyList<Pawn> all = map.mapPawns.AllPawnsSpawned;
+            if (all == null) return;
+
+            for (int i = 0; i < all.Count; i++)
+            {
+                Pawn pawn = all[i];
+                if (pawn == null || pawn.Dead || !pawn.Spawned) continue;
+                if (GenHostility.HostileTo(pawn, guardian)) hostiles.Add(pawn);
+            }
         }
 
         /// <summary>
@@ -140,13 +185,13 @@ namespace Grandmaster21
         }
 
         /// <summary>
-        /// How good a landing point this is. Higher is better.
+        /// How good a SAFE bearing is: how far it gets the object away from the people who matter,
+        /// and whether it happens to land on something hostile.
         ///
-        /// The pawn scan covers the area the thing would actually affect: the blast radius for an
-        /// explosive, a small neighbourhood for anything inert. That is what stops a "safe"
-        /// deflection from putting a grenade two tiles from the surgeon.
+        /// This only ever sees bearings that already passed the veto, so it does not need to know
+        /// protected pawns exist and deliberately has no way to weigh them.
         /// </summary>
-        private static float Score(IntVec3 cell, Map map, Pawn guardian, Pawn saved,
+        private static float Score(IntVec3 cell, Pawn guardian, Pawn saved, List<Pawn> hostiles,
                                    float checkRadius, float separation)
         {
             float score = separation * DistanceWeight;
@@ -156,81 +201,15 @@ namespace Grandmaster21
                 score += cell.DistanceTo(saved.Position) * SavedDistanceWeight;
             }
 
-            int radius = Mathf.CeilToInt(checkRadius);
             float radiusSquared = checkRadius * checkRadius;
-
-            for (int dz = -radius; dz <= radius; dz++)
+            for (int i = 0; i < hostiles.Count; i++)
             {
-                for (int dx = -radius; dx <= radius; dx++)
-                {
-                    if (dx * dx + dz * dz > radiusSquared) continue;
-
-                    IntVec3 c = new IntVec3(cell.x + dx, cell.y, cell.z + dz);
-                    if (!c.InBounds(map)) continue;
-
-                    List<Thing> things = map.thingGrid.ThingsListAtFast(c);
-                    if (things == null) continue;
-
-                    for (int i = 0; i < things.Count; i++)
-                    {
-                        Pawn pawn = things[i] as Pawn;
-                        if (pawn == null || pawn.Dead) continue;
-
-                        // The Grandmaster's own presence is already priced in by the separation
-                        // term; counting them again would just bias every bearing equally.
-                        if (pawn == guardian) continue;
-
-                        // "Protected" rather than merely "not hostile": the same rule the threat
-                        // model uses, so the pawns a Guardian refuses to endanger are exactly the
-                        // pawns a Guardian would have defended.
-                        if (Gm21GuardianThreat.Protects(guardian, pawn)) score -= AllyPenalty;
-                        else if (GenHostility.HostileTo(pawn, guardian)) score += HostileBonus;
-                    }
-                }
+                IntVec3 p = hostiles[i].Position;
+                float dx = p.x - cell.x, dz = p.z - cell.z;
+                if (dx * dx + dz * dz <= radiusSquared) score += HostileBonus;
             }
 
             return score;
-        }
-
-        /// <summary>
-        /// What the redirected projectile would have to fly through.
-        ///
-        /// Sampled rather than walked: a coarse march down the line is enough to notice a
-        /// protected pawn standing in the way, and it keeps the cost of scoring sixteen bearings
-        /// bounded no matter how far the deflection throws the object.
-        /// </summary>
-        private static float PathScore(IntVec3 from, IntVec3 to, Map map, Pawn guardian)
-        {
-            float dx = to.x - from.x, dz = to.z - from.z;
-            float length = Mathf.Sqrt(dx * dx + dz * dz);
-            if (length <= PathSampleStart) return 0f;
-
-            int samples = PathSamples;
-            float penalty = 0f;
-            IntVec3 previous = IntVec3.Invalid;
-
-            for (int i = 1; i <= samples; i++)
-            {
-                float t = PathSampleStart / length + (1f - PathSampleStart / length) * i / samples;
-                IntVec3 cell = new IntVec3(
-                    from.x + Mathf.RoundToInt(dx * t), from.y, from.z + Mathf.RoundToInt(dz * t));
-
-                if (cell == previous) continue;      // short paths resample the same cell
-                previous = cell;
-                if (!cell.InBounds(map)) continue;
-
-                List<Thing> things = map.thingGrid.ThingsListAtFast(cell);
-                if (things == null) continue;
-
-                for (int j = 0; j < things.Count; j++)
-                {
-                    Pawn pawn = things[j] as Pawn;
-                    if (pawn == null || pawn.Dead || pawn == guardian) continue;
-                    if (Gm21GuardianThreat.Protects(guardian, pawn)) penalty -= PathPenalty;
-                }
-            }
-
-            return penalty;
         }
     }
 }

@@ -548,7 +548,7 @@ namespace Grandmaster21
             if (!from.InBounds(map)) from = guardian.Position;
 
             IntVec3 destination = Gm21ExplosiveDisposal.ChooseHostileDestination(
-                guardian, map, from, props.explosionRadius, RedirectDistance(props, guardian));
+                guardian, map, from, props, RedirectDistance(props, guardian));
 
             // No hostile worth throwing at, or none reachable. The caller falls through to safe
             // disposal, which is a success too -- it is still away from us.

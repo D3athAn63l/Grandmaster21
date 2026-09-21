@@ -19,10 +19,18 @@ namespace Grandmaster21
     /// meaningless. The Grandmaster simply picks the best place for it to go off, which is what a
     /// person holding a live grenade would actually do.
     ///
+    /// SAFETY IS A VETO, NOT A PENALTY. A destination that would catch one of our own in the
+    /// blast, or that the warhead would have to fly through one of them to reach, is rejected
+    /// before it is scored at all. It is not a bad option competing with good ones -- it is not an
+    /// option. That ordering is the whole correctness argument: hostile value is only ever summed
+    /// among destinations that are already safe, so no number of raiders can ever add up to
+    /// "Alice was worth it".
+    ///
     /// BOUNDED, NOT OPTIMAL. Candidate destinations are the hostiles already standing on the map,
-    /// capped, and each is scored against two small pawn lists gathered in a single pass. There is
-    /// no cell-by-cell search of the map and no global optimisation: it is a few hundred distance
-    /// comparisons, and it only runs on a successful interception of a friendly explosive.
+    /// capped, and each is checked against one small protected-pawn list gathered in a single
+    /// pass. There is no cell-by-cell search of the map and no global optimisation: it is a few
+    /// hundred distance comparisons, and it only runs on a successful interception of a friendly
+    /// explosive.
     /// </summary>
     internal static class Gm21ExplosiveDisposal
     {
@@ -32,33 +40,19 @@ namespace Grandmaster21
         /// </summary>
         private const int MaxHostileCandidates = 24;
 
-        /// <summary>Score for each additional hostile caught inside the blast.</summary>
+        /// <summary>
+        /// Score for each hostile caught inside the blast. This is the ONLY term left, because it
+        /// is the only thing scoring is still allowed to decide.
+        ///
+        /// There is deliberately no protected-pawn penalty to balance it against. Protected-pawn
+        /// safety is not a term in this sum any more -- it is a veto applied before the sum
+        /// exists. See Gm21ProtectedSafety for why a penalty, however large, was the wrong shape.
+        /// </summary>
         private const float HostileInBlast = 30f;
 
         /// <summary>
-        /// Score lost per protected pawn inside the blast. An order of magnitude above the hostile
-        /// bonus, so no number of raiders ever justifies catching one of our own: three raiders
-        /// (+90) cannot outweigh a single colonist (-400).
-        /// </summary>
-        private const float ProtectedInBlast = 400f;
-
-        /// <summary>Score lost per protected pawn standing on the redirected flight path.</summary>
-        private const float ProtectedOnPath = 120f;
-
-        /// <summary>
-        /// Margin added to the blast radius when testing our own people. A warhead that lands
-        /// exactly on the edge of a colonist's tile is not "clear"; the extra tile buys the
-        /// uncertainty in where a pawn actually is when it goes off.
-        /// </summary>
-        private const float ProtectedSafetyMargin = 1.5f;
-
-        /// <summary>Samples taken along a candidate trajectory when checking what it flies over.</summary>
-        private const int PathSamples = 8;
-
-        /// <summary>
-        /// Below this score a destination is not worth throwing at, and the explosive goes to safe
-        /// disposal instead. Zero rather than negative: a throw that helps nobody and endangers
-        /// nobody is still not a reason to aim at a raider we cannot actually reach usefully.
+        /// A destination must catch at least one hostile to be worth throwing a live warhead at.
+        /// Below that, safe disposal is the better answer.
         /// </summary>
         private const float MinAcceptableScore = 1f;
 
@@ -75,8 +69,10 @@ namespace Grandmaster21
         /// camp beyond that range is simply not a throw an ordinary colonist can make.
         /// </summary>
         internal static IntVec3 ChooseHostileDestination(Pawn guardian, Map map, IntVec3 from,
-                                                         float blastRadius, float maxDistance)
+                                                         ProjectileProperties props, float maxDistance)
         {
+            float blastRadius = props == null ? 0f : props.explosionRadius;
+            bool directFlight = Gm21ProtectedSafety.IsDirectFlight(props);
             if (guardian == null || map == null || map.mapPawns == null) return IntVec3.Invalid;
 
             List<Pawn> hostiles = hostileBuffer;
@@ -93,7 +89,7 @@ namespace Grandmaster21
                 return IntVec3.Invalid;
             }
 
-            float protectedRadius = blastRadius + ProtectedSafetyMargin;
+            float dangerRadius = Gm21ProtectedSafety.DangerRadius(blastRadius);
             IntVec3 best = IntVec3.Invalid;
             float bestScore = MinAcceptableScore;
 
@@ -104,8 +100,24 @@ namespace Grandmaster21
                 // A projectile does not go through walls any more than a Grandmaster does.
                 if (!GenSight.LineOfSight(from, candidate, map)) continue;
 
-                float score = ScoreDestination(candidate, from, map, guardian,
-                                               hostiles, friends, blastRadius, protectedRadius);
+                // ---- HARD VETOES, BEFORE ANY SCORING ----------------------------------
+                //
+                // A destination that would catch one of our own in the blast, or that the warhead
+                // would have to fly through one of them to reach, is not a low-scoring candidate.
+                // It is not a candidate. No quantity of raiders standing on it changes that, which
+                // is the entire point of doing this here rather than as a penalty term: there is
+                // no arithmetic left for a big enough hostile count to win.
+                //
+                // Vetoing first is also the cheaper order -- an invalid destination never pays for
+                // the hostile count that would have justified it.
+                if (Gm21ProtectedSafety.EndangersProtected(from, candidate, dangerRadius, friends,
+                                                           directFlight))
+                {
+                    continue;
+                }
+
+                // ---- only now, among destinations that are SAFE, do we optimise --------
+                float score = ScoreDestination(candidate, hostiles, blastRadius);
                 if (score > bestScore)
                 {
                     bestScore = score;
@@ -159,33 +171,22 @@ namespace Grandmaster21
         }
 
         /// <summary>
-        /// How good a place this is to put a live warhead.
+        /// How good a SAFE destination is -- how many hostiles the blast catches, and nothing else.
         ///
-        /// Hostiles caught in the blast score, so a cluster of three raiders naturally beats an
-        /// isolated one without any special "find the cluster" pass -- the scoring IS the cluster
-        /// search. Anyone of ours inside the blast, or standing on the way there, costs far more
-        /// than any number of raiders can earn back, so a tempting group with a colonist beside it
-        /// is never chosen.
+        /// This only ever sees candidates that have already passed the vetoes, so it does not need
+        /// to know protected pawns exist and deliberately has no way to weigh them. Clustering
+        /// still needs no special pass: counting hostiles in the blast IS the cluster search, so
+        /// three raiders together outscore one isolated raider automatically.
         /// </summary>
-        private static float ScoreDestination(IntVec3 cell, IntVec3 from, Map map, Pawn guardian,
-                                              List<Pawn> hostiles, List<Pawn> friends,
-                                              float blastRadius, float protectedRadius)
+        private static float ScoreDestination(IntVec3 cell, List<Pawn> hostiles, float blastRadius)
         {
             float score = 0f;
             float blastSquared = blastRadius * blastRadius;
-            float protectedSquared = protectedRadius * protectedRadius;
 
             for (int i = 0; i < hostiles.Count; i++)
             {
                 if (WithinSquared(hostiles[i].Position, cell, blastSquared)) score += HostileInBlast;
             }
-
-            for (int i = 0; i < friends.Count; i++)
-            {
-                if (WithinSquared(friends[i].Position, cell, protectedSquared)) score -= ProtectedInBlast;
-            }
-
-            score += PathPenalty(from, cell, friends);
             return score;
         }
 
@@ -195,31 +196,5 @@ namespace Grandmaster21
             return dx * dx + dz * dz <= radiusSquared;
         }
 
-        /// <summary>
-        /// What the explosive would have to fly over. Sampled rather than walked, for the same
-        /// reason the safe-vector chooser samples: a coarse march cannot miss a pawn-sized
-        /// obstruction, and it keeps the cost of scoring two dozen destinations bounded.
-        /// </summary>
-        private static float PathPenalty(IntVec3 from, IntVec3 to, List<Pawn> friends)
-        {
-            if (friends.Count == 0) return 0f;
-
-            float dx = to.x - from.x, dz = to.z - from.z;
-            float penalty = 0f;
-
-            for (int s = 1; s < PathSamples; s++)
-            {
-                float t = (float)s / PathSamples;
-                IntVec3 point = new IntVec3(from.x + Mathf.RoundToInt(dx * t), from.y,
-                                            from.z + Mathf.RoundToInt(dz * t));
-
-                for (int i = 0; i < friends.Count; i++)
-                {
-                    if (friends[i].Position == point) { penalty -= ProtectedOnPath; break; }
-                }
-            }
-
-            return penalty;
-        }
     }
 }
