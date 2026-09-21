@@ -6,7 +6,12 @@ RimWorld install.
 
 `Rim.cs` covers the core skill/quality/UI surface; `RimMelee.cs` covers the combat surface the
 Melee Grandmaster package consumes — `IntVec3`, the grid and sight helpers, equipment and stance
-trackers, projectiles, stats and the melee verbs.
+trackers, projectiles, stats, faction relations, flecks, sounds and the melee verbs.
+
+A stub that is subtly *wrong* is worse than one that is missing, because it invents failures the
+game would not have. `GenHostility.HostileTo` originally compared faction identity here; the real
+one compares faction RELATIONS, and the difference made an allied faction read as hostile. It now
+mirrors the real rule.
 
 **These are not a substitute for a real build.** Signatures here were written to mirror RimWorld
 1.6, but they are an approximation: a member whose real signature differs would compile here and

@@ -34,6 +34,7 @@ namespace Verse
     {
         public static void Message(string s) { Console.WriteLine("[msg] " + s); }
         public static void Warning(string s) { Console.WriteLine("[warn] " + s); }
+        public static void WarningOnce(string s, int key) { Console.WriteLine("[warn1] " + s); }
         public static void Error(string s) { Console.WriteLine("[err] " + s); }
     }
 
@@ -106,7 +107,19 @@ namespace Verse
         private void CheckForStateChange(DamageInfo? dinfo, Hediff hediff) { }
     }
 
-    public class Faction { public bool IsPlayer; }
+    public class Faction
+    {
+        public bool IsPlayer;
+        // Test hook: the real relation table is built by world generation.
+        public readonly Dictionary<Faction, RimWorld.FactionRelationKind> relationsStub =
+            new Dictionary<Faction, RimWorld.FactionRelationKind>();
+        public RimWorld.FactionRelationKind RelationKindWith(Faction other)
+        {
+            RimWorld.FactionRelationKind k;
+            if (other == this) return RimWorld.FactionRelationKind.Ally;
+            return relationsStub.TryGetValue(other, out k) ? k : RimWorld.FactionRelationKind.Neutral;
+        }
+    }
 
     public class Gizmo { }
     public class Command : Gizmo { public string defaultLabel; public string defaultDesc; public Texture2D icon; }

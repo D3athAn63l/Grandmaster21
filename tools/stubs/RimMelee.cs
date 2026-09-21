@@ -192,9 +192,60 @@ namespace Verse
     }
 }
 
+namespace Verse
+{
+    public struct TargetInfo
+    {
+        public Thing Thing; public IntVec3 Cell; public Map Map;
+        public TargetInfo(Thing t) { Thing = t; Cell = t == null ? IntVec3.Invalid : t.Position; Map = t == null ? null : t.Map; }
+        public TargetInfo(IntVec3 c, Map map, bool allowNullMap) { Thing = null; Cell = c; Map = map; }
+    }
+
+    public class FleckDef : Def { }
+
+    /// <summary>Test hook: every effect is recorded instead of drawn, so tests can assert on it.</summary>
+    public static class FleckMaker
+    {
+        public static int connectingLinesStub, glowsStub, staticsStub;
+        public static void ConnectingLine(Vector3 start, Vector3 end, FleckDef def, Map map, float width) { connectingLinesStub++; }
+        public static void ThrowLightningGlow(Vector3 loc, Map map, float size) { glowsStub++; }
+        public static void Static(Vector3 loc, Map map, FleckDef def, float scale) { staticsStub++; }
+        public static void Static(IntVec3 cell, Map map, FleckDef def, float scale) { staticsStub++; }
+        public static void ResetStub() { connectingLinesStub = 0; glowsStub = 0; staticsStub = 0; }
+    }
+}
+
+namespace Verse.Sound
+{
+    using Verse;
+    public enum MaintenanceType { None, PerTick, PerFrame }
+    public struct SoundInfo
+    {
+        public TargetInfo Maker;
+        public static SoundInfo InMap(TargetInfo maker, MaintenanceType maint = MaintenanceType.None)
+        { SoundInfo i; i.Maker = maker; return i; }
+    }
+    public static class SoundStarter
+    {
+        public static int shotsStub;
+        public static void PlayOneShot(this RimWorld.SoundDef def, SoundInfo info) { shotsStub++; }
+    }
+}
+
 namespace RimWorld
 {
     using Verse;
+
+    public enum FactionRelationKind { Hostile, Neutral, Ally }
+
+    public class SoundDef : Def { }
+    public static class SoundDefOf { public static SoundDef MetalHitImportant = new SoundDef(); }
+
+    public static class FleckDefOf
+    {
+        public static FleckDef LineEMP = new FleckDef();
+        public static FleckDef MicroSparksFast = new FleckDef();
+    }
 
     public class StatDef : Def { public float defaultBaseValue = 1f; }
 
@@ -225,11 +276,17 @@ namespace RimWorld
 
     public static class GenHostility
     {
+        /// <summary>
+        /// Mirrors the real one: hostility is a FACTION RELATION, not faction identity. Two
+        /// different factions are hostile only if their relation says so, which is what makes an
+        /// allied faction non-hostile.
+        /// </summary>
         public static bool HostileTo(this Thing a, Thing b)
         {
             if (a == null || b == null) return false;
             if (a.Faction == null || b.Faction == null) return false;
-            return a.Faction != b.Faction;
+            if (a.Faction == b.Faction) return false;
+            return a.Faction.RelationKindWith(b.Faction) == FactionRelationKind.Hostile;
         }
     }
 

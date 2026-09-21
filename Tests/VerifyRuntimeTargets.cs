@@ -231,6 +231,42 @@ static class VerifyRuntimeTargets
         Ok("ProjectileProperties.SpeedTilesPerTick exists",
            AccessTools.Property(typeof(ProjectileProperties), "SpeedTilesPerTick") != null);
 
+        Console.WriteLine("\n=== Guardian threat model ===");
+        Ok("Projectile.usedTarget field is public (resolved destination)",
+           typeof(Projectile).GetField("usedTarget") != null);
+        Ok("  ...and is a LocalTargetInfo",
+           typeof(Projectile).GetField("usedTarget") != null
+           && typeof(Projectile).GetField("usedTarget").FieldType == typeof(LocalTargetInfo));
+        Ok("LocalTargetInfo.Thing exists", AccessTools.Property(typeof(LocalTargetInfo), "Thing") != null);
+        Ok("LocalTargetInfo.Cell exists", AccessTools.Property(typeof(LocalTargetInfo), "Cell") != null);
+        Ok("Projectile.origin resolves (correction angle)",
+           AccessTools.Field(typeof(Projectile), "origin") != null);
+        Ok("Faction.RelationKindWith resolves (ally-only protection)",
+           AccessTools.Method(typeof(Faction), "RelationKindWith", new[] { typeof(Faction) }) != null);
+        Ok("FactionRelationKind.Ally exists",
+           System.Enum.IsDefined(typeof(FactionRelationKind), "Ally"));
+        Ok("Pawn.Faction exists", AccessTools.Property(typeof(Pawn), "Faction") != null);
+
+        Console.WriteLine("\n=== Guardian micro-dash effects (cosmetic, null-checked at runtime) ===");
+        Ok("FleckMaker.ConnectingLine resolves",
+           AccessTools.Method(typeof(FleckMaker), "ConnectingLine") != null);
+        Ok("FleckMaker.ThrowLightningGlow resolves",
+           AccessTools.Method(typeof(FleckMaker), "ThrowLightningGlow") != null);
+        MethodInfo fleckStatic = AccessTools.Method(typeof(FleckMaker), "Static",
+            new[] { typeof(UnityEngine.Vector3), typeof(Map), typeof(FleckDef), typeof(float) });
+        Ok("FleckMaker.Static(Vector3, Map, FleckDef, float) resolves", fleckStatic != null);
+        Ok("FleckDefOf.LineEMP exists", typeof(FleckDefOf).GetField("LineEMP") != null);
+        Ok("FleckDefOf.MicroSparksFast exists", typeof(FleckDefOf).GetField("MicroSparksFast") != null);
+        Ok("SoundDefOf.MetalHitImportant exists", typeof(SoundDefOf).GetField("MetalHitImportant") != null);
+        Ok("SoundInfo.InMap(TargetInfo, ...) resolves",
+           AccessTools.Method(typeof(Verse.Sound.SoundInfo), "InMap") != null);
+        Ok("SoundStarter.PlayOneShot resolves",
+           AccessTools.Method(typeof(Verse.Sound.SoundStarter), "PlayOneShot") != null);
+        Ok("TargetInfo(IntVec3, Map, bool) resolves",
+           AccessTools.Constructor(typeof(TargetInfo),
+               new[] { typeof(IntVec3), typeof(Map), typeof(bool) }) != null);
+        Ok("Log.WarningOnce resolves", AccessTools.Method(typeof(Log), "WarningOnce") != null);
+
         Console.WriteLine("\n=== Interception geometry ===");
         Ok("GenSight.LineOfSight(start, end, map) resolves",
            AccessTools.Method(typeof(GenSight), "LineOfSight",
