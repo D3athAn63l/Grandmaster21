@@ -91,6 +91,24 @@ namespace Grandmaster21
         }
 
         /// <summary>
+        /// ADDITIVE ACCESSOR, added for the Melee Grandmaster package. Nothing above or below it
+        /// changed: every existing method here still behaves exactly as it did for Shooting, which
+        /// is a hard requirement of the melee work -- the shooting capstone has already passed
+        /// runtime validation and must not be perturbed.
+        ///
+        /// Melee needs the same "is this part vital?" question Killer and Downed already answer
+        /// internally, because a melee Grandmaster picks a finishing blow with knowledge a bullet
+        /// does not have (see Gm21MeleeTargeting). Exposing the existing predicate is strictly
+        /// cheaper and safer than duplicating the tag table in a second file, where the two copies
+        /// would drift.
+        /// </summary>
+        internal static bool IsVitalPart(BodyPartRecord part)
+        {
+            Resolve();
+            return IsVital(part);
+        }
+
+        /// <summary>
         /// KILLER -- the anatomy whose destruction kills fastest.
         ///
         /// Priority follows the design brief: brain, then the part containing the brain (the

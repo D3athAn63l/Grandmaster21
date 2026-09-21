@@ -34,13 +34,30 @@ namespace Verse
     {
         public static void Message(string s) { Console.WriteLine("[msg] " + s); }
         public static void Warning(string s) { Console.WriteLine("[warn] " + s); }
+        public static void WarningOnce(string s, int key) { Console.WriteLine("[warn1] " + s); }
         public static void Error(string s) { Console.WriteLine("[err] " + s); }
     }
 
     public class Def { public string defName; public string label; public TaggedString LabelCap { get { return label; } } }
 
-    public class Thing { public ThingDef def; public bool Destroyed; public virtual void PreApplyDamage(ref DamageInfo dinfo, out bool absorbed) { absorbed = false; } }
-    public class ThingDef : Def { public bool IsRangedWeapon; }
+    public class Thing
+    {
+        public ThingDef def; public bool Destroyed;
+        public IntVec3 Position; public Map Map; public bool Spawned;
+        public Faction Faction;
+        public Vector3 DrawPos { get { return new Vector3(Position.x, 0f, Position.z); } }
+        // Test hook: stat values are a dictionary instead of RimWorld's stat pipeline. The
+        // SIGNATURE consumed by the mod (StatExtension.GetStatValue) is identical.
+        public readonly Dictionary<RimWorld.StatDef, float> statsStub = new Dictionary<RimWorld.StatDef, float>();
+        public virtual void PreApplyDamage(ref DamageInfo dinfo, out bool absorbed) { absorbed = false; }
+    }
+    public class ThingWithComps : Thing { }
+    public class ThingDef : Def
+    {
+        public bool IsRangedWeapon; public bool IsMeleeWeapon; public bool IsWeapon;
+        public bool destroyOnDrop; public bool destroyable = true;
+        public ProjectileProperties projectile;
+    }
     public class RaceProperties { public bool IsMechanoid; public bool Animal; public bool Humanlike; }
 
     public class BodyPartTagDef : Def { }
@@ -64,6 +81,9 @@ namespace Verse
         public Thing IntendedTarget { get; set; }
         public BodyPartRecord HitPart { get; private set; }
         public void SetHitPart(BodyPartRecord part) { HitPart = part; }
+        private float amountInt;
+        public float Amount { get { return amountInt; } }
+        public void SetAmount(float newAmount) { amountInt = newAmount; }
     }
     public class Hediff { }
     public class HediffSet
@@ -75,7 +95,31 @@ namespace Verse
         public bool PartIsMissing(BodyPartRecord p) { return p.missingStub; }
     }
 
-    public class Faction { public bool IsPlayer; }
+    public class Pawn_HealthTracker
+    {
+        public RimWorld.PawnCapacitiesHandler capacities = new RimWorld.PawnCapacitiesHandler();
+        public HediffSet hediffSet = new HediffSet();
+        public bool forceDowned;
+        private Pawn pawn;                                  // private in RimWorld; read reflectively
+        public bool Downed { get; set; }
+        public Pawn_HealthTracker() { }
+        public Pawn_HealthTracker(Pawn p) { pawn = p; }
+        private void CheckForStateChange(DamageInfo? dinfo, Hediff hediff) { }
+    }
+
+    public class Faction
+    {
+        public bool IsPlayer;
+        // Test hook: the real relation table is built by world generation.
+        public readonly Dictionary<Faction, RimWorld.FactionRelationKind> relationsStub =
+            new Dictionary<Faction, RimWorld.FactionRelationKind>();
+        public RimWorld.FactionRelationKind RelationKindWith(Faction other)
+        {
+            RimWorld.FactionRelationKind k;
+            if (other == this) return RimWorld.FactionRelationKind.Ally;
+            return relationsStub.TryGetValue(other, out k) ? k : RimWorld.FactionRelationKind.Neutral;
+        }
+    }
 
     public class Gizmo { }
     public class Command : Gizmo { public string defaultLabel; public string defaultDesc; public Texture2D icon; }
@@ -85,11 +129,30 @@ namespace Verse
     public static class BaseContent { public static Texture2D BadTex = new Texture2D(); }
     public static class ContentFinder<T> where T : class, new() { public static T Get(string path, bool reportFailure = true) { return new T(); } }
 
-    public struct LocalTargetInfo { public Thing Thing; }
+    public struct LocalTargetInfo
+    {
+        public Thing Thing;
+        public IntVec3 Cell;
+        public LocalTargetInfo(Thing t) { Thing = t; Cell = t == null ? IntVec3.Invalid : t.Position; }
+        public LocalTargetInfo(IntVec3 c) { Thing = null; Cell = c; }
+        // RimWorld really does define these, and the melee code relies on the Thing one to pass a
+        // Pawn straight to Verb.CanHitTarget. Verified against the shipped assembly by
+        // Tests/VerifyRuntimeTargets.cs.
+        public static implicit operator LocalTargetInfo(Thing t) { return new LocalTargetInfo(t); }
+        public static implicit operator LocalTargetInfo(IntVec3 c) { return new LocalTargetInfo(c); }
+    }
     public class Verb
     {
         public Thing caster; public Pawn CasterPawn; public VerbProperties verbProps;
         public LocalTargetInfo CurrentTarget;
+        // Test hook: the real CanHitTarget resolves reach and line of sight. Tests set the
+        // predicate; the SIGNATURE the mod calls is identical.
+        public Func<Thing, bool> canHitStub;
+        // ONE overload, matching RimWorld exactly. A Thing argument reaches it through the
+        // implicit conversion above, which is the real call path -- adding a Thing overload here
+        // would have hidden a signature mismatch instead of exposing one.
+        public virtual bool CanHitTarget(LocalTargetInfo t)
+        { return canHitStub == null || canHitStub(t.Thing); }
         protected internal int burstShotsLeft;          // protected in RimWorld; read reflectively
         protected internal virtual int ShotsPerBurst { get { return shotsPerBurstStub; } }
         public int shotsPerBurstStub = 1;               // test hook
@@ -97,6 +160,7 @@ namespace Verse
     public class VerbProperties { public float warmupTime; public bool IsMeleeAttack; }
     public class Verb_LaunchProjectile : Verb { }
     public class Stance { }
+    public class Stance_Mobile : Stance { }
     public class Stance_Busy : Stance { public Stance_Busy(int ticks, LocalTargetInfo focusTarg, Verb verb) { } }
     public class Stance_Warmup : Stance_Busy { public Stance_Warmup(int ticks, LocalTargetInfo focusTarg, Verb verb) : base(ticks, focusTarg, verb) { } }
     public class Stance_Cooldown : Stance_Busy { public Stance_Cooldown(int ticks, LocalTargetInfo focusTarg, Verb verb) : base(ticks, focusTarg, verb) { } }
@@ -115,12 +179,17 @@ namespace Verse
     public class Pawn : Thing
     {
         public RimWorld.Pawn_SkillTracker skills;
-        public RimWorld.Pawn_HealthTracker health;
+        public Pawn_HealthTracker health;
         public RaceProperties RaceProps;
+        public Pawn_EquipmentTracker equipment;
+        public Pawn_StanceTracker stances;
+        public RimWorld.Pawn_MeleeVerbs meleeVerbs;
         public bool IsColonist;
         public bool Dead;
         public bool Downed;
-        public Faction Faction;
+        public bool awakeStub = true;                        // test hook behind RestUtility.Awake
+        public float bodySizeStub = 1f;
+        public float BodySize { get { return bodySizeStub; } }
         public TaggedString LabelShortCap { get { return "pawn"; } }
         public override void PreApplyDamage(ref DamageInfo dinfo, out bool absorbed) { absorbed = false; }
         public virtual IEnumerable<Gizmo> GetGizmos() { return new List<Gizmo>(); }
@@ -151,15 +220,89 @@ namespace Verse
 
     public enum ThingRequestGroup { Undefined, Corpse, ThingHolder }
     public class ListerThings { public List<Thing> ThingsInGroup(ThingRequestGroup g) { return new List<Thing>(); } }
-    public class MapPawns { public List<Pawn> AllPawns { get { return new List<Pawn>(); } } }
-    public class Map { public MapPawns mapPawns; public ListerThings listerThings; }
+    public class MapPawns
+    {
+        // Test hook: the real list is maintained by spawn/despawn.
+        public readonly List<Pawn> spawnedStub = new List<Pawn>();
+        public List<Pawn> AllPawns { get { return spawnedStub; } }
+        public System.Collections.Generic.IReadOnlyList<Pawn> AllPawnsSpawned { get { return spawnedStub; } }
+    }
+    public class ThingGrid
+    {
+        private readonly Dictionary<IntVec3, List<Thing>> cells = new Dictionary<IntVec3, List<Thing>>();
+        public List<Thing> ThingsListAtFast(IntVec3 c)
+        { List<Thing> l; return cells.TryGetValue(c, out l) ? l : EmptyList; }
+        private static readonly List<Thing> EmptyList = new List<Thing>();
+        public void Register(Thing t)
+        { List<Thing> l; if (!cells.TryGetValue(t.Position, out l)) { l = new List<Thing>(); cells[t.Position] = l; } l.Add(t); }
+    }
+    public class Map
+    {
+        public MapPawns mapPawns = new MapPawns(); public ListerThings listerThings;
+        public ThingGrid thingGrid = new ThingGrid();
+        public IntVec3 Size = new IntVec3(250, 1, 250);
+        // Test hook: cells listed here are impassable, standing in for walls and rock.
+        public readonly HashSet<IntVec3> blockedStub = new HashSet<IntVec3>();
+    }
 
     public class Game { }
+    public class GameComponent
+    {
+        public virtual void GameComponentTick() { }
+        public virtual void StartedNewGame() { }
+        public virtual void LoadedGame() { }
+        public virtual void ExposeData() { }
+    }
+    public class TickManager { public int TicksGame; }
     public enum ProgramState { Entry, MapInitializing, Playing }
     public static class Current
     {
         public static Game Game;
         public static ProgramState ProgramState;
+    }
+
+    public struct CurvePoint
+    {
+        public float x, y;
+        public CurvePoint(float x, float y) { this.x = x; this.y = y; }
+    }
+
+    /// <summary>Piecewise-linear, clamped at both ends -- the same shape RimWorld's curve has.</summary>
+    public class SimpleCurve : System.Collections.IEnumerable
+    {
+        private readonly List<CurvePoint> points = new List<CurvePoint>();
+        public void Add(CurvePoint p) { points.Add(p); }
+        public System.Collections.IEnumerator GetEnumerator() { return points.GetEnumerator(); }
+        public float Evaluate(float x)
+        {
+            if (points.Count == 0) return 0f;
+            if (x <= points[0].x) return points[0].y;
+            for (int i = 1; i < points.Count; i++)
+            {
+                if (x <= points[i].x)
+                {
+                    CurvePoint a = points[i - 1], b = points[i];
+                    float t = (b.x - a.x) <= 0f ? 0f : (x - a.x) / (b.x - a.x);
+                    return a.y + (b.y - a.y) * t;
+                }
+            }
+            return points[points.Count - 1].y;
+        }
+    }
+
+    /// <summary>
+    /// Test hook: RimWorld's Rand is a seeded generator. Here it is a plain Random the harness
+    /// can seed and, where a test needs determinism, force to a fixed value.
+    /// </summary>
+    public static class Rand
+    {
+        private static Random rng = new Random(1);
+        public static void SeedStub(int seed) { rng = new Random(seed); }
+        public static float? ForcedValueStub;
+        public static float Value
+        { get { return ForcedValueStub.HasValue ? ForcedValueStub.Value : (float)rng.NextDouble(); } }
+        public static bool Chance(float p)
+        { if (p <= 0f) return false; if (p >= 1f) return true; return Value < p; }
     }
 
     public class Window { }
@@ -177,6 +320,7 @@ namespace Verse
         public static RimWorld.Planet.WorldPawns WorldPawns { get { return null; } }
         public static RimWorld.Planet.WorldObjectsHolder WorldObjects { get { return null; } }
         public static WindowStack WindowStack = new WindowStack();
+        public static TickManager TickManager = new TickManager();
     }
 
     public static class PawnsFinder
@@ -234,28 +378,29 @@ namespace RimWorld
     using Verse;
 
     public class SkillDef : Def { }
-    public static class SkillDefOf { public static SkillDef Shooting = new SkillDef { defName = "Shooting" }; }
+    public static class SkillDefOf
+    {
+        public static SkillDef Shooting = new SkillDef { defName = "Shooting" };
+        public static SkillDef Melee = new SkillDef { defName = "Melee" };
+    }
 
     public class PawnCapacityDef : Def { }
     public static class PawnCapacityDefOf
     {
-        public static PawnCapacityDef Consciousness = new PawnCapacityDef();
-        public static PawnCapacityDef Manipulation = new PawnCapacityDef();
-        public static PawnCapacityDef Moving = new PawnCapacityDef();
+        public static PawnCapacityDef Consciousness = new PawnCapacityDef { defName = "Consciousness" };
+        public static PawnCapacityDef Manipulation = new PawnCapacityDef { defName = "Manipulation" };
+        public static PawnCapacityDef Moving = new PawnCapacityDef { defName = "Moving" };
+        public static PawnCapacityDef Sight = new PawnCapacityDef { defName = "Sight" };
     }
-    public class PawnCapacitiesHandler { public bool CapableOf(PawnCapacityDef d) { return true; } }
-    public class Pawn_HealthTracker
+    public class PawnCapacitiesHandler
     {
-        public PawnCapacitiesHandler capacities = new PawnCapacitiesHandler();
-        public HediffSet hediffSet = new HediffSet();
-        public bool forceDowned;
-        private Pawn pawn;                                  // private in RimWorld; read reflectively
-        public bool Downed { get; set; }
-        public Pawn_HealthTracker() { }
-        public Pawn_HealthTracker(Pawn p) { pawn = p; }
-        private void CheckForStateChange(DamageInfo? dinfo, Hediff hediff) { }
+        // Test hook: capacities are a dictionary instead of RimWorld's hediff-driven
+        // calculation. Unset capacities read as a healthy 1.0, matching an uninjured pawn.
+        public readonly Dictionary<PawnCapacityDef, float> levelsStub = new Dictionary<PawnCapacityDef, float>();
+        public float GetLevel(PawnCapacityDef d)
+        { float v; return levelsStub.TryGetValue(d, out v) ? v : 1f; }
+        public bool CapableOf(PawnCapacityDef d) { return GetLevel(d) > 0f; }
     }
-
     public struct ShotReport
     {
         public float AimOnTargetChance_IgnoringPosture { get { return 1f; } }

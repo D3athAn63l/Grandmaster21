@@ -16,13 +16,13 @@ OUT="${GM21_STUB_DIR:-$(mktemp -d)}"
 echo "stub dir: $OUT"
 mcs -target:library -out:"$OUT/UnityEngine.dll"     tools/stubs/Unity.cs
 mcs -target:library -out:"$OUT/0Harmony.dll"        tools/stubs/Harmony.cs
-mcs -target:library -out:"$OUT/Assembly-CSharp.dll" -r:"$OUT/UnityEngine.dll" tools/stubs/Rim.cs
+mcs -target:library -out:"$OUT/Assembly-CSharp.dll" -r:"$OUT/UnityEngine.dll" tools/stubs/Rim.cs tools/stubs/RimMelee.cs
 mcs -target:library -out:"$OUT/Grandmaster21.dll" -optimize+ -warn:2 \
     -r:"$OUT/Assembly-CSharp.dll" -r:"$OUT/UnityEngine.dll" -r:"$OUT/0Harmony.dll" \
-    Source/*.cs Source/Shooting/*.cs
+    Source/*.cs Source/Shooting/*.cs Source/Melee/*.cs
 echo "compile OK"
 FAILED=0
-for t in OfflineHarness OfflineHarness_Shooting; do
+for t in OfflineHarness OfflineHarness_Shooting OfflineHarness_Melee; do
   mcs -out:"$OUT/$t.exe" -r:"$OUT/Assembly-CSharp.dll" -r:"$OUT/UnityEngine.dll" \
       -r:"$OUT/0Harmony.dll" -r:"$OUT/Grandmaster21.dll" -r:System.Xml.dll "Tests/$t.cs"
   echo "=== $t ==="

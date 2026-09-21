@@ -106,28 +106,38 @@ static class VerifyFinalizerSemantics
     static void AuditShippedFinalizers()
     {
         Assembly mod = Assembly.LoadFrom("Grandmaster21.dll");
-        string[] names =
+
+        // DISCOVERED, not listed. A hardcoded list silently stops covering the mod the moment a
+        // new finalizer is added -- which is exactly what happened when the melee package landed.
+        // Every method whose name marks it as a finalizer is audited, so a new one is covered the
+        // day it is written.
+        const BindingFlags Any = BindingFlags.Static | BindingFlags.Instance
+                               | BindingFlags.Public | BindingFlags.NonPublic
+                               | BindingFlags.DeclaredOnly;
+
+        int found = 0;
+        foreach (Type t in mod.GetTypes())
         {
-            "Grandmaster21.Gm21ShootingPatches:Finalizer_CloseShotContext",
-            "Grandmaster21.Gm21DownedGuard:Finalizer"
-        };
+            foreach (MethodInfo m in t.GetMethods(Any))
+            {
+                if (m.Name.IndexOf("Finalizer", StringComparison.Ordinal) < 0) continue;
+                found++;
 
-        foreach (string entry in names)
-        {
-            string[] split = entry.Split(':');
-            Type t = mod.GetType(split[0]);
-            MethodInfo m = t == null ? null : AccessTools.Method(t, split[1]);
-            if (m == null) { Check(entry + " exists", false); continue; }
+                bool isVoid = m.ReturnType == typeof(void);
+                bool returnsExceptionSafely = m.ReturnType == typeof(Exception)
+                    && Array.Exists(m.GetParameters(), p => p.Name == "__exception");
 
-            bool isVoid = m.ReturnType == typeof(void);
-            bool returnsExceptionSafely = m.ReturnType == typeof(Exception)
-                && Array.Exists(m.GetParameters(), p => p.Name == "__exception");
-
-            Check(entry + " does not suppress exceptions", isVoid || returnsExceptionSafely,
-                  "returns " + m.ReturnType.Name
-                  + (isVoid ? " (void: cannot alter exception state)"
-                            : returnsExceptionSafely ? " with __exception"
-                            : " WITHOUT __exception -- would suppress"));
+                Check(t.FullName + ":" + m.Name + " does not suppress exceptions",
+                      isVoid || returnsExceptionSafely,
+                      "returns " + m.ReturnType.Name
+                      + (isVoid ? " (void: cannot alter exception state)"
+                                : returnsExceptionSafely ? " with __exception"
+                                : " WITHOUT __exception -- would suppress"));
+            }
         }
+
+        // Four are expected today: the shooting shot context and downed guard, and the melee
+        // frame and downed guard. Fewer means discovery broke, not that the mod got safer.
+        Check("all four shipped finalizers were discovered", found >= 4, "found=" + found);
     }
 }

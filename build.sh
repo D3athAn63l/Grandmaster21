@@ -45,6 +45,6 @@ mcs -target:library -out:Assemblies/Grandmaster21.dll -optimize+ -nostdlib -noco
   -r:"$MANAGED/UnityEngine.dll" -r:"$MANAGED/UnityEngine.CoreModule.dll" \
   -r:"$MANAGED/UnityEngine.IMGUIModule.dll" -r:"$MANAGED/UnityEngine.TextRenderingModule.dll" \
   -r:"$HARMONY" \
-  Source/*.cs Source/Shooting/*.cs
+  Source/*.cs Source/Shooting/*.cs Source/Melee/*.cs
 
 echo "Built Assemblies/Grandmaster21.dll  ($STAMP, commit $COMMIT)"

@@ -16,6 +16,11 @@
 #      suppress exceptions thrown by RimWorld or by other mods' patches on the same methods.
 #   5. Harness -- the progression suite, driven against the real SkillRecord and the real XP curve.
 #
+# Checks 2, 3 and 5 need real method BODIES. Reference assemblies (for example the
+# Krafs.Rimworld.Ref NuGet package) carry full metadata but no IL, so those three fail with
+# "Method has zero rva" against them -- that is the environment, not a finding. Checks 1 and 4
+# work against reference assemblies and cover every reflective target and Harmony parameter name.
+#
 # Targets that cannot be bound outside the game are reported as BLOCKED rather than failed. Two
 # causes: a declaring type holding fields typed from a launcher-side assembly
 # (Assembly-CSharp-firstpass, UnityEngine.AudioModule, Steamworks.NET) -- copy those in alongside
@@ -31,7 +36,9 @@ HARMONY="${2:?usage: verify-real.sh <Managed dir> <0Harmony.dll>}"
 
 OUT="$(mktemp -d)"
 FACADE=/usr/lib/mono/4.5/Facades/netstandard.dll
-CECIL="$(find /usr/lib/mono/gac/Mono.Cecil -name 'Mono.Cecil.dll' | sort | tail -1)"
+# sort -V, not plain sort: a lexical sort puts 0.9.5.0 AFTER 0.11.0.0 and picks the ancient
+# Cecil, whose ReaderParameters has no ReadWrite/InMemory and fails to compile the IL checker.
+CECIL="$(find /usr/lib/mono/gac/Mono.Cecil -name 'Mono.Cecil.dll' | sort -V | tail -1)"
 cp "$MANAGED"/*.dll "$HARMONY" Assemblies/Grandmaster21.dll "$OUT/"
 [ -n "$CECIL" ] && cp "$CECIL" "$OUT/"
 

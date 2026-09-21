@@ -2,7 +2,7 @@
 <ModMetaData>
   <packageId>ared.grandmaster21</packageId>
   <name>Grandmaster 21</name>
-  <modVersion>0.9.1 Beta</modVersion>
+  <modVersion>0.10.3 Beta</modVersion>
   <author>aRed</author>
   <supportedVersions>
     <li>1.6</li>
@@ -33,6 +33,22 @@ Grandmaster is also the only pawn skill level capable of producing Legendary-qua
 SHOOTING 21 - GRANDMASTER MARKSMAN
 
 The first skill-specific capstone. A Shooting Grandmaster compensates for almost all remaining weapon inaccuracy, ignores cover and ordinary environmental aim penalties, aims and recovers between shots 99% faster, and unlocks per-pawn aim modes: Normal, Killer (aim to kill) and Downed (least-lethal targeting - mobility first, then manipulation, then non-vital extremities, re-aimed after every shot, and firing stops once the target is down). Range, damage, armour and line of sight are untouched - the mastery is the marksman's, not the bullet's. Incompatible with Combat Extended, which disables the marksman package automatically.
+
+MELEE 21 - GRANDMASTER OF COMBAT
+
+The second skill-specific capstone, and a deliberately overpowered one. A Melee Grandmaster controls the immediate battlefield: they strike with near-perfect execution, parry almost anything ordinary melee skill can throw at them, exploit about 99% of the defence an opponent's own skill generates, counterattack instantly when they turn a blow aside, disarm armed foes, land critical strikes from 2x to 10x, cleave through crowded melee, intercept attacks aimed at allies within three tiles, and intercept, deflect and return incoming projectiles - arrows, bullets, grenades and rockets alike.
+
+The Guardian is threat-aware: it does NOT intercept every projectile within three tiles. It reacts only to projectiles that credibly threaten the Grandmaster or a protected ally, so a hundred-round minigun burst that mostly misses produces a handful of reactions rather than a hundred. Hostile fire may be returned to the sender. An ally's accidental friendly fire is instead corrected back toward the enemy it was aimed at, and the ally keeps the shot. A friendly who deliberately force-attacks the Grandmaster with a direct shot is not having an accident, and may find the round coming straight back.
+
+Friendly EXPLOSIVES are handled differently on purpose. An area weapon has no single aim point worth reasoning about, so the Guardian does not try to guess intent: any friendly grenade, rocket or shell that threatens the Grandmaster or a protected ally is treated as a dangerous accident, redirected toward the best available hostile group, or thrown somewhere safe if none is reachable. Protected-pawn safety is a hard constraint, not a preference: a destination that would catch one of your own in the blast, or that the projectile would have to fly through one of them to reach, is rejected outright before anything is weighed. No number of raiders makes a colonist acceptable collateral. It is never sent back at the ally who launched it. The fuse, blast radius and payload all survive - the Guardian decides where it goes off, not whether. Interception never moves the pawn: jobs, pathing and melee engagement are untouched.
+
+Every one of those abilities is driven by the pawn's OWN stats, so no two Grandmasters fight alike. A fast pawn excels at interception and projectile defence. A precise, perceptive one excels at disarming, criticals and returning projectiles to their sender. A physically powerful one excels at cleaving and at hurling deflected explosives absurd distances. A heavily modded pawn becomes correspondingly absurd, and that is intended. A pawn who is downed, unconscious, asleep, stunned, blind or armless loses the abilities that body part was providing.
+
+Armour, weapon damage, damage types and blast radius are untouched: the mastery is the fighter's, not the weapon's. There is no explosion immunity - a successfully redirected doomsday rocket can still kill the Grandmaster who redirected it.
+
+Melee Grandmasters also get their own Normal/Killer/Downed doctrine, separate from the Shooting aim mode. Downed doctrine additionally pulls the blow, stopping short of destroying the limb it is aimed at - something only melee can do.
+
+Incompatible with combat overhauls, which disable the melee package automatically.
 
 Other skills do not have Level 21 abilities yet.
 

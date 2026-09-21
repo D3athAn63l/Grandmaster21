@@ -16,10 +16,16 @@ namespace Grandmaster21
             // one shooting feature instead of throwing out of PatchAll and taking the entire mod
             // -- level 21 permanence included -- down with it.
             Gm21ShootingPatches.Apply(harmony);
+            Gm21MeleePatches.Apply(harmony);
 
             Log.Message("[Grandmaster 21] " + Gm21Version.Full
                         + "  |  shooting: passive=" + Gm21Shooting.PassiveBonusesEnabled
-                        + " targeting=" + Gm21Shooting.AnatomicalTargetingEnabled);
+                        + " targeting=" + Gm21Shooting.AnatomicalTargetingEnabled
+                        + "  |  melee: passive=" + Gm21Melee.PassiveEnabled
+                        + " reactions=" + Gm21Melee.ReactionsEnabled
+                        + " doctrine=" + Gm21Melee.DoctrineEnabled
+                        + " ally=" + Gm21Melee.AllyInterceptEnabled
+                        + " projectile=" + Gm21Melee.ProjectileDefenceEnabled);
 
             if (!Gm21.LearnPatchApplied)
             {
