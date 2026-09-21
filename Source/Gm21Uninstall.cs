@@ -114,10 +114,12 @@ namespace Grandmaster21
 
                 report.pawnsProcessed++;
 
-                // The aim mode is Grandmaster-only state; once the pawn is back to level 20 it is
-                // meaningless, and leaving it behind would write a gm21AimMode element into a save
-                // that is meant to contain no Grandmaster21 state at all.
+                // Aim mode and melee doctrine are both Grandmaster-only state; once the pawn is
+                // back to level 20 they are meaningless, and leaving either behind would write a
+                // gm21AimMode or gm21MeleeDoctrine element into a save that is meant to contain no
+                // Grandmaster21 state at all.
                 Gm21AimModeStore.Clear(pawn);
+                Gm21MeleeDoctrineStore.Clear(pawn);
 
                 List<SkillRecord> records = tracker.skills;
                 for (int i = 0; i < records.Count; i++)

@@ -9,6 +9,7 @@
   <GM21_GrandmasterDescriptor>Grandmaster</GM21_GrandmasterDescriptor>
   <!-- Per-skill Grandmaster titles. Falls back to GM21_GrandmasterDescriptor. -->
   <GM21_Descriptor_Shooting>Grandmaster Marksman</GM21_Descriptor_Shooting>
+  <GM21_Descriptor_Melee>Grandmaster of Combat</GM21_Descriptor_Melee>
 
   <!-- Per-skill Grandmaster tooltips, looked up as GM21_Achieved_&lt;SkillDef defName&gt;.
        Skills with no entry fall back to GM21_Achieved_Default. Do NOT give a skill the
@@ -17,13 +18,15 @@
 
   <GM21_Achieved_Shooting>Grandmaster Marksman\nThis pawn has transcended ordinary ranged combat mastery. They compensate almost perfectly for weapon inaccuracy, ignore cover and ordinary environmental aim penalties, aim and recover between shots with extraordinary speed, and may deliberately target lethal or incapacitating anatomy - re-aiming between every shot of a burst.\nRange, damage and armour are unchanged: the mastery is the marksman's, not the bullet's.\nThis level is permanent: it does not decay and cannot be lost.</GM21_Achieved_Shooting>
 
+  <GM21_Achieved_Melee>Grandmaster of Combat\nThis pawn has transcended ordinary close-combat mastery. They read attacks and answer them instantly, exploit defensive openings, disarm foes, land critical strikes, cleave through crowded melee, intercept attacks against allies within three tiles, deflect and return incoming projectiles, and may deliberately choose lethal or disabling strikes.\nArmour, weapon damage and blast radius are unchanged: the mastery is the fighter's, not the weapon's. Every ability scales with this pawn's own speed, precision, awareness and physical power, and fails when the body cannot deliver it.\nThis level is permanent: it does not decay and cannot be lost.</GM21_Achieved_Melee>
+
   <GM21_Achieved_Crafting>Grandmaster\nThis pawn has transcended normal mastery of this skill. Only a Grandmaster can produce Legendary-quality work.\nThis level is permanent: it does not decay and cannot be lost.</GM21_Achieved_Crafting>
   <GM21_Achieved_Artistic>Grandmaster\nThis pawn has transcended normal mastery of this skill. Only a Grandmaster can produce Legendary-quality work.\nThis level is permanent: it does not decay and cannot be lost.</GM21_Achieved_Artistic>
   <GM21_Achieved_Construction>Grandmaster\nThis pawn has transcended normal mastery of this skill. Only a Grandmaster can produce Legendary-quality work.\nThis level is permanent: it does not decay and cannot be lost.</GM21_Achieved_Construction>
 
   <!-- Grandmaster Aim gizmo (Shooting 21 only) -->
   <!-- {0} current mode name -->
-  <GM21_AimMode_GizmoLabel>Grandmaster Aim: {0}</GM21_AimMode_GizmoLabel>
+  <GM21_AimMode_GizmoLabel>Grandmaster Aim (Shooting): {0}</GM21_AimMode_GizmoLabel>
   <GM21_AimMode_GizmoDesc>Choose where this Grandmaster Marksman aims.\n\nAll modes keep the passive Grandmaster bonuses. Only shot placement changes.</GM21_AimMode_GizmoDesc>
 
   <GM21_AimMode_Normal>Normal</GM21_AimMode_Normal>
@@ -32,6 +35,27 @@
   <GM21_AimMode_KillerDesc>Deliberately aim for the anatomy most likely to kill the target quickly. The weapon still decides the damage.</GM21_AimMode_KillerDesc>
   <GM21_AimMode_Downed>Downed</GM21_AimMode_Downed>
   <GM21_AimMode_DownedDesc>Dynamically aim for the least-lethal useful anatomy - mobility first, then manipulation, then non-vital extremities - avoiding vital organs. Re-aimed after every shot, and firing stops once the target is down.\n\nNot a guarantee of survival: the target may still die of blood loss or untreated wounds.</GM21_AimMode_DownedDesc>
+
+
+  <!-- Grandmaster Melee Doctrine gizmo (Melee 21 only). Deliberately distinct from the Shooting
+       aim control above: a pawn who is a Grandmaster at both gets both gizmos. -->
+  <!-- {0} current doctrine name -->
+  <GM21_Melee_GizmoLabel>Grandmaster Melee: {0}</GM21_Melee_GizmoLabel>
+  <GM21_Melee_GizmoDesc>Choose how this Grandmaster of Combat strikes.\n\nAll doctrines keep the passive Grandmaster abilities - parry, riposte, disarm, criticals, cleave, interception and projectile deflection. Only strike placement and force change.</GM21_Melee_GizmoDesc>
+
+  <GM21_Melee_Normal>Normal</GM21_Melee_Normal>
+  <GM21_Melee_NormalDesc>Ordinary strike placement at full force.</GM21_Melee_NormalDesc>
+  <GM21_Melee_Killer>Killer</GM21_Melee_Killer>
+  <GM21_Melee_KillerDesc>Strike for the anatomy that ends the fight fastest, preferring a vital organ this blow can destroy outright. Full force. The weapon still decides the damage, and armour still resolves.</GM21_Melee_KillerDesc>
+  <GM21_Melee_Downed>Downed</GM21_Melee_Downed>
+  <GM21_Melee_DownedDesc>Strike to disable - mobility first, then manipulation, then non-vital extremities - avoiding vital organs, and deliberately pull the blow so it stops short of destroying the limb.\n\nNot a guarantee of survival: the target may still die of blood loss or untreated wounds.</GM21_Melee_DownedDesc>
+
+  <!-- Combat motes -->
+  <GM21_Melee_Disarmed>Disarmed!</GM21_Melee_Disarmed>
+  <GM21_Melee_Intercepted>Intercepted!</GM21_Melee_Intercepted>
+  <GM21_Melee_Returned>Returned!</GM21_Melee_Returned>
+  <GM21_Melee_Deflected>Deflected!</GM21_Melee_Deflected>
+  <GM21_Melee_RoughDeflection>Detonated!</GM21_Melee_RoughDeflection>
 
   <!-- {0} current XP, {1} required XP, {2} percent -->
   <GM21_TooltipProgress>Grandmaster progress: {0} / {1} XP ({2}%)</GM21_TooltipProgress>
