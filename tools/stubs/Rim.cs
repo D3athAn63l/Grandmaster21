@@ -220,7 +220,13 @@ namespace Verse
 
     public enum ThingRequestGroup { Undefined, Corpse, ThingHolder }
     public class ListerThings { public List<Thing> ThingsInGroup(ThingRequestGroup g) { return new List<Thing>(); } }
-    public class MapPawns { public List<Pawn> AllPawns { get { return new List<Pawn>(); } } }
+    public class MapPawns
+    {
+        // Test hook: the real list is maintained by spawn/despawn.
+        public readonly List<Pawn> spawnedStub = new List<Pawn>();
+        public List<Pawn> AllPawns { get { return spawnedStub; } }
+        public System.Collections.Generic.IReadOnlyList<Pawn> AllPawnsSpawned { get { return spawnedStub; } }
+    }
     public class ThingGrid
     {
         private readonly Dictionary<IntVec3, List<Thing>> cells = new Dictionary<IntVec3, List<Thing>>();
@@ -232,7 +238,7 @@ namespace Verse
     }
     public class Map
     {
-        public MapPawns mapPawns; public ListerThings listerThings;
+        public MapPawns mapPawns = new MapPawns(); public ListerThings listerThings;
         public ThingGrid thingGrid = new ThingGrid();
         public IntVec3 Size = new IntVec3(250, 1, 250);
         // Test hook: cells listed here are impassable, standing in for walls and rock.

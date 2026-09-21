@@ -83,6 +83,7 @@ static class MeleeHarness
         p.meleeVerbs = new Pawn_MeleeVerbs(p);
         p.meleeVerbs.verbStub = new Verb { CasterPawn = p };
         TheMap.thingGrid.Register(p);
+        TheMap.mapPawns.spawnedStub.Add(p);   // the real MapPawns list, which disposal iterates
         return p;
     }
 
@@ -154,6 +155,7 @@ static class MeleeHarness
         FriendlyRecovery();
         GuardianSafePath();
         GuardianMicroDash();
+        ExplosiveDisposal();
         TranslationKeys();
 
         Console.WriteLine("\n================================");
@@ -1462,23 +1464,66 @@ static class MeleeHarness
                             new LocalTargetInfo(dirt), new LocalTargetInfo(raiderA)),
                        bullet, dirt) == "IGNORED");
 
-        Console.WriteLine("\n=== M34. Explosive intent ===");
+        Console.WriteLine("\n=== M34. Friendly explosives are intent-AGNOSTIC ===");
         ThingDef rocket = ProjectileDef("Rocket", 40f, 3.9f);
 
-        // Bob fires a rocket at RaiderA; it will land next to Alice. Accident.
+        // Every one of these is the same classification, which is the entire point of the rule:
+        // an area weapon has no single aim point worth reasoning about, so the Guardian does not
+        // try. It reacts to the live warhead and gets it away from our people.
+
         IntVec3 besideAlice = new IntVec3(alice.Position.x + 2, 0, alice.Position.z);
-        Check("an ally's rocket that drifts onto a protected pawn is an ACCIDENT",
+        Check("an ally's rocket that drifts onto a protected pawn -> FriendlyExplosive",
               intentOf(Shot(rocket, m, new IntVec3(42, 0, 30), bob,
                             new LocalTargetInfo(besideAlice), new LocalTargetInfo(raiderA)),
-                       rocket, besideAlice) == "AccidentalFriendlyFire");
+                       rocket, besideAlice) == "FriendlyExplosive");
 
-        // Bob was ordered to drop a rocket on the ground right next to Mark. Aiming a warhead at a
-        // cell whose blast covers a protected pawn is aiming at that pawn.
         IntVec3 besideMark = new IntVec3(mark.Position.x + 1, 0, mark.Position.z);
-        Check("an ally's rocket deliberately aimed beside the Grandmaster is HOSTILE intent",
+        Check("  ...deliberately force-targeted at a cell beside the Grandmaster, ALSO FriendlyExplosive",
               intentOf(Shot(rocket, m, new IntVec3(42, 0, 30), bob,
                             new LocalTargetInfo(besideMark), new LocalTargetInfo(besideMark)),
-                       rocket, besideMark) == "Hostile");
+                       rocket, besideMark) == "FriendlyExplosive");
+
+        Check("  ...deliberately force-fired AT the Grandmaster, ALSO FriendlyExplosive",
+              intentOf(Shot(rocket, m, new IntVec3(42, 0, 30), bob,
+                            new LocalTargetInfo(mark), new LocalTargetInfo(mark)),
+                       rocket, mark.Position) == "FriendlyExplosive");
+
+        Check("  ...deliberately force-fired at a protected ally, ALSO FriendlyExplosive",
+              intentOf(Shot(rocket, m, new IntVec3(42, 0, 30), bob,
+                            new LocalTargetInfo(alice), new LocalTargetInfo(alice)),
+                       rocket, alice.Position) == "FriendlyExplosive");
+
+        ThingDef grenade = ProjectileDef("Grenade", 12f, 2.9f);
+        Check("a deliberately thrown friendly grenade is likewise never hostile",
+              intentOf(Shot(grenade, m, new IntVec3(33, 0, 30), bob,
+                            new LocalTargetInfo(mark), new LocalTargetInfo(mark)),
+                       grenade, mark.Position) == "FriendlyExplosive");
+
+        // The ruling is about FRIENDLY explosives only. An enemy's warhead is still hostile.
+        Check("an ENEMY rocket is still hostile, and may still be returned",
+              intentOf(Shot(rocket, m, new IntVec3(45, 0, 30), enemyShooter,
+                            new LocalTargetInfo(mark), new LocalTargetInfo(mark)),
+                       rocket, mark.Position) == "Hostile");
+
+        // A friendly explosive that endangers nobody protected is not the Guardian's business.
+        IntVec3 farField = new IntVec3(mark.Position.x + 25, 0, mark.Position.z + 25);
+        Check("a friendly explosive threatening nobody protected is ignored outright",
+              intentOf(Shot(rocket, m, new IntVec3(42, 0, 30), bob,
+                            new LocalTargetInfo(farField), new LocalTargetInfo(farField)),
+                       rocket, farField) == "IGNORED");
+
+        Console.WriteLine("\n=== M34b. The direct-fire rules did NOT change ===");
+
+        // These are the regression guards: the explosive simplification must not leak into
+        // bullets. Bob force-attacking Mark with a rifle is still hostile.
+        Check("Bob force-attacking Mark with a RIFLE is still HOSTILE",
+              intentOf(Shot(bullet, m, new IntVec3(42, 0, 30), bob,
+                            new LocalTargetInfo(mark), new LocalTargetInfo(mark)),
+                       bullet, mark.Position) == "Hostile");
+        Check("Bob's stray bullet toward a raider is still an ACCIDENT",
+              intentOf(Shot(bullet, m, new IntVec3(42, 0, 30), bob,
+                            new LocalTargetInfo(mark), new LocalTargetInfo(raiderA)),
+                       bullet, mark.Position) == "AccidentalFriendlyFire");
 
         // A launcher-less projectile (trap, orphaned turret shot) is treated as a threat.
         Check("a projectile with no launcher is treated as hostile",
@@ -1764,6 +1809,161 @@ static class MeleeHarness
         // A hundred rounds must not strobe the pawn anywhere.
         for (int i = 0; i < 100; i++) Call("Gm21GuardianFx", "MicroDash", gm, ally, proj);
         Check("100 interceptions leave the pawn exactly where they started", gm.Position == before);
+
+        TheMap = saved;
+    }
+
+    // ---- M41. FRIENDLY EXPLOSIVE RECOVERY -----------------------------------------------------
+    static void ExplosiveDisposal()
+    {
+        Console.WriteLine("\n=== M41. Friendly Explosive Recovery: where the warhead goes ===");
+
+        Map m = new Map();
+        Map saved = TheMap;
+        TheMap = m;
+
+        Pawn mark = MakePawn("ExMark", 21, new IntVec3(50, 0, 50), Colony);
+        Equip(mark, Weapon("Longsword", 2.2f));
+        Pawn alice = MakePawn("ExAlice", 0, new IntVec3(51, 0, 50), Colony);
+
+        // A lone raider to the east, and a cluster of three further east but still in range.
+        Pawn lone = MakePawn("Lone", 0, new IntVec3(62, 0, 50), Raiders);
+        Pawn clusterA = MakePawn("ClusterA", 0, new IntVec3(70, 0, 50), Raiders);
+        Pawn clusterB = MakePawn("ClusterB", 0, new IntVec3(71, 0, 50), Raiders);
+        Pawn clusterC = MakePawn("ClusterC", 0, new IntVec3(70, 0, 51), Raiders);
+
+        Func<IntVec3, float, float, IntVec3> choose = (from, blast, range) =>
+            (IntVec3)Call("Gm21ExplosiveDisposal", "ChooseHostileDestination",
+                          mark, m, from, blast, range);
+
+        IntVec3 pick = choose(mark.Position, 2.9f, 40f);
+        Check("a hostile destination is chosen", pick.IsValid, pick.ToString());
+        Check("a cluster of three outscores an isolated raider",
+              pick.IsValid && pick != lone.Position, pick.ToString());
+        Check("  ...and the pick is one of the clustered raiders",
+              pick == clusterA.Position || pick == clusterB.Position || pick == clusterC.Position,
+              pick.ToString());
+
+        Console.WriteLine("\n=== M42. Our own people are never acceptable collateral ===");
+
+        // A colonist standing in the middle of the cluster makes it untouchable, however tempting.
+        Pawn hostage = MakePawn("Hostage", 0, new IntVec3(70, 0, 50), Colony);
+        IntVec3 guarded = choose(mark.Position, 2.9f, 40f);
+        Check("a cluster with a colonist inside the blast is rejected",
+              guarded.IsValid && guarded == lone.Position, guarded.ToString());
+        Check("  ...and the isolated raider is chosen instead", guarded == lone.Position);
+
+        // Now put a colonist beside the lone raider too: nothing is safe to throw at.
+        Pawn hostage2 = MakePawn("Hostage2", 0, new IntVec3(62, 0, 51), Colony);
+        IntVec3 nothing = choose(mark.Position, 2.9f, 40f);
+        Check("with every raider shielded by our own, no destination is chosen",
+              !nothing.IsValid, nothing.ToString());
+        Check("  ...which is the signal to fall through to safe disposal", !nothing.IsValid);
+
+        Console.WriteLine("\n=== M43. Reach and walls bound the throw ===");
+
+        Map m2 = new Map();
+        TheMap = m2;
+        Pawn thrower = MakePawn("Thrower", 21, new IntVec3(50, 0, 50), Colony);
+        Equip(thrower, Weapon("Longsword", 2.2f));
+        Pawn distant = MakePawn("DistantRaider", 0, new IntVec3(90, 0, 50), Raiders);
+
+        Func<Pawn, IntVec3, float, float, IntVec3> chooseFor = (g, from, blast, range) =>
+            (IntVec3)Call("Gm21ExplosiveDisposal", "ChooseHostileDestination",
+                          g, m2, from, blast, range);
+
+        Check("a raider beyond the Grandmaster's throw range is not a destination",
+              !chooseFor(thrower, thrower.Position, 2.9f, 10f).IsValid);
+        Check("  ...and is one once the throw is long enough",
+              chooseFor(thrower, thrower.Position, 2.9f, 60f) == distant.Position);
+
+        // A wall between the Grandmaster and the raider: the warhead cannot fly through it.
+        for (int z = 40; z <= 60; z++) m2.blockedStub.Add(new IntVec3(70, 0, z));
+        Check("a warhead is never thrown through a wall",
+              !chooseFor(thrower, thrower.Position, 2.9f, 60f).IsValid);
+
+        Console.WriteLine("\n=== M44. No enemies at all -> safe disposal ===");
+
+        Map m3 = new Map();
+        TheMap = m3;
+        Pawn alone = MakePawn("Alone", 21, new IntVec3(50, 0, 50), Colony);
+        Equip(alone, Weapon("Longsword", 2.2f));
+        MakePawn("AloneAlly", 0, new IntVec3(51, 0, 50), Colony);
+
+        IntVec3 none = (IntVec3)Call("Gm21ExplosiveDisposal", "ChooseHostileDestination",
+                                     alone, m3, alone.Position, 2.9f, 60f);
+        Check("with no hostiles on the map there is no destination", !none.IsValid);
+
+        // ...and the safe vector still has an answer, which is what disposal falls through to.
+        ThingDef grenadeDef = ProjectileDef("Grenade2", 12f, 2.9f);
+        Projectile live = new Projectile
+        { def = grenadeDef, Position = alone.Position, Map = m3, Spawned = true };
+        IntVec3 dump = (IntVec3)Call("Gm21SafeVector", "Choose",
+                                     live, grenadeDef.projectile, alone, null, m3, 10f);
+        Check("safe disposal still finds somewhere to put it", dump.IsValid, dump.ToString());
+        Check("  ...well away from the Grandmaster",
+              dump.DistanceTo(alone.Position) >= 2f, dump.DistanceTo(alone.Position).ToString("0.0"));
+
+        Console.WriteLine("\n=== M45. Recovery never returns a friendly explosive to its launcher ===");
+
+        Map m4 = new Map();
+        TheMap = m4;
+        Pawn gm = MakePawn("RecGM", 21, new IntVec3(50, 0, 50), Colony);
+        Equip(gm, Weapon("Longsword", 2.2f));
+        SetCapacity(gm, PawnCapacityDefOf.Manipulation, 4f);
+        SetCapacity(gm, PawnCapacityDefOf.Sight, 4f);
+        Pawn bob = MakePawn("RecThrower", 5, new IntVec3(40, 0, 50), Colony);
+        Pawn raider = MakePawn("RecRaider", 0, new IntVec3(60, 0, 50), Raiders);
+
+        ThingDef rocketDef = ProjectileDef("RecRocket", 40f, 3.9f);
+        Projectile warhead = new Projectile
+        { def = rocketDef, Position = gm.Position, Map = m4, Spawned = true };
+        warhead.Launch(bob, new Vector3(40, 0, 50), new LocalTargetInfo(gm.Position),
+                       new LocalTargetInfo(gm), ProjectileHitFlags.All, false, null, null);
+        warhead.Position = gm.Position;
+
+        Rand.ForcedValueStub = 0f;   // every roll succeeds; we are testing WHERE it goes
+        bool ok = (bool)T("Gm21ProjectileDefence")
+            .GetMethod("TryExplosiveRecovery", Any)
+            .Invoke(null, new object[] { warhead, rocketDef.projectile, gm, m4, 10f, 1f });
+        Rand.ForcedValueStub = null;
+
+        Check("the warhead is redirected", ok);
+        Check("  ...toward the raider, not back at the ally who fired it",
+              ok && warhead.usedTarget.Cell == raider.Position,
+              warhead.usedTarget.Cell.ToString() + " vs launcher at " + bob.Position);
+        Check("  ...and the launcher is still the ally, so attribution is untouched",
+              warhead.Launcher == bob,
+              warhead.Launcher == null ? "null" : warhead.Launcher.def.defName);
+        Check("  ...with the Grandmaster recorded separately",
+              Call("Gm21ProjectileDefence", "RedirectorOf", warhead) == gm);
+
+        // With no raider anywhere, explosive recovery declines and disposal takes over.
+        Map m5 = new Map();
+        TheMap = m5;
+        Pawn gm2 = MakePawn("RecGM2", 21, new IntVec3(50, 0, 50), Colony);
+        Equip(gm2, Weapon("Longsword", 2.2f));
+        Pawn bob2 = MakePawn("RecThrower2", 5, new IntVec3(40, 0, 50), Colony);
+        Projectile warhead2 = new Projectile
+        { def = rocketDef, Position = gm2.Position, Map = m5, Spawned = true };
+        warhead2.Launch(bob2, new Vector3(40, 0, 50), new LocalTargetInfo(gm2.Position),
+                        new LocalTargetInfo(gm2), ProjectileHitFlags.All, false, null, null);
+        warhead2.Position = gm2.Position;
+
+        Rand.ForcedValueStub = 0f;
+        bool declined = (bool)T("Gm21ProjectileDefence")
+            .GetMethod("TryExplosiveRecovery", Any)
+            .Invoke(null, new object[] { warhead2, rocketDef.projectile, gm2, m5, 10f, 1f });
+        Rand.ForcedValueStub = null;
+        Check("with no hostile destination, recovery declines so disposal can run", !declined);
+        Check("  ...and the ally is still never the target",
+              warhead2.usedTarget.Cell != bob2.Position);
+
+        Console.WriteLine("\n=== M46. The payload is never nullified ===");
+        Check("the redirected warhead keeps its explosive def",
+              warhead.def == rocketDef && warhead.def.projectile.explosionRadius == 3.9f);
+        Check("  ...and is still in the world, not deleted",
+              !warhead.Destroyed && warhead.Spawned);
 
         TheMap = saved;
     }
