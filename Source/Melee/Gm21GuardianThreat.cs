@@ -15,11 +15,19 @@ namespace Grandmaster21
         Hostile = 0,
 
         /// <summary>
-        /// A friendly shot that was aimed at a legitimate enemy and is now going to hit the wrong
-        /// person. Corrective, not offensive: the Guardian salvages it, it is never returned to
-        /// the ally who fired it.
+        /// A friendly DIRECT shot that was aimed at a legitimate enemy and is now going to hit the
+        /// wrong person. Corrective, not offensive: the Guardian salvages it back toward the enemy
+        /// it was meant for, and it is never returned to the ally who fired it.
         /// </summary>
-        AccidentalFriendlyFire = 1
+        AccidentalFriendlyFire = 1,
+
+        /// <summary>
+        /// A friendly EXPLOSIVE that threatens someone protected -- whatever the thrower meant by
+        /// it. Intent is deliberately not consulted; see ClassifyIntent for why. The Guardian gets
+        /// it away from their own people, preferring a hostile destination and falling back to
+        /// open ground, and never sends it back at the ally who launched it.
+        /// </summary>
+        FriendlyExplosive = 2
     }
 
     /// <summary>A credible, imminent threat, and the Guardian who will answer it.</summary>
@@ -132,7 +140,7 @@ namespace Grandmaster21
             threat.explosive = explosive;
             threat.dashDistance = bestDistance;
             threat.reachChance = bestReach;
-            threat.intent = ClassifyIntent(bestGuardian, bestVictim, proj, props, map);
+            threat.intent = ClassifyIntent(bestGuardian, proj, props);
             return true;
         }
 
@@ -334,20 +342,32 @@ namespace Grandmaster21
         // ---------------------------------------------------------------- intent
 
         /// <summary>
-        /// INTENT OUTRANKS FACTION IDENTITY.
+        /// FOR DIRECT SHOTS, INTENT OUTRANKS FACTION IDENTITY. FOR EXPLOSIVES, INTENT IS NOT
+        /// CONSULTED AT ALL.
         ///
-        /// A shot is hostile if an enemy fired it, or if an ally fired it AT someone the Guardian
-        /// protects. The second half is the anti-abuse rule and it matters: without it, ordering a
-        /// low-Shooting colonist to force-attack the Grandmaster would turn the Grandmaster into a
-        /// free aim-correction computer, salvaging every deliberately terrible shot toward a
-        /// convenient enemy. With it, deliberately shooting at a Melee Grandmaster means the round
-        /// may come straight back, which is exactly the deterrent the design wants.
+        /// DIRECT FIRE. A shot is hostile if an enemy fired it, or if an ally fired it AT someone
+        /// the Guardian protects. The second half is the anti-abuse rule and it matters: without
+        /// it, ordering a low-Shooting colonist to force-attack the Grandmaster would turn the
+        /// Grandmaster into a free aim-correction computer, salvaging every deliberately terrible
+        /// shot toward a convenient enemy. With it, deliberately shooting at a Melee Grandmaster
+        /// means the round may come straight back, which is exactly the deterrent the design
+        /// wants. Everything else from a friendly launcher is an accident, and accidents are
+        /// corrected, never punished.
         ///
-        /// Everything else from a friendly launcher is an accident, and accidents are corrected,
-        /// never punished.
+        /// EXPLOSIVES ARE DIFFERENT, AND THE DIFFERENCE IS DELIBERATE. An area weapon has no
+        /// single aim point to reason about. Whether a grenade landing two tiles from the
+        /// Grandmaster was malice, a misthrow, a force-targeted cell or a perfectly reasonable
+        /// shot at a raider standing just past them is genuinely ambiguous -- and the several
+        /// heuristics needed to guess were ambiguous too, which is the whole reason they are gone.
+        /// The Guardian no longer guesses. A friendly explosive that threatens protected pawns is
+        /// classified as FriendlyExplosive, full stop, and is never sent back at the ally who
+        /// launched it.
+        ///
+        /// The immediate problem is not whether Bob deserves to be doom-rocketed. It is that there
+        /// is a live warhead next to people the Grandmaster is protecting.
         /// </summary>
-        internal static Gm21ThreatIntent ClassifyIntent(Pawn guardian, Pawn victim, Projectile proj,
-                                                        ProjectileProperties props, Map map)
+        internal static Gm21ThreatIntent ClassifyIntent(Pawn guardian, Projectile proj,
+                                                        ProjectileProperties props)
         {
             Thing launcher = proj.Launcher;
 
@@ -355,7 +375,16 @@ namespace Grandmaster21
             if (launcher == null) return Gm21ThreatIntent.Hostile;
             if (GenHostility.HostileTo(launcher, guardian)) return Gm21ThreatIntent.Hostile;
 
-            // A friendly launcher. What were they aiming AT?
+            // A friendly launcher with an explosive payload. Decision made, cheaply, before any
+            // intent reconstruction happens: no inspecting the intended cell, no asking whether
+            // the blast "really meant" the Grandmaster, no weighing nearby hostiles against nearby
+            // friendlies. The payload is what matters.
+            if (props != null && props.explosionRadius > 0f)
+            {
+                return Gm21ThreatIntent.FriendlyExplosive;
+            }
+
+            // A friendly DIRECT shot. Now intent matters. What were they aiming AT?
             Thing intended = proj.intendedTarget.Thing;
             if (intended != null)
             {
@@ -370,19 +399,9 @@ namespace Grandmaster21
                 return Gm21ThreatIntent.AccidentalFriendlyFire;
             }
 
-            // Aimed at a cell rather than a thing. For an ordinary bullet that is just ground
-            // fire. For an EXPLOSIVE it is not: dropping a warhead on a cell whose blast covers a
-            // protected pawn is aiming at that pawn, however the order was phrased.
-            if (props.explosionRadius > 0f && victim != null)
-            {
-                IntVec3 aimed = proj.intendedTarget.Cell;
-                if (aimed.IsValid
-                    && aimed.DistanceTo(victim.Position) <= props.explosionRadius)
-                {
-                    return Gm21ThreatIntent.Hostile;
-                }
-            }
-
+            // Aimed at a cell rather than a thing: ground fire from an ally. Explosives never
+            // reach here -- they were classified above -- so this is a bullet or an arrow that
+            // happens to be going somewhere awkward, which is an accident.
             return Gm21ThreatIntent.AccidentalFriendlyFire;
         }
     }

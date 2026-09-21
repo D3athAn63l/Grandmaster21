@@ -342,12 +342,22 @@ namespace Grandmaster21
             // ---- STAGE 5: precision redirect, chosen by INTENT ------------------------
             if (threat.intent == Gm21ThreatIntent.Hostile)
             {
-                // Hostile fire, or a friendly who deliberately aimed at someone protected. Either
-                // way it goes back where it came from.
+                // Hostile fire, or a friendly who deliberately aimed a DIRECT shot at someone
+                // protected. Either way it goes back where it came from.
                 if (Rand.Chance(Gm21Melee.Opposed(quality, difficulty, ReturnHardness, MaxReturnChance))
                     && TryReturnToSender(proj, guardian, map))
                 {
                     Announce(guardian, "GM21_Melee_Returned");
+                    return;
+                }
+            }
+            else if (threat.intent == Gm21ThreatIntent.FriendlyExplosive)
+            {
+                // An ally's live warhead. Never returned to them; put at the enemy if one is
+                // reachable, and at open ground if not.
+                if (TryExplosiveRecovery(proj, props, guardian, map, quality, difficulty))
+                {
+                    Announce(guardian, "GM21_Melee_Recovered");
                     return;
                 }
             }
@@ -515,6 +525,46 @@ namespace Grandmaster21
         }
 
         /// <summary>
+        /// FRIENDLY EXPLOSIVE RECOVERY -- getting an ally's live warhead away from our own people.
+        ///
+        /// Deliberately NOT the direct-fire rule. A stray bullet is salvaged toward the specific
+        /// enemy it was aimed at, so that a Grandmaster cannot be used as free aim correction. An
+        /// explosive has no such shot to reconstruct: it is an area weapon, and the Grandmaster
+        /// simply picks the best place for it to go off. Whether the ally meant it is not asked
+        /// here and was not asked when it was classified -- see Gm21GuardianThreat.ClassifyIntent.
+        ///
+        /// It is never sent back at the launcher, so the ally is never punished for a grenade,
+        /// however it was thrown.
+        ///
+        /// NOTHING HERE IS AUTOMATIC. Reaching it and getting hold of it were stages 3 and 4, and
+        /// both could have failed. This roll can fail too, and then the explosive falls through to
+        /// safe disposal. The fuse keeps running throughout, the payload is untouched, and a
+        /// warhead that was going to be lethal still is.
+        /// </summary>
+        private static bool TryExplosiveRecovery(Projectile proj, ProjectileProperties props,
+                                                 Pawn guardian, Map map, float quality, float difficulty)
+        {
+            IntVec3 from = proj.ExactPosition.ToIntVec3();
+            if (!from.InBounds(map)) from = guardian.Position;
+
+            IntVec3 destination = Gm21ExplosiveDisposal.ChooseHostileDestination(
+                guardian, map, from, props.explosionRadius, RedirectDistance(props, guardian));
+
+            // No hostile worth throwing at, or none reachable. The caller falls through to safe
+            // disposal, which is a success too -- it is still away from us.
+            if (!destination.IsValid) return false;
+
+            float corrected = difficulty * CorrectionFactorToCell(proj, destination);
+            if (!Rand.Chance(Gm21Melee.Opposed(quality, corrected, ReturnHardness, MaxReturnChance)))
+            {
+                return false;
+            }
+
+            // Launcher preserved. The ally threw it; the Grandmaster only decided where it lands.
+            return Redirect(proj, guardian, proj.Launcher, null, destination);
+        }
+
+        /// <summary>
         /// How far off course the shot already is, as a multiplier on its difficulty.
         ///
         /// 0 degrees of correction bottoms out at RecoveryMinFactor, 180 degrees tops out at
@@ -524,9 +574,15 @@ namespace Grandmaster21
         /// </summary>
         internal static float CorrectionFactor(Projectile proj, Thing intended)
         {
+            return CorrectionFactorToCell(proj, intended.Position);
+        }
+
+        /// <summary>Same measure, against a bare cell -- what explosive redirection aims at.</summary>
+        internal static float CorrectionFactorToCell(Projectile proj, IntVec3 destination)
+        {
             Vector3 heading = Heading(proj);
-            Vector3 wanted = new Vector3(intended.Position.x - proj.ExactPosition.x, 0f,
-                                         intended.Position.z - proj.ExactPosition.z);
+            Vector3 wanted = new Vector3(destination.x - proj.ExactPosition.x, 0f,
+                                         destination.z - proj.ExactPosition.z);
 
             float hm = heading.magnitude, wm = wanted.magnitude;
             if (hm <= 0.0001f || wm <= 0.0001f)
