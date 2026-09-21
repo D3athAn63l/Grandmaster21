@@ -2,7 +2,7 @@
 
 **RimWorld 1.6** — skills normally end at 20. This mod adds exactly one more level: **21, Grandmaster**.
 
-**Version 0.10.3 Beta.** The Shooting capstone has been verified in real RimWorld 1.6 gameplay.
+**Version 0.10.4 Beta.** The Shooting capstone has been verified in real RimWorld 1.6 gameplay.
 The Melee capstone has **not** — see [Release status](#release-status).
 
 Level 21 cannot be randomly generated. It must be earned by accumulating an enormous amount of
@@ -414,7 +414,8 @@ in Normal mode adds nothing at all to the save file.
 
 The second skill-specific capstone, new in **0.10.0** and **not yet runtime tested**; its Guardian
 projectile doctrine was tightened in **0.10.1** and its friendly-explosive ruling simplified in
-**0.10.2**, and its protected-pawn safety made a hard constraint in **0.10.3**. Deliberately
+**0.10.2**, its protected-pawn safety made a hard constraint in **0.10.3**, and its dodge chance
+given the Level-21 exception in **0.10.4**. Deliberately
 overpowered, and deliberately *different in kind* from Melee 20. Skills other than Shooting and
 Melee have no Level 21 ability yet, and none is invented here.
 
@@ -471,9 +472,78 @@ one value RimWorld rolls against: `final = 1 − (1 − base) × retained`, with
 `retained = 0.01 / Awareness`. A 60% strike becomes 99.6%. It is *not* a flat +99 points, which
 would erase weapon differentiation entirely.
 
-**2. Near-perfect parry.** The same rule from the other side, scaled by the **Defence** composite. A
-whole Grandmaster parries at ~99.2%; a blind or armless one at ~98.0%; a downed or unconscious one
-does not parry at all.
+**2. Near-perfect parry.** See
+[Melee dodge chance: the one level that crosses the cap](#melee-dodge-chance-the-one-level-that-crosses-the-cap)
+— a whole Grandmaster reaches RimWorld's **99.9%** ceiling; an impaired one falls measurably short;
+a downed, unconscious, asleep or stunned one does not parry at all.
+
+#### Melee dodge chance: the one level that crosses the cap
+
+RimWorld caps `MeleeDodgeChance` at roughly **50%** for every pawn in the game. That cap holds no
+matter what feeds the stat — Moving, Sight, traits, equipment, health, or a modded DEX stat that
+resolves to 164%. The stat is computed, then clamped.
+
+| Melee level | Dodge |
+|---|---|
+| **0–20** | Entirely vanilla: vanilla calculation, vanilla modifiers, **vanilla 50% cap** |
+| **21** | Grandmaster effective melee defence, up to **99.9%** |
+
+Level 20 is the peak normal combatant, and stays bound by normal combat rules — a heavily modded
+Melee-20 pawn does **not** get Grandmaster defence because some framework handed them enormous
+stats. Level 21 is the one level that crosses the boundary.
+
+```text
+gmDodge = 1 − (1 − vanillaDodge) × (0.002 / Defence)      capped at 0.999
+```
+
+| Vanilla final dodge | Grandmaster effective |
+|---:|---:|
+| 10% | 99.82% |
+| 25% | 99.85% |
+| 40% | 99.88% |
+| **50%** (the vanilla cap) | **99.90%** |
+
+**It transforms the resolved value rather than rebuilding it.** Moving, Sight, traits, health,
+equipment, modded DEX and any other framework's post-process curve have all had their say by the
+time the number reaches the roll; Grandmaster mastery then acts on the result. That is what keeps
+this working with stat frameworks the mod has never seen, and it is why the raw pre-cap 164% is
+deliberately *not* used — the design is "Level 21 transforms the normal resolved probability", not
+"bypass every upstream cap and trust arbitrary values".
+
+**The StatDef is never touched.** Raising its maximum would change the number for every pawn and
+every mod reading it. The exception lives in the melee defence roll, where it applies, and nowhere
+else.
+
+**Why 99.9% and not 100%.** A literal certainty would make ordinary melee mathematically incapable
+of ever touching the pawn. One failure in a thousand is not a balance lever — it is the difference
+between "very nearly untouchable" and "untouchable", and only the first is a fighter.
+
+**Saturation, stated honestly.** Those two numbers meet exactly: 99.9% at the vanilla ceiling *is*
+the hard cap. So a healthy Grandmaster defending at vanilla's 50% is already at the maximum, and a
+superhuman composite cannot push past them there. The composite is visible below the ceiling and in
+the other direction — an impaired Grandmaster falls measurably short of it. This is where the design
+deliberately stops rewarding stacked stats.
+
+**Capability gates are the existing ones**, not a second health system. A downed, dead, unconscious,
+asleep or stunned pawn never reaches this calculation at all — `Gm21Melee.CanAct` excludes them and
+vanilla's value stands. Softer impairment scales the **Defence** composite (Consciousness × [Sight,
+Manipulation, Movement] × weapon readiness) rather than switching anything off, so one damaged limb
+does not collapse a Grandmaster back to 10%.
+
+**One defence resolution, not two.** This *replaces* the value vanilla computed, at the single point
+vanilla rolls against it. No extra defensive roll is layered on top: a Grandmaster defends once,
+like everybody else. The ally-interception parry goes through the same function, so there is one
+coherent Grandmaster melee defence rather than two with separate numbers.
+
+**Ranged dodge is untouched.** `VEF_RangedDodgeChance` and every other ranged-dodge stat are left
+exactly as they are. A Melee Grandmaster's answer to projectiles is the
+[Guardian doctrine](#projectile-interception--the-guardian-doctrine) — they do not dodge bullets,
+they intercept them.
+
+**The Stats tab still shows 50%**, because that is genuinely what the StatDef resolves to. Since
+that is misleading for this pawn, their Melee skill tooltip shows both figures — and computes the
+second one by calling the same function combat calls, so an injured Grandmaster sees their real
+reduced number and one who cannot defend is told so rather than shown 99.9%.
 
 **3. Ignore ~99% of skill-based defence.** The opponent's dodge chance is *scaled down* by
 `0.01 / Awareness`. This is not armour penetration — armour is never touched anywhere in this
@@ -1345,6 +1415,14 @@ hostile redirect at all, safe deflection rejecting a raider-filled bearing that 
 ours, and the structural proof that the veto function takes no hostile input and so cannot be
 outvoted by one.
 
+The Level-21 dodge exception has its own set: the formula against the specification's table, the
+99.9% hard cap proved to be a real clamp rather than decoration, a Melee-20 pawn with enormous
+modded capacities still held at the vanilla 50%, downed / unconscious / stunned Grandmasters
+falling back to the vanilla value while an immobile-but-conscious one still defends, the tooltip
+reporting the computed figure rather than a hardcoded one, the whiff-versus-parry distinction that
+keeps a natural miss from earning a riposte, and a structural check that no member of the mod names
+a ranged-dodge stat.
+
 They do **not** run inside RimWorld. They do not exercise Harmony patching, real IL, combat,
 projectiles, pawn generation, the gizmo or saving — and critically, they **cannot prove that the
 RimWorld members named in the source exist with those signatures**, because the stubs are
@@ -1354,13 +1432,13 @@ hand-written approximations. Only a real build does that. See `tools/stubs/READM
 
 ## Release status
 
-**0.10.3 Beta.** Builds clean against RimWorld 1.6 and passes every check that could be run in the
+**0.10.4 Beta.** Builds clean against RimWorld 1.6 and passes every check that could be run in the
 environment it was built in.
 
 **The Melee Grandmaster package has had NO runtime gameplay testing.** Every RimWorld member it
 touches is confirmed present with the right signature and parameter names against the real 1.6
-assembly metadata, and its decision logic is covered by 260 offline checks — but patches resolving
-is not patches binding, and patches binding is not patches behaving. Treat 0.10.3 as untested in
+assembly metadata, and its decision logic is covered by 295 offline checks — but patches resolving
+is not patches binding, and patches binding is not patches behaving. Treat 0.10.4 as untested in
 play, and keep a backup save.
 
 The Shooting package is unchanged in this version and retains its 0.9.0 runtime result below.
@@ -1408,7 +1486,7 @@ need real bodies are reported `NOT RUN`, not passed.
 | 3. Live Harmony patch binding | **NOT RUN** — needs method bodies |
 | 4. Finalizer semantics | **PASS** — 12/12, all four shipped finalizers |
 | 5. Progression suite vs. real `SkillRecord` | **NOT RUN** — needs method bodies |
-| Offline logic suites | **PASS** — 391/391 (57 core + 74 shooting + 260 melee) |
+| Offline logic suites | **PASS** — 426/426 (57 core + 74 shooting + 295 melee) |
 
 Checks 2, 3 and 5 all fail with `Method has zero rva` against reference assemblies. That is the
 environment, not a finding: **run `verify-real.sh` against a real RimWorld install to clear them.**
@@ -1568,6 +1646,22 @@ Protected-pawn hard veto, added in 0.10.3 — likewise nothing observed in a run
 | Every raider shielded → no hostile redirect at all → safe disposal | `NOT RUN` (offline: PASS) |
 | Safe deflection rejects a bearing landing on colonists, even one full of raiders | `NOT RUN` (offline: PASS) |
 | Safety and threat detection agree on who counts as protected | `NOT RUN` (offline: PASS) |
+
+Melee dodge chance, added in 0.10.4 — likewise nothing observed in a running game:
+
+| Dodge test | Status |
+|---|---|
+| Melee 20 with enormous modded stats → vanilla 50% cap holds, GM21 does nothing | `NOT RUN` (offline: PASS) |
+| Melee 21 at a vanilla 50% → ~99.9% effective | `NOT RUN` (offline: PASS) |
+| Melee 21 at vanilla 10% / 25% / 40% → 99.82 / 99.85 / 99.88% | `NOT RUN` (offline: PASS) |
+| Effective defence never exceeds 99.9%, even at a superhuman composite | `NOT RUN` (offline: PASS) |
+| Natural attacker miss → no GM dodge event, no riposte from the miss | `NOT RUN` (offline: PASS) |
+| Real GM dodge → attack fails, defence recorded, one riposte scheduled | `NOT RUN` (offline: PASS) |
+| Downed / unconscious / stunned GM → vanilla value, no 99.9% | `NOT RUN` (offline: PASS) |
+| Immobile but conscious GM → still defends, measurably worse | `NOT RUN` (offline: PASS) |
+| Skill tooltip reports the real computed figure, not a hardcoded one | `NOT RUN` (offline: PASS) |
+| Ranged dodge stats unchanged | `NOT RUN` (offline: structural PASS — no member names one) |
+| Isekai RPG Duelist Counter Strike still observes the failed attack | `NOT RUN` — not installed in this environment |
 
 Also still unexercised, from previous versions:
 

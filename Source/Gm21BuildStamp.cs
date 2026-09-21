@@ -6,6 +6,6 @@ namespace Grandmaster21
     /// </summary>
     public static class Gm21BuildStamp
     {
-        public const string Stamp = "built 2026-09-21T14:29Z, commit bab49d6-dirty";
+        public const string Stamp = "built 2026-09-21T14:30Z, commit 66c1271";
     }
 }
