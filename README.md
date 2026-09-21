@@ -2,8 +2,8 @@
 
 **RimWorld 1.6** — skills normally end at 20. This mod adds exactly one more level: **21, Grandmaster**.
 
-**Version 0.9.1 Beta.** Verified in real RimWorld 1.6 gameplay — see
-[Release status](#release-status).
+**Version 0.10.0 Beta.** The Shooting capstone has been verified in real RimWorld 1.6 gameplay.
+The Melee capstone added in this version has **not** — see [Release status](#release-status).
 
 Level 21 cannot be randomly generated. It must be earned by accumulating an enormous amount of
 experience *after* a pawn has already reached level 20. Level 21 represents Grandmaster mastery
@@ -203,8 +203,8 @@ Loading an older save works. Existing level-20 pawns simply start at Grandmaster
 
 ## Shooting 21 — Grandmaster Marksman
 
-The first skill-specific capstone. Other skills' Level 21 abilities are not designed yet and are
-deliberately not invented here.
+The first skill-specific capstone. Unchanged in 0.10.0 — the melee work deliberately did not
+refactor it.
 
 > Shooting 20 is an elite marksman.
 > Shooting 21 is a pawn who decides where the bullet goes and what the shot is meant to accomplish.
@@ -410,6 +410,317 @@ in Normal mode adds nothing at all to the save file.
 
 ---
 
+## Melee 21 — Grandmaster of Combat
+
+The second skill-specific capstone, new in **0.10.0** and **not yet runtime tested**. Deliberately
+overpowered, and deliberately *different in kind* from Melee 20. Skills other than Shooting and
+Melee have no Level 21 ability yet, and none is invented here.
+
+> Shooting 21 means the Grandmaster controls **the shot**.
+> Melee 21 means the Grandmaster controls **the fight**.
+
+If an enemy enters their reach, attacks are read, openings are exploited, counters happen
+instantly, weapons are stripped away, nearby allies are protected, and incoming projectiles may be
+caught and sent back.
+
+### Grandmastery amplifies the pawn — it does not replace them
+
+No two Melee Grandmasters fight alike, because every ability is driven by the pawn's own stats.
+The design rule for every composite is the same: **a healthy vanilla human scores exactly 1.0**, so
+a number below 1 is an impaired Grandmaster and a number above 1 is a superhuman one.
+
+| Composite | Built from | Drives |
+|---|---|---|
+| **Precision** | Manipulation × (0.5 + 0.5 × Sight) | Disarm, critical chance, deflection, return-to-sender, pulled strikes |
+| **Awareness** | Sight × Consciousness | Hit chance, defence-ignore, critical chance |
+| **Reaction** | Consciousness × (0.5 + 0.5 × Sight) | Both interception systems |
+| **Defence** | Consciousness × (0.35·Sight + 0.35·Manipulation + 0.30·Move) × weapon readiness | Parry |
+| **Power** | MeleeDamageFactor × √BodySize | Cleave, critical multiplier, deflection distance |
+
+So a **fast** Grandmaster excels at interception and projectile defence; a **precise, perceptive**
+one at disarming, criticals and returning projectiles to their sender; a **physically powerful**
+one at cleaving and at hurling deflected explosives absurd distances. A heavily modded pawn becomes
+correspondingly absurd. That is intended.
+
+**Optional modded stats.** If a `Strength`, `Intelligence`/`Perception`/`CombatAwareness` or
+`Finesse`/`Dexterity` stat exists, it is folded in automatically, normalised against its own
+`defaultBaseValue` and clamped to ×8 so two stacked frameworks cannot produce NaNs in combat maths.
+**No modded stat is required** — in pure vanilla every such factor is exactly 1.0 and costs one
+null check.
+
+### What mastery covers — and what it doesn't
+
+| The fighter controls | Untouched |
+|---|---|
+| Strike accuracy and defensive reading | Armour — armour is still armour |
+| Parry, riposte, disarm | Weapon damage and damage type |
+| Strike placement and strike force | Blast radius — no explosion immunity |
+| Reaching an ally or a projectile in time | Walls — nothing phases through solid terrain |
+| Which direction a deflected object goes | Physics — a returned grenade keeps its own fuse |
+
+### Passive abilities
+
+Active whenever a pawn has a legitimate **stored** Melee 21 *and* a body that can deliver the
+ability. Downed, dead, unconscious, asleep, stunned or unspawned pawns get nothing at all;
+blindness, ruined hands and immobility degrade the composites rather than switching them off.
+
+**1. Near-perfect execution.** The same proportional rule the marksman package uses, applied at the
+one value RimWorld rolls against: `final = 1 − (1 − base) × retained`, with
+`retained = 0.01 / Awareness`. A 60% strike becomes 99.6%. It is *not* a flat +99 points, which
+would erase weapon differentiation entirely.
+
+**2. Near-perfect parry.** The same rule from the other side, scaled by the **Defence** composite. A
+whole Grandmaster parries at ~99.2%; a blind or armless one at ~98.0%; a downed or unconscious one
+does not parry at all.
+
+**3. Ignore ~99% of skill-based defence.** The opponent's dodge chance is *scaled down* by
+`0.01 / Awareness`. This is not armour penetration — armour is never touched anywhere in this
+package. The Grandmaster is exploiting stance, timing, balance and prediction, none of which a
+breastplate cares about.
+
+Attacker first, then defender, so **Grandmaster versus Grandmaster** resolves in the defender's
+favour, producing a parry and a riposte that swaps the roles. The stalemate the design calls for
+falls out of the arithmetic rather than being special-cased.
+
+### Riposte — and why there is no recursion limit
+
+When a Grandmaster turns a blow aside, they immediately owe the attacker a counterattack. It uses
+their real equipped weapon, flows through normal damage/armour/body-part resolution, ignores the
+weapon cooldown already in progress, and **can itself be parried** — by another Grandmaster, who
+then ripostes in turn, forever.
+
+Gameplay recursion is wanted. **C# recursion is not.** A parry does not attack anyone: it appends
+an entry to a queue and returns, so the original attack's call stack unwinds completely. One tick
+later `Gm21CombatScheduler` (a `GameComponent`) drains the queue and resolves each entry as an
+independent, top-level melee attack. Every newly queued entry is stamped `current tick + 1`, so the
+queue is strictly **generational** — an endless exchange performs a bounded amount of work per tick
+instead of spinning inside one, at constant stack depth.
+
+There is no counter limit, no fatigue and no escalating penalty. Two identical Grandmasters trade
+parries and ripostes until something external — an explosion, a psychic lance, a third combatant,
+fire — resolves it. *(A 512-entry ceiling exists purely as a memory guard against a pathological
+mod interaction; reaching it is logged once and is a bug report, not a balance decision.)*
+
+The automated suite drives 300 real counter-exchanges and asserts the call stack never grows by a
+single frame.
+
+### On-hit: disarm
+
+Every landed strike may knock the opponent's weapon out of their hands. The weapon is **dropped**
+via the engine's own `TryDropEquipment`, so it lands as an ordinary `Thing` with ordinary ownership
+and forbidden state and can be picked up again.
+
+```text
+chance = 0.25 × Precision / grip        (×2.5 on a critical, capped at 0.75)
+grip   = max(0.05, targetManipulation) × (1 + weaponMass / 4)   (×4 if psychically bonded)
+```
+
+Never attempted on an unarmed target, on a weapon with `destroyOnDrop` (integrated/mech armaments),
+on an undroppable weapon, or by a Grandmaster with no manipulation. A weapon another mod keeps
+outside the equipment tracker is simply never seen.
+
+### On-hit: critical strikes
+
+```text
+chance     = 0.20 × Precision × Awareness      (capped at 0.75)
+multiplier = weighted draw from 2×…10×, each tier's weight × bias^(tier−2)
+bias       = clamp(Power, 0.5, 2.5)
+```
+
+Base weights `40 / 22 / 14 / 9 / 6 / 4 / 2.5 / 1.5 / 1` for 2×…10×. At ordinary power 2× is the
+common outcome and 10× is exceptional; at high power the bias compounds up the ladder and 10×
+becomes the *most* likely critical — the Isekai clause, with no special case for modded pawns.
+
+The multiplier scales the attack's **real** damage before armour resolves. A 10× knife and a 10×
+persona monosword remain very different things.
+
+### Cleave
+
+A landed strike may carry through into other hostiles in reach.
+
+```text
+weaponFactor = clamp(weaponMass / 2, 0.25, 4)
+chance       = clamp(0.25 × Power × weaponFactor, 0, 0.90)
+maxTargets   = clamp(floor(Power × weaponFactor), 1, 4)
+```
+
+| Weapon | Chance (ordinary power) |
+|---|---|
+| Dagger (0.4 kg) | 6% |
+| Longsword (2.2 kg) | 28% |
+| Warhammer (6 kg) | 75% |
+| Huge two-hander (20 kg) | 90% |
+
+Secondary targets receive a **real melee attack**, scheduled through the same queue as ripostes —
+hit and dodge are rolled, armour resolves, a body part is chosen, and the target may parry. It is
+not a fake AoE pulse. Only pawns hostile to the attacker are ever candidates, so a cleave cannot
+become friendly fire no matter how crowded the melee is.
+
+### Ally melee interception — the 3-tile zone
+
+When an enemy swings at an ally within three tiles, a Grandmaster may take the attack instead.
+
+```text
+effective = MoveSpeed × Reaction
+chance    = InterceptCurve(effective) × distanceFactor        (capped at 0.99)
+```
+
+The curve is the design brief's benchmark, stated once and shared with projectile interception:
+
+| MoveSpeed | 0 | 2 | 4 | 6 | **8** | 10 | 14 | 20 |
+|---|---|---|---|---|---|---|---|---|
+| Chance | 0 | 0.15 | 0.45 | 0.72 | **0.90** | 0.97 | 0.995 | 0.999 |
+
+`distanceFactor` is 1.00 at one tile, 0.95 at two and 0.90 at three, so **8 m/s → 90%** holds at
+one tile and is still 81% at the edge of the radius. A vanilla colonist at 4.6 m/s intercepts about
+half the time: the zone is transformative for a *fast* Grandmaster, not free for every Grandmaster.
+
+Interception needs a real route. The Grandmaster must be conscious, undowned, capable of **moving**,
+hostile to the attacker, friendly to the victim, and have unobstructed **walkable** line of sight to
+them — `GenSight.LineOfSight` with a walkability validator, so neither a wall nor impassable terrain
+can be crossed. The attack must be genuinely hostile; social fights and training are never
+intercepted.
+
+On success the ally is not struck and the Grandmaster is owed a riposte against the attacker. **No
+pawn is moved**: the brief explicitly permits a logical representation where physically relocating a
+pawn mid-attack would be unsafe, and it would be — fighting the job, reservation and stance systems
+at once is how colonists get stuck. Every *physical constraint* is still enforced.
+
+### Projectile interception
+
+Evaluated **once per projectile**, at the moment it first comes within the protective radius of
+where it is going — a window computed from the projectile's own speed, so a grenade is caught about
+fifteen ticks out and a bullet about three.
+
+That timing is the point: intercepting at *impact* would leave a grenade with no fuse left to
+preserve, and intercepting at *launch* would make the Grandmaster decide before the shot had
+travelled anywhere.
+
+```text
+difficulty = (speed / 24) × (1 + explosionRadius / 4)      floored at 0.1
+```
+
+Speed is the primary term, measured against a thrown grenade's speed doubled — the doubling *is*
+the mastery, expressed as one number instead of scattered bonuses. Explosion radius is the secondary
+term, standing in for size, mass and the fact that the thing is armed; it is what makes a rocket
+harder than a bullet despite being slower, and a doomsday rocket nearly untouchable, with no
+hardcoded weapon list anywhere.
+
+| Projectile | Difficulty | Reach chance at 4.6 m/s | at 8 m/s | at 20 m/s |
+|---|---|---|---|---|
+| Thrown grenade | 0.86 | 59% | 95% | 99.9% |
+| Arrow | 1.88 | 24% | 49% | 98% |
+| Bullet | 2.92 | 12% | 26% | 80% |
+| Rocket | 3.29 | 11% | 24% | 77% |
+| Doomsday rocket | 7.88 | 4% | 7% | 25% |
+| Hypersonic (modded, 200 c/s) | 8.33 | 4% | 6% | 24% |
+
+Overhead shells (`flyOverhead`) arrive from above and are never interceptable, as in vanilla.
+A Grandmaster never swats their own side's outgoing fire, and never intercepts a shot already
+aimed at an enemy.
+
+### Deflection, return to sender, safe redirection
+
+Four stages, each with its own stats. Failing a later stage never undoes an earlier one.
+
+```text
+quality = Precision × Consciousness × implement
+implement: melee weapon 1.0 × (1 + 0.5 × min(1, mass/3));  ranged 0.55×;  bare hands 0.35
+p       = quality / (quality + difficulty × hardness)
+          hardness 0.6 for deflection (cap 0.99), 1.5 for return (cap 0.95)
+```
+
+| | Longsword | Bare hands |
+|---|---|---|
+| Deflect a grenade | 73% | 40% |
+| Deflect a bullet | 44% | 17% |
+| Return a bullet | 24% | 8% |
+
+Bare hands work on slow thrown objects and mostly not on bullets, exactly as the design calls for.
+Zero Manipulation deflects nothing at all.
+
+**Return to sender** redirects the *same projectile object* at whatever fired it — never direct
+damage to the shooter. The launcher becomes the Grandmaster, because a projectile cannot hit its own
+launcher and leaving the original shooter there would make return silently impossible. The
+`equipmentDef`, `equipmentQuality` and explosive fuse are saved and restored around the relaunch,
+which is what makes *"the projectile retains its original damage and fuse"* literally true rather
+than approximately true — the Grandmaster redirects the shot, they do not improve it.
+
+**Safe deflection** is what happens when the return roll fails, and it is still a success. Sixteen
+bearings are scored by what stands near where the object would land, weighted by its blast radius:
+each ally in the landing area costs 100, each hostile is worth 25, and separation from the
+Grandmaster is worth 2 per tile. Priority comes out as *away from the Grandmaster → away from allies
+→ toward open space → preferably toward the enemy*. Nobody swats a grenade into the hospital.
+
+```text
+slow objects (< 30 c/s):  distance = 4 × Power × (1 + weaponMass / 4)     capped at 200 tiles
+fast objects (≥ 30 c/s):  fixed 40 tiles — the lever is the ANGLE, not the arm
+```
+
+An ordinary colonist hurls a caught grenade 6 tiles; a strong one with a warhammer, 54; an Isekai
+pawn with a colossal blade hits the 200-tile ceiling. Strength deliberately does **not** decide how
+far a deflected bullet travels.
+
+### Explosives
+
+Three outcomes, and none of them is immunity:
+
+* **Perfect deflection** — the warhead survives redirection and travels away or back, still armed.
+* **Rough deflection** — the Grandmaster got a hand to it and could not turn it. For an explosive
+  that is itself a way to set it off: a 50% chance the impact is brought forward to the
+  interception point, through the engine's own impact path, right next to the Grandmaster.
+* **Failed interception** — it continues on its original path, untouched.
+
+A returned grenade keeps the fuse it had, so catching one late is dangerous. **A successfully
+redirected doomsday rocket can still kill the Grandmaster who redirected it** if its blast radius
+exceeds the distance they managed to buy. Mastery cannot reverse time, and physics remains physics.
+
+### Melee doctrines — Normal, Killer, Downed
+
+Per-pawn, saved, defaulting to Normal, and **entirely separate from the Shooting aim mode** — a pawn
+who is a Grandmaster at both gets two gizmos, each naming its own skill, each reading and writing its
+own store.
+
+**Killer** uses the same shared anatomical ranking as the marksman package, plus one thing only melee
+knows: how hard *this* blow is about to land. If any vital organ has less remaining health than the
+strike carries, it goes there instead — destroying a 6 HP heart now beats a partial hit on a
+full-health brain. Anatomy is scored by `BodyPartTagDef`, never by part name, so it works on modded
+races with three hearts or no head.
+
+**Downed** uses the shared least-lethal ladder unchanged — mobility, then manipulation, then non-vital
+external anatomy, never a vital organ or anything wrapping one — and then adds **controlled force**,
+which is the major distinction from Shooting Downed:
+
+```text
+margin = clamp(0.15 / Precision, 0.02, 0.60)
+damage = min(damage, partHealth × (1 − margin))       floored at 1
+```
+
+A bullet delivers whatever energy it was carrying; a blade is under continuous control all the way
+in. Capping just below the part's remaining health matters because *destroying* a limb is the single
+most lethal thing a less-lethal strike can accidentally do — the part is gone, damage spills toward
+the parent, and the bleed rate jumps. Keeping it attached but wrecked removes the capacity without
+any of that.
+
+Precision decides how *fine* the cut is, never whether it is safe: a superb Grandmaster stops within
+2% of the part's remaining health, a barely-capable one leaves 60% and simply achieves less. Worse
+precision is never more dangerous.
+
+This is not immortality. The target can still die of blood loss, of wounds it already had, of
+infection, of the next blow, or because its anatomy left no safe option — it is just substantially
+safer than the shooting equivalent.
+
+### Storage
+
+One byte per pawn, in a `ConditionalWeakTable`, persisted from a postfix on `Pawn.ExposeData` —
+the same architecture as Grandmaster XP and the aim mode, in a **separate table** so neither skill's
+UI or save format can perturb the other's. Normal is the default and is never written.
+
+Nothing else is saved. Riposte queues, interception decisions, critical rolls and deflection context
+are transient by construction: a game reloaded mid-swing starts the next exchange clean.
+
+---
+
 ## Removing Grandmaster 21 safely
 
 > **Do not remove the mod while a save still contains level 21 skills.**
@@ -517,10 +828,25 @@ active, the *entire* marksman package — accuracy compensation, cover negation,
 mastery and Killer/Downed targeting — is not applied at all, and a warning is logged. Level 21
 itself, its permanence and the quality rules are unaffected.
 
+**The same applies to the Melee Grandmaster package, separately.** It detects
+`combatextended` and `yayo.combat` by package id and, if either is active, applies *none* of its
+patches — no parry, riposte, disarm, criticals, cleave, interception or projectile deflection.
+Melee detection is deliberately its own code path rather than shared with the marksman package:
+the two touch different pipelines and must be able to reach different verdicts, and the shooting
+package has already passed runtime validation and is not to be perturbed.
+
 This is graceful degradation, not tested compatibility. **No CE compatibility is claimed** — the
-interaction has not been run. The same applies to any other combat overhaul: only CE is detected by
-name, so a different overhaul would not trigger the opt-out and the patches would be applied on top
-of it.
+interaction has not been run. The same applies to any other combat overhaul: only the ids above are
+detected by name, so a different overhaul would not trigger the opt-out and the patches would be
+applied on top of it.
+
+The melee package touches melee hit resolution, dodge, verbs, projectile flight, explosions and
+health. Melee overhauls, weapon frameworks and RPG stat systems were **audited in design** — modded
+stats are optional and normalised, weapons are read by mass and def flags rather than by name,
+anatomy is scored by `BodyPartTagDef` rather than part name, a weapon kept outside the equipment
+tracker is simply never disarmed, and a projectile subclass that does not delegate to
+`Projectile.TickInterval` is simply not interceptable. **None of that is tested compatibility
+either.**
 
 **Tested against:** RimWorld 1.6, `Assembly-CSharp.dll` build supplied by the mod author.
 No other version is claimed. No compatibility with any specific third-party mod is claimed,
@@ -543,8 +869,8 @@ because none was tested.
 | `QualityUtility.GenerateQualityCreatedByPawn(Pawn, SkillDef, bool)` | Postfix | Re-clamps after the Production Specialist offset |
 | `SkillUI.GetSkillDescription` | Postfix | Progress / per-skill achieved text |
 | `SkillUI.DrawSkill` | Postfix | ★ marker (cosmetic) |
-| `Pawn.ExposeData` | Postfix | Persists the Grandmaster aim mode |
-| `Pawn.GetGizmos` | Postfix | The Grandmaster Aim gizmo |
+| `Pawn.ExposeData` | Postfix ×2 | Persists the Grandmaster aim mode and the melee doctrine, in separate tables |
+| `Pawn.GetGizmos` | Postfix ×2 | The Grandmaster Aim gizmo and the Grandmaster Melee gizmo |
 
 ### Shooting Grandmaster patches
 
@@ -576,6 +902,51 @@ the property postfixes are a single bool read. An ordinary shooter pays essentia
 One known wart: after the targeting UI builds a report, the observed flag stays set until the next
 shot or hover. That can only affect a *displayed* hit chance, never a rolled one — real shots always
 recompute the context — but it is a heuristic, not a guarantee.
+
+### Melee Grandmaster patches
+
+Applied **manually** too, and for the same reason: `Verb_MeleeAttack.GetNonMissChance` and
+`GetDodgeChance` are *private* in 1.6, and an attribute patch on a private member that gets renamed
+is a startup crash rather than a logged warning. They are also applied in independent groups, so
+losing one target disables one feature instead of cascading:
+
+| Target | Kind | Why |
+|---|---|---|
+| `Verb_MeleeAttack.TryCastShot` | Prefix + Postfix + **Finalizer** | Opens/closes the melee frame; runs ally interception before the attack; resolves on-hit effects and schedules ripostes after it. A finalizer so the frame stack cannot wedge if the attack throws |
+| `Verb_MeleeAttack.GetNonMissChance` | Postfix (private) | Near-perfect execution, at the single value `TryCastShot` rolls against |
+| `Verb_MeleeAttack.GetDodgeChance` | Postfix (private) | Both sides of the defence roll: the attacker's defence-ignore and the defender's parry, in that order |
+| `Pawn.PreApplyDamage` | Prefix (`ref DamageInfo`) | Critical multiplier, Killer/Downed strike placement and controlled force — the last point where both the part and the amount can change, and still before armour |
+| `Pawn_HealthTracker.CheckForStateChange` | Prefix + Finalizer | Melee death-on-downed suppression, gated on the open melee frame |
+| `Projectile.TickInterval` | Prefix | Projectile interception, evaluated once per projectile as it enters the protective radius |
+| `Pawn.ExposeData` | Postfix | Persists the melee doctrine |
+| `Pawn.GetGizmos` | Postfix | The Grandmaster Melee gizmo |
+
+`Gm21CombatScheduler` is a `GameComponent`, which RimWorld instantiates by type scan — no patch and
+no XML.
+
+**Why a melee frame is needed at all:** RimWorld resolves a melee attack across methods that share
+no object. `TryCastShot` rolls the hit and the dodge; `Pawn.PreApplyDamage` — a separate call, on
+the *victim* — is where the body part and damage can still change. By then nothing in the
+`DamageInfo` can answer "was this a Grandmaster's deliberate strike, and did it critical?": an
+unarmed strike's `Weapon` is the pawn's own race def, and a rifle used as a club reports a ranged
+weapon. The frame is opened where the caster *is* known, computes every composite once, and makes
+the per-damage-event question a field read.
+
+It is a **stack**, not a single slot, because another mod's patch or a retaliation effect can
+legitimately start a melee attack inside one already resolving. Past eight levels of nesting the
+frames stop being tracked and everything falls back to vanilla, which is the right answer to
+pathological nesting.
+
+**Distinguishing a parry from a whiff:** vanilla only consults the dodge chance *after* the hit roll
+has succeeded, so "dodge chance was consulted **and** the attack still failed" identifies a dodge
+rather than a miss. A riposte answers a parry, not a stumble. When vanilla skips the dodge roll
+entirely — an immobile target, a surprise attack — nothing is scheduled.
+
+**Why `Projectile.TickInterval` and not every subclass:** every projectile subclass delegates to the
+base method to actually move, so the base is the single point every projectile in the game passes
+through, modded ones included. A hypothetical subclass that reimplements flight from scratch would
+simply not be interceptable — graceful degradation, not a crash. A once-only weak-table mark makes a
+duplicate call harmless in any case.
 
 ### The single transpiler
 
@@ -641,6 +1012,25 @@ path. The `Learn` prefix exits on an integer field comparison for any pawn below
 is a `ConditionalWeakTable` lookup that only occurs at level 20 or above, with a cached value
 factory so the hot path does not allocate.
 
+**Melee.** Every gate is `Gm21.IsGrandmaster`, which is an integer field comparison, so an ordinary
+pawn's attack costs a handful of comparisons. Composites are computed **once** per attack when the
+frame opens and only for whichever side is a Grandmaster; the hooks that consume them are field
+reads. No LINQ anywhere in the melee or projectile paths, and no allocation on a landed strike
+beyond what vanilla already does.
+
+* **Ally interception** scans 37 cells around the victim, and only when a genuinely hostile melee
+  attack is being made against a pawn who is not themselves a Grandmaster. It is bounded by the
+  attack rate, not by the tick rate.
+* **Cleave** scans nine cells, only on a landed Grandmaster strike that already rolled a cleave.
+* **Projectile defence** is one weak-table lookup and a few field reads per projectile per tick,
+  with every cheap `ThingDef` check ordered ahead of the single reflective read. The full
+  evaluation — a 37-cell scan and the four-stage roll — happens **once per projectile**, for the
+  one tick it spends entering a Grandmaster's radius.
+* **Safe-vector scoring** is 16 bearings × a small neighbourhood, and runs only at the moment a
+  deflection actually happens. No pathfinding, no map scan.
+* **The reaction queue** holds at most one entry per melee exchange in progress. Draining it is
+  proportional to what is queued, never to the number of pawns or projectiles on the map.
+
 ---
 
 ## Building
@@ -661,18 +1051,27 @@ On Linux/Mono the `netstandard 2.1` facade is required (`mono-devel` provides it
 `Tests/Harness.cs` runs the compiled assembly against RimWorld's real `SkillRecord` type and needs
 a RimWorld install.
 
-`Tests/OfflineHarness.cs` and `Tests/OfflineHarness_Shooting.cs` need no RimWorld install:
+`Tests/OfflineHarness.cs`, `Tests/OfflineHarness_Shooting.cs` and
+`Tests/OfflineHarness_Melee.cs` need no RimWorld install:
 
 ```bash
 ./tools/build-stubs.sh
 ```
 
-That compile-checks the source and runs both suites against reference stubs whose signatures mirror
-`Assembly-CSharp`. Between them they cover promotion, the transpiler fail-safe, permanence, the
-generation cap, decay, aptitude semantics, both quality overloads, the per-pawn cleanup, the
+That compile-checks the source and runs all three suites against reference stubs whose signatures
+mirror `Assembly-CSharp`. Between them they cover promotion, the transpiler fail-safe, permanence,
+the generation cap, decay, aptitude semantics, both quality overloads, the per-pawn cleanup, the
 authorised scope's exception safety, the accuracy and delay maths, aim-mode storage, Killer/Downed
 part selection across several anatomies, the targeting patch's gating, and that every translation
 key the code looks up is actually shipped.
+
+The melee suite additionally drives the **real patch bodies** for hit chance and defence, every
+stat composite, the capability gates, the reaction scheduler — including 300 counter-exchanges with
+an assertion that the call stack never grows by a single frame — disarm gating and odds, the
+critical ladder's range and distribution at three power levels, cleave scaling and its
+never-hit-allies rule, the 8 m/s interception benchmark and its range/wall/mobility constraints, the
+projectile difficulty ordering, the deflection and return curves, redirection distance, the
+safe-vector chooser, and the controlled-force clamp.
 
 They do **not** run inside RimWorld. They do not exercise Harmony patching, real IL, combat,
 projectiles, pawn generation, the gizmo or saving — and critically, they **cannot prove that the
@@ -683,10 +1082,18 @@ hand-written approximations. Only a real build does that. See `tools/stubs/READM
 
 ## Release status
 
-**0.9.1 Beta.** Builds clean against RimWorld 1.6, passes every check that can be run outside the
-game, and has now been played.
+**0.10.0 Beta.** Builds clean against RimWorld 1.6 and passes every check that could be run in the
+environment it was built in.
 
-### Runtime test — PASS (RimWorld 1.6, 0.9.0)
+**The Melee Grandmaster package has had NO runtime gameplay testing.** It is new in this version.
+Every RimWorld member it touches is confirmed present with the right signature and parameter names
+against the real 1.6 assembly metadata, and its decision logic is covered by 154 offline checks —
+but patches resolving is not patches binding, and patches binding is not patches behaving. Treat
+0.10.0 as untested in play, and keep a backup save.
+
+The Shooting package is unchanged in this version and retains its 0.9.0 runtime result below.
+
+### Runtime test — PASS (RimWorld 1.6, 0.9.0) — Shooting only
 
 Verified in an actual gameplay session:
 
@@ -716,31 +1123,47 @@ exercised it yet.
 ./tools/verify-real.sh /path/to/Managed /path/to/0Harmony.dll
 ```
 
-* **Release build succeeds** — clean, no warnings.
-* **80/80 runtime targets resolve**, including every member looked up reflectively and every
-  Harmony injection *parameter name*. This matters more than it sounds: Harmony binds
-  prefix/postfix arguments by name, so a renamed vanilla parameter compiles perfectly and throws
-  at patch time. All confirmed: `ShotReport.AimOnTargetChance_IgnoringPosture` /
-  `PassCoverChance`, `Stance_Warmup`/`Stance_Cooldown(int ticks, LocalTargetInfo focusTarg, Verb
-  verb)`, `Pawn.PreApplyDamage(ref DamageInfo dinfo, ...)`,
-  `Pawn_HealthTracker.CheckForStateChange(DamageInfo? dinfo, Hediff hediff)`,
-  `Pawn_HealthTracker.forceDowned` and `.pawn`, `Verb.burstShotsLeft` / `ShotsPerBurst` /
-  `CurrentTarget`, and all thirteen `BodyPartTagDef` defNames.
-* **The `Learn` transpiler matches exactly one site** in the shipped IL (`IL_0057`), and the two
-  other literal `20`s — the level-up ceiling — are correctly left alone.
-* **20/22 Harmony patches bind to their real RimWorld methods, 0 failures** — applied live, one
-  target at a time, by `Tests/PatchAllTest.cs`. That covers every `ShotReport` property postfix,
-  `Verb_LaunchProjectile.TryCastShot` (prefix + finalizer),
-  `Pawn_HealthTracker.CheckForStateChange` (prefix + finalizer), both `Stance` constructor
-  `ref int ticks` prefixes, `Pawn.PreApplyDamage` with `ref DamageInfo`, the gizmo and aim-mode
-  patches, and all nine core skill/quality patches. The remaining two are BLOCKED rather than
-  failed — see below.
-* **26/26 progression checks pass against the real `SkillRecord`** and the real XP curve.
-* **131 offline logic checks pass** across the two stub harnesses, including a reconstruction of
-  the raccoon burst: four projectiles, four different mobility limbs, none falling through to
-  vanilla and none choosing the torso or head.
+0.10.0 was built and checked against RimWorld 1.6 **reference assemblies** — full public/protected
+metadata for `Assembly-CSharp 1.6.9676.17735`, with method bodies stripped. That is enough to prove
+every signature, and not enough to run IL. Results are split accordingly, and the three checks that
+need real bodies are reported `NOT RUN`, not passed.
 
-Two design assumptions were confirmed directly in the shipped IL:
+| Check | 0.10.0 result |
+|---|---|
+| Release build against 1.6 | **PASS** — clean, no warnings |
+| 1. Runtime targets and Harmony parameter names | **PASS** — 144/144, 0 skipped |
+| 2. `Learn` transpiler IL pattern | **NOT RUN** — needs method bodies |
+| 3. Live Harmony patch binding | **NOT RUN** — needs method bodies |
+| 4. Finalizer semantics | **PASS** — 12/12, all four shipped finalizers |
+| 5. Progression suite vs. real `SkillRecord` | **NOT RUN** — needs method bodies |
+| Offline logic suites | **PASS** — 285/285 (57 core + 74 shooting + 154 melee) |
+
+Checks 2, 3 and 5 all fail with `Method has zero rva` against reference assemblies. That is the
+environment, not a finding: **run `verify-real.sh` against a real RimWorld install to clear them.**
+They passed against real assemblies at 0.9.2 for everything that existed then; the melee patch
+groups added to `Tests/PatchAllTest.cs` in this version compile but have never been bound.
+
+**144/144 runtime targets resolve**, including every member looked up reflectively and every
+Harmony injection *parameter name*. This matters more than it sounds: Harmony binds prefix/postfix
+arguments by name, so a renamed vanilla parameter compiles perfectly and throws at patch time. Newly
+confirmed for melee: `Verb_MeleeAttack.GetNonMissChance` / `GetDodgeChance(LocalTargetInfo target)`
+— both **private** — `Pawn_MeleeVerbs.TryMeleeAttack(Thing, Verb, bool)`,
+`Pawn_EquipmentTracker.TryDropEquipment` and `bondedWeapon`, `ThingDef.destroyOnDrop` /
+`destroyable`, `DamageInfo.SetAmount`, `Pawn_StanceTracker.SetStance` / `curStance` / `stunner`,
+`StunHandler.Stunned`, `RestUtility.Awake(Pawn)`, `Projectile.TickInterval(int delta)`, the 8-arg
+`Projectile.Launch`, the protected `equipment` / `equipmentDef` / `equipmentQuality` / `destination`
+/ `ticksToImpact` fields, the private `Projectile_Explosive.ticksToDetonation`,
+`ProjectileProperties.speed` / `explosionRadius` / `flyOverhead` / `SpeedTilesPerTick`,
+`StatDefOf.MoveSpeed` / `Mass` / `MeleeDamageFactor`, `PawnCapacityDefOf.Sight` / `Moving`,
+`StatDef.defaultBaseValue`, `GenSight.LineOfSight` (both overloads), `GenGrid.Walkable`,
+`ThingGrid.ThingsListAtFast`, `GenHostility.HostileTo` and `MoteMaker.ThrowText`.
+
+One melee design assumption is worth stating plainly, because it could not be confirmed from
+metadata alone: `Projectile.DestinationCell` turned out to be **protected**, which a guess would
+have got wrong, so the destination is read from the `destination` field the redirect logic already
+resolves.
+
+Two design assumptions confirmed directly in the shipped IL at 0.9.2, still current:
 
 * `Verb_LaunchProjectile.TryCastShot` rolls `Rand.Chance` against
   `AimOnTargetChance_IgnoringPosture` (IL_02cc→02d1) and `PassCoverChance` (IL_03ce→03d3) — exactly
@@ -770,6 +1193,11 @@ than by comment — it patches throwing methods with each finalizer shape and as
 propagate — and then audits the shipped assembly to confirm every registered finalizer is either
 void or returns `__exception` unchanged.
 
+The melee package adds two more finalizers, for closing the melee frame and restoring the melee
+`forceDowned` guard, and both are void for the same reason. The audit **discovers** finalizers by
+name rather than reading from a list, because a hardcoded list quietly stops covering the mod the
+moment a new one is added — which is exactly what would have happened here. All four are covered.
+
 ### Two patch targets cannot be bound outside the game
 
 `SkillUI.GetSkillDescription` and `SkillUI.DrawSkill` are reported BLOCKED, not failed, and no set
@@ -787,14 +1215,38 @@ check 1, so what is unverified is the bind step alone.
 
 ### Not yet verified — requires actually playing
 
-Patches binding is not patches behaving. Still unexercised:
+Patches resolving is not patches binding, and patches binding is not patches behaving.
+
+**All of Melee 21 is in this category.** Nothing below has been observed in a running game:
+
+| Melee test | Status |
+|---|---|
+| Melee 20 gets no new ability | `NOT RUN` (offline: PASS) |
+| Melee 21 activates the passive package | `NOT RUN` (offline: PASS) |
+| Doctrine survives save/load | `NOT RUN` (offline: store round-trip PASS) |
+| GM attacks a normal pawn / normal pawn attacks a GM / GM vs GM | `NOT RUN` (offline: patch bodies PASS) |
+| Parry → riposte, riposte countered, long chain without overflow | `NOT RUN` (offline: 300 exchanges at constant stack depth PASS) |
+| Disarm: armed / unarmed / integrated weapon | `NOT RUN` (offline: PASS) |
+| Criticals 2×–10×, armour still applies | `NOT RUN` (offline: range and distribution PASS) |
+| Cleave at 1 / 2 / crowded, light vs heavy weapon | `NOT RUN` (offline: PASS) |
+| Ally intercept at 1 / 2 / 3 / >3 tiles, varying speeds, 8 m/s ≈ 90% | `NOT RUN` (offline: PASS) |
+| Projectile deflection: arrow, bullet, grenade, rocket, doomsday | `NOT RUN` (offline: difficulty model PASS) |
+| Return to sender actually travels toward the sender | `NOT RUN` — needs a live projectile |
+| Safe deflection moves away from the GM and allies | `NOT RUN` (offline: vector chooser PASS) |
+| Weak vs very strong GM: grenade redirect distance differs | `NOT RUN` (offline: PASS) |
+| Explosives: fuse preserved, rocket may detonate on interception, blast can still kill the GM | `NOT RUN` — needs a live projectile |
+| Killer prefers vital anatomy / Downed prefers mobility with reduced force | `NOT RUN` (offline: PASS) |
+| Physical incapacity degrades abilities | `NOT RUN` (offline: PASS) |
+| Two identical Grandmasters sustain a counter chain without instability | `NOT RUN` (offline: PASS) |
+
+Also still unexercised, from previous versions:
 
 * **the 0.9.1 burst behaviour** — per-projectile re-evaluation in a live burst, burst
   cancellation once the target is down, and the "no safe target → hold fire" path
 * the cleanup → uninstall → reload-without-the-mod cycle
 * death-on-downed suppression, and its new intended-target narrowing
 * `Player.log` free of Harmony patch failures in a real load
-* Combat Extended detection and opt-out
+* Combat Extended detection and opt-out, for either package
 
 The `Learn` transpiler's fail-safe is unchanged and still degrades to "no new Grandmasters" rather
 than corrupting progression.
