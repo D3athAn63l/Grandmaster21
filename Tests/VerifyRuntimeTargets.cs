@@ -15,6 +15,7 @@ using System.Reflection;
 using HarmonyLib;
 using RimWorld;
 using Verse;
+using Grandmaster21;
 
 static class VerifyRuntimeTargets
 {
@@ -120,6 +121,139 @@ static class VerifyRuntimeTargets
         Ok("Pawn_HealthTracker.forceDowned resolves", forceDowned != null,
            forceDowned == null ? "" : forceDowned.FieldType.Name);
         Ok("  ...and is a bool", forceDowned != null && forceDowned.FieldType == typeof(bool));
+
+        Console.WriteLine("\n=== Reflection targets: melee ===");
+
+        MethodInfo meleeCast = AccessTools.Method(typeof(Verb_MeleeAttack), "TryCastShot");
+        Ok("Verb_MeleeAttack.TryCastShot resolves", meleeCast != null, Params(meleeCast));
+
+        MethodInfo nonMiss = AccessTools.Method(typeof(Verb_MeleeAttack), "GetNonMissChance");
+        Ok("Verb_MeleeAttack.GetNonMissChance resolves (private)", nonMiss != null, Params(nonMiss));
+        Ok("  ...and returns float", nonMiss != null && nonMiss.ReturnType == typeof(float));
+
+        MethodInfo meleeDodge = AccessTools.Method(typeof(Verb_MeleeAttack), "GetDodgeChance");
+        Ok("Verb_MeleeAttack.GetDodgeChance resolves (private)", meleeDodge != null, Params(meleeDodge));
+        Ok("  ...and returns float", meleeDodge != null && meleeDodge.ReturnType == typeof(float));
+        NeedParam("Verb_MeleeAttack.GetDodgeChance", meleeDodge, "target", "LocalTargetInfo");
+
+        MethodInfo tryMelee = AccessTools.Method(typeof(Pawn_MeleeVerbs), "TryMeleeAttack",
+            new[] { typeof(Thing), typeof(Verb), typeof(bool) });
+        Ok("Pawn_MeleeVerbs.TryMeleeAttack(Thing, Verb, bool) resolves", tryMelee != null, Params(tryMelee));
+        Ok("Pawn_MeleeVerbs.TryGetMeleeVerb resolves",
+           AccessTools.Method(typeof(Pawn_MeleeVerbs), "TryGetMeleeVerb") != null);
+        Ok("Pawn.meleeVerbs field is public", typeof(Pawn).GetField("meleeVerbs") != null);
+
+        Ok("Pawn_StanceTracker.SetStance resolves",
+           AccessTools.Method(typeof(Pawn_StanceTracker), "SetStance") != null);
+        Ok("Pawn_StanceTracker.curStance field is public",
+           typeof(Pawn_StanceTracker).GetField("curStance") != null);
+        Ok("Stance_Mobile has a public parameterless constructor",
+           typeof(Stance_Mobile).GetConstructor(Type.EmptyTypes) != null);
+        Ok("Pawn_StanceTracker.stunner field is public",
+           typeof(Pawn_StanceTracker).GetField("stunner") != null);
+        Ok("StunHandler.Stunned exists",
+           AccessTools.Property(AccessTools.TypeByName("RimWorld.StunHandler"), "Stunned") != null);
+        Ok("RestUtility.Awake(Pawn) resolves",
+           AccessTools.Method(typeof(RestUtility), "Awake", new[] { typeof(Pawn) }) != null);
+
+        MethodInfo dropEq = AccessTools.Method(typeof(Pawn_EquipmentTracker), "TryDropEquipment");
+        Ok("Pawn_EquipmentTracker.TryDropEquipment resolves", dropEq != null, Params(dropEq));
+        Ok("Pawn_EquipmentTracker.Primary exists",
+           AccessTools.Property(typeof(Pawn_EquipmentTracker), "Primary") != null);
+        Ok("Pawn_EquipmentTracker.bondedWeapon field is public",
+           typeof(Pawn_EquipmentTracker).GetField("bondedWeapon") != null);
+        Ok("ThingDef.destroyOnDrop field is public", typeof(ThingDef).GetField("destroyOnDrop") != null);
+        Ok("ThingDef.destroyable field is public", typeof(ThingDef).GetField("destroyable") != null);
+        Ok("ThingDef.IsMeleeWeapon exists", AccessTools.Property(typeof(ThingDef), "IsMeleeWeapon") != null);
+
+        Ok("DamageInfo.SetAmount exists", AccessTools.Method(typeof(DamageInfo), "SetAmount") != null);
+
+        Console.WriteLine("\n=== Melee stats and capacities ===");
+        foreach (string stat in new[] { "MoveSpeed", "Mass", "MeleeDamageFactor",
+                                        "MeleeDodgeChance", "MeleeHitChance" })
+        {
+            Ok("  StatDefOf." + stat, typeof(StatDefOf).GetField(stat) != null);
+        }
+        foreach (string cap in new[] { "Sight", "Moving", "Manipulation", "Consciousness" })
+        {
+            Ok("  PawnCapacityDefOf." + cap, typeof(PawnCapacityDefOf).GetField(cap) != null);
+        }
+        Ok("StatDef.defaultBaseValue field is public (optional-stat normalisation)",
+           typeof(StatDef).GetField("defaultBaseValue") != null);
+        Ok("PawnCapacitiesHandler.GetLevel resolves",
+           AccessTools.Method(typeof(PawnCapacitiesHandler), "GetLevel") != null);
+        Ok("Pawn.BodySize exists", AccessTools.Property(typeof(Pawn), "BodySize") != null);
+
+        Console.WriteLine("\n=== Projectile defence (protected/private internals) ===");
+        MethodInfo projTick = AccessTools.Method(typeof(Projectile), "TickInterval", new[] { typeof(int) })
+                           ?? AccessTools.Method(typeof(Projectile), "Tick");
+        Ok("Projectile flight tick resolves", projTick != null,
+           projTick == null ? "" : projTick.Name + "(" + Params(projTick) + ")");
+
+        MethodInfo launch = AccessTools.Method(typeof(Projectile), "Launch", new[] {
+            typeof(Thing), typeof(UnityEngine.Vector3), typeof(LocalTargetInfo), typeof(LocalTargetInfo),
+            typeof(ProjectileHitFlags), typeof(bool), typeof(Thing), typeof(ThingDef) });
+        Ok("Projectile.Launch(8-arg) resolves", launch != null, Params(launch));
+
+        foreach (string f in new[] { "equipment", "equipmentDef", "equipmentQuality",
+                                     "destination", "ticksToImpact" })
+        {
+            FieldInfo fi = AccessTools.Field(typeof(Projectile), f);
+            Ok("  Projectile." + f + " resolves", fi != null, fi == null ? "" : fi.FieldType.Name);
+        }
+        FieldInfo fuse = AccessTools.Field(typeof(Projectile_Explosive), "ticksToDetonation");
+        Ok("Projectile_Explosive.ticksToDetonation resolves (fuse preservation)", fuse != null,
+           fuse == null ? "" : fuse.FieldType.Name);
+        Ok("  ...and is an int", fuse != null && fuse.FieldType == typeof(int));
+
+        Ok("Projectile.ExactPosition is public",
+           AccessTools.Property(typeof(Projectile), "ExactPosition").GetGetMethod() != null);
+        Ok("Projectile.HitFlags is public",
+           AccessTools.Property(typeof(Projectile), "HitFlags").GetGetMethod() != null);
+        Ok("Projectile.Launcher is public",
+           AccessTools.Property(typeof(Projectile), "Launcher").GetGetMethod() != null);
+        Ok("Projectile.intendedTarget field is public",
+           typeof(Projectile).GetField("intendedTarget") != null);
+        Ok("ProjectileProperties.speed field is public",
+           typeof(ProjectileProperties).GetField("speed") != null);
+        Ok("ProjectileProperties.explosionRadius field is public",
+           typeof(ProjectileProperties).GetField("explosionRadius") != null);
+        Ok("ProjectileProperties.flyOverhead field is public",
+           typeof(ProjectileProperties).GetField("flyOverhead") != null);
+        Ok("ProjectileProperties.SpeedTilesPerTick exists",
+           AccessTools.Property(typeof(ProjectileProperties), "SpeedTilesPerTick") != null);
+
+        Console.WriteLine("\n=== Interception geometry ===");
+        Ok("GenSight.LineOfSight(start, end, map) resolves",
+           AccessTools.Method(typeof(GenSight), "LineOfSight",
+               new[] { typeof(IntVec3), typeof(IntVec3), typeof(Map) }) != null);
+        Ok("GenSight.LineOfSight(+validator) resolves",
+           AccessTools.Method(typeof(GenSight), "LineOfSight",
+               new[] { typeof(IntVec3), typeof(IntVec3), typeof(Map), typeof(bool),
+                       typeof(Func<IntVec3, bool>), typeof(int), typeof(int) }) != null);
+        Ok("GenGrid.Walkable(IntVec3, Map) resolves",
+           AccessTools.Method(typeof(GenGrid), "Walkable", new[] { typeof(IntVec3), typeof(Map) }) != null);
+        Ok("ThingGrid.ThingsListAtFast(IntVec3) resolves",
+           AccessTools.Method(typeof(ThingGrid), "ThingsListAtFast", new[] { typeof(IntVec3) }) != null);
+        Ok("Map.thingGrid field is public", typeof(Map).GetField("thingGrid") != null);
+        Ok("GenHostility.HostileTo(Thing, Thing) resolves",
+           AccessTools.Method(typeof(GenHostility), "HostileTo",
+               new[] { typeof(Thing), typeof(Thing) }) != null);
+        Ok("IntVec3Utility.DistanceTo resolves",
+           AccessTools.Method(typeof(IntVec3Utility), "DistanceTo") != null);
+        Ok("IntVec3Utility.ToIntVec3(Vector3) resolves",
+           AccessTools.Method(typeof(IntVec3Utility), "ToIntVec3") != null);
+        MethodInfo throwText = AccessTools.Method(typeof(MoteMaker), "ThrowText",
+            new[] { typeof(UnityEngine.Vector3), typeof(Map), typeof(string), typeof(float) });
+        Ok("MoteMaker.ThrowText(Vector3, Map, string, float) resolves", throwText != null, Params(throwText));
+
+        Console.WriteLine("\n=== Reaction scheduler ===");
+        Ok("GameComponent.GameComponentTick is virtual",
+           AccessTools.Method(typeof(GameComponent), "GameComponentTick") != null);
+        Ok("GameComponent has a (Game) constructor contract",
+           typeof(Gm21CombatScheduler).GetConstructor(new[] { typeof(Game) }) != null);
+        Ok("Gm21CombatScheduler derives from GameComponent",
+           typeof(GameComponent).IsAssignableFrom(typeof(Gm21CombatScheduler)));
 
         Console.WriteLine("\n=== Burst discipline (protected members, read reflectively) ===");
         FieldInfo burstLeft = AccessTools.Field(typeof(Verb), "burstShotsLeft");

@@ -108,6 +108,42 @@ class PatchAllTest
                                 new HarmonyMethod(AccessTools.Method(guard, "Prefix")), null, null,
                                 new HarmonyMethod(AccessTools.Method(guard, "Finalizer"))));
 
+        Console.WriteLine("\n=== Manual melee patches (one target at a time) ===");
+        // Same reasoning as the shooting block: Gm21MeleePatches.Apply() starts with a combat
+        // overhaul check that reads ModsConfig, which cannot load headless. Binding one target at
+        // a time also turns "melee failed" into "this target failed, for this reason".
+        Type M = modAsm.GetType("Grandmaster21.Gm21MeleePatches");
+        Type meleeGuard = modAsm.GetType("Grandmaster21.Gm21MeleeDownedGuard");
+        Type projDef = modAsm.GetType("Grandmaster21.Gm21ProjectileDefence");
+        Func<string, HarmonyMethod> mhook = n => new HarmonyMethod(AccessTools.Method(M, n));
+
+        Bind("Verb_MeleeAttack.TryCastShot  [prefix + postfix + finalizer]", ref okCount, ref failCount, ref blockedCount,
+            () => harmony.Patch(AccessTools.Method(typeof(Verb_MeleeAttack), "TryCastShot"),
+                                mhook("Prefix_OpenMeleeContext"), mhook("Postfix_ResolveExchange"), null,
+                                mhook("Finalizer_CloseMeleeContext")));
+
+        Bind("Verb_MeleeAttack.GetNonMissChance  [postfix, private]", ref okCount, ref failCount, ref blockedCount,
+            () => harmony.Patch(AccessTools.Method(typeof(Verb_MeleeAttack), "GetNonMissChance"),
+                                null, mhook("Postfix_NonMissChance")));
+
+        Bind("Verb_MeleeAttack.GetDodgeChance  [postfix, private]", ref okCount, ref failCount, ref blockedCount,
+            () => harmony.Patch(AccessTools.Method(typeof(Verb_MeleeAttack), "GetDodgeChance"),
+                                null, mhook("Postfix_DodgeChance")));
+
+        Bind("Pawn.PreApplyDamage  [melee prefix, ref DamageInfo]", ref okCount, ref failCount, ref blockedCount,
+            () => harmony.Patch(AccessTools.Method(typeof(Pawn), "PreApplyDamage"),
+                                mhook("Prefix_ShapeMeleeDamage")));
+
+        Bind("Pawn_HealthTracker.CheckForStateChange  [melee prefix + finalizer]", ref okCount, ref failCount, ref blockedCount,
+            () => harmony.Patch(AccessTools.Method(typeof(Pawn_HealthTracker), "CheckForStateChange"),
+                                new HarmonyMethod(AccessTools.Method(meleeGuard, "Prefix")), null, null,
+                                new HarmonyMethod(AccessTools.Method(meleeGuard, "Finalizer"))));
+
+        Bind("Projectile.TickInterval  [prefix]", ref okCount, ref failCount, ref blockedCount,
+            () => harmony.Patch(AccessTools.Method(typeof(Projectile), "TickInterval", new[] { typeof(int) })
+                                ?? AccessTools.Method(typeof(Projectile), "Tick"),
+                                new HarmonyMethod(AccessTools.Method(projDef, "Prefix_ProjectileFlight"))));
+
         Console.WriteLine("\n=== Transpiler ===");
         // Gm21.LearnPatchApplied is the authoritative flag: Gm21.Promote is gated on it, so false
         // here means no Grandmaster could be created this session.
