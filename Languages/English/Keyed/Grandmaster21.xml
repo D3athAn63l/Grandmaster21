@@ -58,6 +58,13 @@
   <GM21_Melee_Deflected>Deflected!</GM21_Melee_Deflected>
   <GM21_Melee_RoughDeflection>Detonated!</GM21_Melee_RoughDeflection>
 
+  <!-- Live melee-defence readout on a Melee Grandmaster's skill tooltip. The Stats tab keeps
+       showing the vanilla capped value, which is true for the stat and misleading for this pawn.
+       {0} vanilla melee dodge chance, {1} Grandmaster effective defence -->
+  <GM21_Melee_DodgeTooltip>Melee dodge chance (vanilla, capped): {0}\nGrandmaster effective melee defence: {1}\n\nThe Stats tab shows the vanilla value, which is what RimWorld caps every pawn at. A Grandmaster's actual defence is the second figure. Ranged dodge is unaffected - a Melee Grandmaster answers projectiles by intercepting them, not by dodging them.</GM21_Melee_DodgeTooltip>
+  <!-- {0} vanilla melee dodge chance -->
+  <GM21_Melee_DodgeIncapable>Melee dodge chance: {0}\n\nThis pawn cannot currently defend themselves, so Grandmaster melee defence does not apply and the vanilla value is what happens.</GM21_Melee_DodgeIncapable>
+
   <!-- {0} current XP, {1} required XP, {2} percent -->
   <GM21_TooltipProgress>Grandmaster progress: {0} / {1} XP ({2}%)</GM21_TooltipProgress>
 

@@ -299,7 +299,10 @@ namespace Grandmaster21
             }
             if (frame.defenderIsGm)
             {
-                dodge = Gm21Melee.Compensate(dodge, frame.defDefence);
+                // The single Grandmaster defensive resolution, replacing vanilla's value at the
+                // one point vanilla rolls against it. No extra roll is added anywhere: a
+                // Grandmaster defends once, like everyone else, just far better.
+                dodge = Gm21Melee.DefenceChance(dodge, frame.defDefence);
             }
 
             __result = dodge;
