@@ -44,21 +44,6 @@ namespace Grandmaster21
                  * Gm21InterceptCurve.DistanceFactor(distance);
         }
 
-        // The walkability validator is allocated once per thread instead of once per call: this
-        // runs inside melee resolution, and a closure per attack would be pure garbage.
-        [ThreadStatic] private static Map validatorMap;
-        [ThreadStatic] private static Func<IntVec3, bool> walkableValidator;
-
-        private static Func<IntVec3, bool> WalkableIn(Map map)
-        {
-            validatorMap = map;
-            if (walkableValidator == null)
-            {
-                walkableValidator = c => c.Walkable(validatorMap);
-            }
-            return walkableValidator;
-        }
-
         /// <summary>
         /// Looks for a Grandmaster willing and able to take this attack, and lets them.
         ///
@@ -136,14 +121,10 @@ namespace Grandmaster21
 
         private static bool TryGuard(Pawn guardian, Pawn attacker, Pawn victim, Map map, float distance)
         {
-            // A physical route, not a teleport. LineOfSight with a walkability validator rejects
-            // both a wall in the way and a path that only exists through impassable terrain, and
-            // it is the same primitive the engine uses for its own reach questions.
-            if (!GenSight.LineOfSight(guardian.Position, victim.Position, map, true,
-                                      WalkableIn(map), 0, 0))
-            {
-                return false;
-            }
+            // A physical route, not a teleport. Shared with projectile interception through
+            // Gm21Reach so both Guardian systems answer reachability the same way; the behaviour
+            // here is unchanged -- it is the same walkability-validated line it always was.
+            if (!Gm21Reach.CanDashTo(map, guardian.Position, victim.Position)) return false;
 
             float reaction = Gm21Melee.Reaction(guardian);
             if (!Rand.Chance(Chance(Gm21Melee.MoveSpeed(guardian), reaction, distance))) return false;

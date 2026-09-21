@@ -64,6 +64,27 @@ namespace Grandmaster21
         private const float MaxReturnChance = 0.95f;
 
         /// <summary>
+        /// Guardian selection has to compare candidates by their real interception probability,
+        /// which means it needs the same two numbers stage 4 will use. Exposed rather than
+        /// duplicated, so the score a Guardian is chosen on and the roll they then make cannot
+        /// drift apart.
+        /// </summary>
+        internal const float DeflectHardnessValue = DeflectHardness;
+        internal const float MaxDeflectChanceValue = MaxDeflectChance;
+
+        /// <summary>
+        /// How much easier a nearly-correct friendly shot is to salvage than a wildly wrong one.
+        ///
+        /// A round already travelling more or less at the enemy it was aimed at needs a nudge, and
+        /// the factor bottoms out well below 1 -- easier than returning a shot to its sender. A
+        /// round travelling in completely the wrong direction needs to be turned around, and the
+        /// factor tops out at 3 -- considerably harder. The brief is explicit that angular
+        /// correction should dominate this roll, and this is the term that makes it do so.
+        /// </summary>
+        private const float RecoveryMinFactor = 0.35f;
+        private const float RecoveryMaxFactor = 3.0f;
+
+        /// <summary>
         /// Explosion radius, in tiles, that doubles a projectile's interception difficulty. A
         /// warhead is bigger, heavier, armed and unstable; this is how that is expressed without a
         /// single hardcoded weapon name.
@@ -109,6 +130,7 @@ namespace Grandmaster21
         private static FieldInfo equipmentField;
         private static FieldInfo equipmentDefField;
         private static FieldInfo equipmentQualityField;
+        private static FieldInfo originField;
         private static FieldInfo destinationField;
         private static FieldInfo ticksToImpactField;
         private static FieldInfo ticksToDetonationField;
@@ -118,6 +140,28 @@ namespace Grandmaster21
 
         private static readonly ConditionalWeakTable<Thing, Gm21ProjectileMark>.CreateValueCallback MarkFactory =
             _ => new Gm21ProjectileMark();
+
+        /// <summary>
+        /// Which Grandmaster last altered a given projectile's course.
+        ///
+        /// Kept HERE rather than on the projectile because the projectile's launcher is deliberately
+        /// left alone wherever possible: if Bob fired the shot, Bob remains its launcher, so Bob
+        /// keeps the kill, the XP and whatever a third-party mod reads off it. The Grandmaster
+        /// changed a trajectory; they did not fire Bob's weapon, and pretending otherwise would
+        /// quietly rewrite attribution across every mod that inspects a projectile.
+        ///
+        /// Weak, so a redirected projectile's entry disappears with the projectile, and never
+        /// serialised -- it is transient combat state like everything else in this package.
+        /// </summary>
+        private static readonly ConditionalWeakTable<Thing, Pawn> Redirectors =
+            new ConditionalWeakTable<Thing, Pawn>();
+
+        /// <summary>The Grandmaster who redirected this projectile, or null. Read by the test suite.</summary>
+        internal static Pawn RedirectorOf(Thing projectile)
+        {
+            Pawn guardian;
+            return (projectile != null && Redirectors.TryGetValue(projectile, out guardian)) ? guardian : null;
+        }
 
         /// <summary>
         /// Resolves the projectile internals this feature needs and patches the flight tick.
@@ -133,14 +177,28 @@ namespace Grandmaster21
         /// this mod has never seen. A hypothetical subclass that reimplements flight from scratch
         /// simply would not be interceptable, which is a graceful degradation rather than a crash.
         /// </summary>
-        internal static bool Apply(Harmony harmony, Func<Type, string, HarmonyMethod> hook)
+        /// <summary>
+        /// Resolves every projectile internal this feature reaches for.
+        ///
+        /// Split out of Apply so it can be driven independently. Apply is the game's entry point
+        /// and does far more than this -- it patches -- but the offline logic suite needs the
+        /// handles without the patching, and a suite running against null handles would silently
+        /// exercise the wrong code paths rather than the real ones.
+        /// </summary>
+        internal static void ResolveFields()
         {
             equipmentField = AccessTools.Field(typeof(Projectile), "equipment");
             equipmentDefField = AccessTools.Field(typeof(Projectile), "equipmentDef");
             equipmentQualityField = AccessTools.Field(typeof(Projectile), "equipmentQuality");
+            originField = AccessTools.Field(typeof(Projectile), "origin");
             destinationField = AccessTools.Field(typeof(Projectile), "destination");
             ticksToImpactField = AccessTools.Field(typeof(Projectile), "ticksToImpact");
             ticksToDetonationField = AccessTools.Field(typeof(Projectile_Explosive), "ticksToDetonation");
+        }
+
+        internal static bool Apply(Harmony harmony, Func<Type, string, HarmonyMethod> hook)
+        {
+            ResolveFields();
 
             if (ticksToImpactField == null || destinationField == null)
             {
@@ -236,21 +294,40 @@ namespace Grandmaster21
             // Not in the zone yet. Left unmarked on purpose: it will be asked again next tick.
             if (ticksToImpact > window) return;
 
+            // Marked BEFORE the threat test, and deliberately so. A projectile that threatens
+            // nobody would answer the same question identically on every later tick, and one this
+            // package has just REDIRECTED must not be caught again by a second Grandmaster near
+            // its new destination -- that way lies a projectile ping-ponging between Guardians.
+            // One projectile, one Guardian, one attempt.
             Marks.GetValue(proj, MarkFactory).evaluated = true;
 
-            Pawn guardian;
-            float distance;
-            if (!FindGuardian(proj, map, out guardian, out distance)) return;
+            IntVec3 impactCell = DestinationCellOf(proj);
+            if (!impactCell.IsValid || !impactCell.InBounds(map)) return;
 
+            // ---- STAGE 1: is this projectile worth reacting to at all? ---------------
+            //
+            // Everything below this line is the expensive part, and none of it runs for a round
+            // that threatens nobody the Guardian protects. This is the whole doctrine: a Melee
+            // Grandmaster does not fight projectiles because they exist nearby, only when one
+            // matters. See Gm21GuardianThreat.
+            //
+            // ---- STAGE 2: which Grandmaster answers it? ------------------------------
+            //
+            // Resolved together, because choosing the best Guardian means comparing their real
+            // interception probabilities, which requires the threat's difficulty.
+            Gm21Threat threat;
+            if (!Gm21GuardianThreat.TryResolve(proj, props, map, impactCell, out threat)) return;
+
+            Pawn guardian = threat.guardian;
             float difficulty = Difficulty(props);
 
-            // ---- stage 1: reach ----------------------------------------------------
-            float reach = Gm21InterceptCurve.Evaluate(
-                              Gm21Melee.MoveSpeed(guardian) * Gm21Melee.Reaction(guardian) / difficulty)
-                        * Gm21InterceptCurve.DistanceFactor(distance);
-            if (!Rand.Chance(reach)) return;
+            // ---- STAGE 3: can they get there in time? --------------------------------
+            //
+            // Movement speed dominant, already computed during selection so it is not rolled
+            // against a different number than the one the Guardian was chosen on.
+            if (!Rand.Chance(threat.reachChance)) return;
 
-            // ---- stage 2: deflect --------------------------------------------------
+            // ---- STAGE 4: can they actually turn it? ---------------------------------
             float quality = DeflectionQuality(guardian);
             if (!Rand.Chance(Gm21Melee.Opposed(quality, difficulty, DeflectHardness, MaxDeflectChance)))
             {
@@ -258,19 +335,36 @@ namespace Grandmaster21
                 return;
             }
 
-            // ---- stage 3: return to sender ----------------------------------------
-            if (Rand.Chance(Gm21Melee.Opposed(quality, difficulty, ReturnHardness, MaxReturnChance))
-                && TryReturnToSender(proj, guardian, map))
+            // The catch itself succeeded, so show it: the pawn never leaves their cell, but the
+            // dash and the contact are real events and deserve to be visible.
+            Gm21GuardianFx.MicroDash(guardian, threat.victim, proj);
+
+            // ---- STAGE 5: precision redirect, chosen by INTENT ------------------------
+            if (threat.intent == Gm21ThreatIntent.Hostile)
             {
-                Announce(guardian, "GM21_Melee_Returned");
+                // Hostile fire, or a friendly who deliberately aimed at someone protected. Either
+                // way it goes back where it came from.
+                if (Rand.Chance(Gm21Melee.Opposed(quality, difficulty, ReturnHardness, MaxReturnChance))
+                    && TryReturnToSender(proj, guardian, map))
+                {
+                    Announce(guardian, "GM21_Melee_Returned");
+                    return;
+                }
+            }
+            else if (TryFriendlyRecovery(proj, props, guardian, map, quality, difficulty))
+            {
+                Announce(guardian, "GM21_Melee_Recovered");
                 return;
             }
 
-            // ---- stage 4: safe deflection -----------------------------------------
-            if (TrySafeDeflection(proj, props, guardian, map))
+            // ---- STAGE 6: safe deflection --------------------------------------------
+            if (TrySafeDeflection(proj, props, guardian, threat.victim, map))
             {
                 Announce(guardian, "GM21_Melee_Deflected");
             }
+
+            // ---- STAGE 7: whatever happens, the payload is still the payload. --------
+            // Nothing above disarms a warhead, shortens a fuse or reduces damage.
         }
 
         // ---------------------------------------------------------------- difficulty
@@ -318,56 +412,6 @@ namespace Grandmaster21
                  * Gm21Melee.DeflectionImplement(pawn);
         }
 
-        // ---------------------------------------------------------------- guardian search
-
-        /// <summary>
-        /// Finds a Grandmaster standing within the protective radius of where this projectile is
-        /// going, on the right side of the fight, with an unobstructed view of the impact point.
-        /// </summary>
-        private static bool FindGuardian(Projectile proj, Map map, out Pawn guardian, out float distance)
-        {
-            guardian = null;
-            distance = 0f;
-
-            Thing launcher = proj.Launcher;
-            IntVec3 impact = DestinationCellOf(proj);
-            if (!impact.IsValid || !impact.InBounds(map)) return false;
-
-            int radius = Mathf.CeilToInt(Gm21Melee.ProtectiveRadius);
-
-            for (int dz = -radius; dz <= radius; dz++)
-            {
-                for (int dx = -radius; dx <= radius; dx++)
-                {
-                    int distSquared = dx * dx + dz * dz;
-                    if (distSquared > Gm21Melee.ProtectiveRadiusSquared) continue;
-
-                    IntVec3 cell = new IntVec3(impact.x + dx, impact.y, impact.z + dz);
-                    if (!cell.InBounds(map)) continue;
-
-                    List<Thing> things = map.thingGrid.ThingsListAtFast(cell);
-                    if (things == null) continue;
-
-                    for (int i = 0; i < things.Count; i++)
-                    {
-                        Pawn candidate = things[i] as Pawn;
-                        if (candidate == null) continue;
-                        if (!Gm21Melee.IsMeleeGrandmaster(candidate)) continue;
-                        if (!Gm21Melee.CanAct(candidate)) continue;
-                        if (!IsWorthDefending(candidate, launcher, proj)) continue;
-
-                        // No reaching through walls, here or anywhere else in this package.
-                        if (!GenSight.LineOfSight(candidate.Position, impact, map)) continue;
-
-                        guardian = candidate;
-                        distance = Mathf.Sqrt(distSquared);
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }
-
         /// <summary>
         /// Where this projectile is going.
         ///
@@ -382,26 +426,6 @@ namespace Grandmaster21
             object value = destinationField.GetValue(proj);
             if (!(value is Vector3)) return IntVec3.Invalid;
             return ((Vector3)value).ToIntVec3();
-        }
-
-        /// <summary>
-        /// A Grandmaster defends against incoming fire, not their own side's outgoing fire.
-        ///
-        /// Both halves are checked because either alone is wrong: a projectile from a friendly
-        /// shooter is never swatted even if it is heading somewhere awkward, and a projectile
-        /// aimed at an enemy is never swatted even if it passes close by.
-        /// </summary>
-        private static bool IsWorthDefending(Pawn guardian, Thing launcher, Projectile proj)
-        {
-            if (launcher == guardian) return false;
-            if (launcher != null && !GenHostility.HostileTo(launcher, guardian)) return false;
-
-            Thing intended = proj.intendedTarget.Thing;
-            if (intended != null && intended != guardian && GenHostility.HostileTo(intended, guardian))
-            {
-                return false;
-            }
-            return true;
         }
 
         // ---------------------------------------------------------------- outcomes
@@ -445,7 +469,89 @@ namespace Grandmaster21
             if (sender == null || sender.Destroyed || !sender.Spawned) return false;
             if (sender.Map != map) return false;
 
-            return Redirect(proj, guardian, sender, sender.Position);
+            // The ONE case where the launcher has to change: a projectile cannot hit its own
+            // launcher, so leaving the original shooter there would make return-to-sender
+            // silently impossible. The Grandmaster genuinely did send this one.
+            return Redirect(proj, guardian, guardian, sender, sender.Position);
+        }
+
+        /// <summary>
+        /// FRIENDLY RECOVERY -- salvaging an ally's mis-resolved shot back toward the enemy it was
+        /// aimed at.
+        ///
+        /// This is corrective, not offensive, and the distinction has teeth. The round is never
+        /// sent back to the ally who fired it, and it is never handed to some other convenient
+        /// enemy either: it goes to the ORIGINAL INTENDED TARGET or nowhere. Allowing a
+        /// Grandmaster to pick a better enemy would turn them into a free targeting computer,
+        /// which is precisely what the anti-abuse rules exist to prevent.
+        ///
+        /// Bob remains the launcher throughout, so Bob keeps the shot, the kill and the XP. The
+        /// Grandmaster bent a trajectory; they did not fire Bob's weapon.
+        ///
+        /// DIFFICULTY IS ANGULAR. A round already flying more or less at the right enemy needs a
+        /// nudge and is easier to save than a return-to-sender; a round travelling in completely
+        /// the wrong direction has to be turned around and is much harder. That is the whole
+        /// physical intuition, and CorrectionFactor is where it lives.
+        /// </summary>
+        private static bool TryFriendlyRecovery(Projectile proj, ProjectileProperties props,
+                                                Pawn guardian, Map map, float quality, float difficulty)
+        {
+            Thing intended = proj.intendedTarget.Thing;
+            if (intended == null || intended.Destroyed || !intended.Spawned) return false;
+            if (intended.Map != map) return false;
+
+            // The original target must still be a legitimate enemy. If the raider it was meant for
+            // has since been downed and captured, there is nothing to salvage the shot toward.
+            if (!GenHostility.HostileTo(intended, guardian)) return false;
+
+            float corrected = difficulty * CorrectionFactor(proj, intended);
+            if (!Rand.Chance(Gm21Melee.Opposed(quality, corrected, ReturnHardness, MaxReturnChance)))
+            {
+                return false;
+            }
+
+            // Launcher deliberately preserved -- see the summary above.
+            return Redirect(proj, guardian, proj.Launcher, intended, intended.Position);
+        }
+
+        /// <summary>
+        /// How far off course the shot already is, as a multiplier on its difficulty.
+        ///
+        /// 0 degrees of correction bottoms out at RecoveryMinFactor, 180 degrees tops out at
+        /// RecoveryMaxFactor, and everything between interpolates on the cosine -- which is the
+        /// natural measure here, because what actually matters is how much of the projectile's
+        /// existing momentum points the right way.
+        /// </summary>
+        internal static float CorrectionFactor(Projectile proj, Thing intended)
+        {
+            Vector3 heading = Heading(proj);
+            Vector3 wanted = new Vector3(intended.Position.x - proj.ExactPosition.x, 0f,
+                                         intended.Position.z - proj.ExactPosition.z);
+
+            float hm = heading.magnitude, wm = wanted.magnitude;
+            if (hm <= 0.0001f || wm <= 0.0001f)
+            {
+                // Degenerate geometry: treat it as a middling correction rather than a free one.
+                return (RecoveryMinFactor + RecoveryMaxFactor) * 0.5f;
+            }
+
+            float cos = (heading.x * wanted.x + heading.z * wanted.z) / (hm * wm);
+            if (cos > 1f) cos = 1f;
+            if (cos < -1f) cos = -1f;
+
+            float correction = (1f - cos) * 0.5f;   // 0 = already aimed right, 1 = exactly backwards
+            return RecoveryMinFactor + (RecoveryMaxFactor - RecoveryMinFactor) * correction;
+        }
+
+        /// <summary>The direction this projectile is travelling, from its launch geometry.</summary>
+        private static Vector3 Heading(Projectile proj)
+        {
+            if (originField == null || destinationField == null) return Vector3.zero;
+            object o = originField.GetValue(proj);
+            object d = destinationField.GetValue(proj);
+            if (!(o is Vector3) || !(d is Vector3)) return Vector3.zero;
+            Vector3 origin = (Vector3)o, destination = (Vector3)d;
+            return new Vector3(destination.x - origin.x, 0f, destination.z - origin.z);
         }
 
         /// <summary>
@@ -453,13 +559,15 @@ namespace Grandmaster21
         /// harm. This is still a success: the Grandmaster and everyone near them are out of its way.
         /// </summary>
         private static bool TrySafeDeflection(Projectile proj, ProjectileProperties props,
-                                              Pawn guardian, Map map)
+                                              Pawn guardian, Pawn saved, Map map)
         {
             float distance = RedirectDistance(props, guardian);
-            IntVec3 target = Gm21SafeVector.Choose(proj, props, guardian, map, distance);
+            IntVec3 target = Gm21SafeVector.Choose(proj, props, guardian, saved, map, distance);
             if (!target.IsValid) return false;
 
-            return Redirect(proj, guardian, null, target);
+            // Launcher preserved: a deflection into open space is not the Grandmaster's shot, and
+            // whatever it eventually lands on belongs to whoever pulled the trigger.
+            return Redirect(proj, guardian, proj.Launcher, null, target);
         }
 
         /// <summary>
@@ -487,10 +595,13 @@ namespace Grandmaster21
         /// <summary>
         /// Re-launches the SAME projectile object on a new trajectory.
         ///
-        /// WHY THE LAUNCHER BECOMES THE GRANDMASTER. A projectile cannot hit its own launcher, so
-        /// leaving the original shooter as the launcher would make return-to-sender silently
-        /// impossible. Handing the projectile to the Grandmaster is also simply true: they are the
-        /// one who sent it where it is now going, and anything it hits is theirs.
+        /// WHO THE LAUNCHER BECOMES IS THE CALLER'S DECISION, and it is an attribution decision.
+        /// The default everywhere is to PRESERVE the original launcher, so the shot stays the
+        /// shooter's for kills, XP and any mod that reads a projectile's origin. Exactly one case
+        /// overrides that -- return-to-sender -- because a projectile cannot hit its own launcher
+        /// and leaving the sender in place would make the whole manoeuvre silently impossible.
+        /// Either way the Grandmaster is recorded in Redirectors, so the information is kept
+        /// without being forged into the projectile.
         ///
         /// WHAT IS PRESERVED, AND WHY BY HAND. Launch overwrites the equipment fields, and those
         /// fields are what Projectile.DamageAmount and ArmorPenetration are computed from. Saving
@@ -499,7 +610,8 @@ namespace Grandmaster21
         /// improve it. The explosive fuse is restored for the same reason: a returned grenade
         /// keeps the fuse it had, so catching one late is dangerous, exactly as it should be.
         /// </summary>
-        private static bool Redirect(Projectile proj, Pawn guardian, Thing targetThing, IntVec3 targetCell)
+        private static bool Redirect(Projectile proj, Pawn guardian, Thing newLauncher,
+                                     Thing targetThing, IntVec3 targetCell)
         {
             object savedEquipment = equipmentField != null ? equipmentField.GetValue(proj) : null;
             object savedEquipmentDef = equipmentDefField != null ? equipmentDefField.GetValue(proj) : null;
@@ -516,7 +628,7 @@ namespace Grandmaster21
 
             try
             {
-                proj.Launch(guardian, proj.ExactPosition, target, target, proj.HitFlags,
+                proj.Launch(newLauncher, proj.ExactPosition, target, target, proj.HitFlags,
                             false, savedEquipment as Thing, null);
             }
             catch (Exception e)
@@ -538,6 +650,9 @@ namespace Grandmaster21
             {
                 ticksToDetonationField.SetValue(proj, savedFuse);
             }
+
+            Redirectors.Remove(proj);
+            Redirectors.Add(proj, guardian);
             return true;
         }
 
