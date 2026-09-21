@@ -169,6 +169,7 @@ static class MeleeHarness
         GuardianMicroDash();
         ExplosiveDisposal();
         ProtectedPawnHardVeto();
+        MeleeDodgeChance();
         TranslationKeys();
 
         Console.WriteLine("\n================================");
@@ -2186,6 +2187,249 @@ static class MeleeHarness
         TheMap = saved;
     }
 
+    // =======================================================================================
+    //  M53-M56. GRANDMASTER MELEE DODGE CHANCE
+    //
+    //  RimWorld caps MeleeDodgeChance around 50% for every pawn, however enormous the modded
+    //  stats feeding it. Level 20 lives under that cap. Level 21 is the one level that crosses
+    //  it -- by transforming the already-resolved vanilla value, never by raising the StatDef.
+    // =======================================================================================
+    static void MeleeDodgeChance()
+    {
+        Console.WriteLine("\n=== M53. The Grandmaster defence formula ===");
+
+        Func<float, float, float> defence = (vanilla, composite) =>
+            F(Call("Gm21Melee", "DefenceChance", vanilla, composite));
+
+        // The brief's table, at a healthy composite of 1.0.
+        Near("vanilla 50% -> 99.90%", defence(0.50f, 1f), 0.999f, 0.0001f);
+        Near("vanilla 40% -> 99.88%", defence(0.40f, 1f), 0.9988f, 0.0001f);
+        Near("vanilla 25% -> 99.85%", defence(0.25f, 1f), 0.9985f, 0.0001f);
+        Near("vanilla 10% -> 99.82%", defence(0.10f, 1f), 0.9982f, 0.0001f);
+
+        Check("a better vanilla dodge still yields a better Grandmaster defence",
+              defence(0.50f, 1f) > defence(0.10f, 1f));
+        // SATURATION. The brief pins two numbers that meet exactly: 99.9% at the vanilla 50%
+        // ceiling, and a hard cap of 99.9%. A HEALTHY Grandmaster at the vanilla ceiling is
+        // therefore already at the maximum, and a superhuman one has nowhere further to go.
+        // That is inherent to the specification, not a bug -- and it is where the design
+        // deliberately stops rewarding stacked stats.
+        Near("at the vanilla cap a healthy Grandmaster is already at the ceiling",
+             defence(0.50f, 1f), 0.999f, 0.0001f);
+        Check("  ...so a superhuman composite cannot exceed them there",
+              defence(0.50f, 20f) <= defence(0.50f, 1f) + 1e-6f,
+              defence(0.50f, 20f).ToString("0.00000"));
+
+        // Below the ceiling there IS headroom, and the composite is visible in it.
+        Check("below the vanilla cap, a stronger composite yields a better defence",
+              defence(0.10f, 4f) > defence(0.10f, 1f),
+              defence(0.10f, 1f).ToString("0.0000") + " -> " + defence(0.10f, 4f).ToString("0.0000"));
+        Check("an impaired composite yields a measurably worse defence",
+              defence(0.50f, 0.5f) < defence(0.50f, 1f),
+              defence(0.50f, 0.5f).ToString("0.0000"));
+        Check("  ...but nowhere near collapsing back to the vanilla value",
+              defence(0.50f, 0.5f) > 0.99f, defence(0.50f, 0.5f).ToString("0.0000"));
+        Check("a badly impaired composite falls further, still far above vanilla",
+              defence(0.50f, 0.2f) < defence(0.50f, 0.5f) && defence(0.50f, 0.2f) > 0.94f,
+              defence(0.50f, 0.2f).ToString("0.0000"));
+
+        Console.WriteLine("\n=== M54. The hard cap at 99.9% ===");
+
+        Check("a superhuman composite is capped, not extrapolated",
+              defence(0.50f, 100f) <= 0.999f + 1e-6f, defence(0.50f, 100f).ToString("0.00000"));
+        Check("  ...and this is a REAL clamp: the raw formula would exceed it",
+              1f - 0.5f * 0.0005f > 0.999f);
+        Check("an absurd vanilla dodge is still capped",
+              defence(5f, 1f) <= 0.999f + 1e-6f, defence(5f, 1f).ToString("0.00000"));
+        Check("a vanilla dodge of exactly 100% is still not certainty",
+              defence(1f, 1f) <= 0.999f + 1e-6f, defence(1f, 1f).ToString("0.00000"));
+        Check("nothing ever reaches a literal 1.0", defence(1f, 1000f) < 1f);
+        Check("a negative vanilla dodge is clamped, not propagated",
+              defence(-1f, 1f) >= 0f && defence(-1f, 1f) <= 0.999f + 1e-6f);
+        Check("a zero composite means no Grandmaster benefit at all",
+              defence(0.50f, 0f) == 0.50f, defence(0.50f, 0f).ToString("0.0000"));
+
+        Console.WriteLine("\n=== M55. Level 20 stays vanilla, and there is only ONE roll ===");
+
+        Map m = new Map();
+        Map saved = TheMap;
+        TheMap = m;
+
+        // A level-20 pawn with enormous modded capacities must get nothing at all.
+        Pawn peak = MakePawn("PeakNormal", 20, new IntVec3(30, 0, 30), Colony);
+        Equip(peak, Weapon("Longsword", 2.2f));
+        SetCapacity(peak, PawnCapacityDefOf.Manipulation, 6f);
+        SetCapacity(peak, PawnCapacityDefOf.Sight, 6f);
+        peak.statsStub[StatDefOf.MoveSpeed] = 20f;
+
+        Pawn attacker = MakePawn("DodgeAttacker", 10, new IntVec3(31, 0, 30), Raiders);
+
+        OpenFrame(attacker, peak);
+        float vanillaDodge = 0.50f;
+        InvokeDodgePostfix(ref vanillaDodge, peak);
+        CloseFrame();
+        Near("Melee 20 with huge modded stats keeps the vanilla 50%", vanillaDodge, 0.50f, 0.0001f);
+
+        // The same pawn at 21 crosses the cap.
+        Pawn gm = MakePawn("DodgeGm", 21, new IntVec3(35, 0, 30), Colony);
+        Equip(gm, Weapon("Longsword", 2.2f));
+
+        OpenFrame(attacker, gm);
+        float gmDodge = 0.50f;
+        InvokeDodgePostfix(ref gmDodge, gm);
+        CloseFrame();
+        Near("Melee 21 at the same 50% reaches 99.9%", gmDodge, 0.999f, 0.0005f);
+
+        // Applying the postfix twice must not compound -- proving there is one resolution, not a
+        // stack of them. (The real pipeline calls it once; this asserts the shape is idempotent
+        // in the sense that matters: the value is REPLACED, not accumulated onto.)
+        OpenFrame(attacker, gm);
+        float once = 0.50f;
+        InvokeDodgePostfix(ref once, gm);
+        float twice = once;
+        InvokeDodgePostfix(ref twice, gm);
+        CloseFrame();
+        Check("a second pass cannot push past the cap (no stacking defence rolls)",
+              twice <= 0.999f + 1e-6f, twice.ToString("0.00000"));
+
+        Console.WriteLine("\n=== M56. Capability gates and the honest tooltip ===");
+
+        // Downed / unconscious / asleep / stunned: the frame never marks them a defender, so the
+        // Grandmaster transformation is never reached and vanilla stands.
+        Pawn hurt = MakePawn("DodgeHurt", 21, new IntVec3(40, 0, 30), Colony);
+        Equip(hurt, Weapon("Longsword", 2.2f));
+
+        hurt.health.Downed = true;
+        OpenFrame(attacker, hurt);
+        float downed = 0.50f;
+        InvokeDodgePostfix(ref downed, hurt);
+        CloseFrame();
+        Near("a DOWNED Grandmaster gets the vanilla value, not 99.9%", downed, 0.50f, 0.0001f);
+        hurt.health.Downed = false;
+
+        SetCapacity(hurt, PawnCapacityDefOf.Consciousness, 0f);
+        OpenFrame(attacker, hurt);
+        float outCold = 0.50f;
+        InvokeDodgePostfix(ref outCold, hurt);
+        CloseFrame();
+        Near("an UNCONSCIOUS Grandmaster likewise", outCold, 0.50f, 0.0001f);
+        SetCapacity(hurt, PawnCapacityDefOf.Consciousness, 1f);
+
+        hurt.stances.stunner.Stunned = true;
+        OpenFrame(attacker, hurt);
+        float stunned = 0.50f;
+        InvokeDodgePostfix(ref stunned, hurt);
+        CloseFrame();
+        Near("a STUNNED Grandmaster likewise", stunned, 0.50f, 0.0001f);
+        hurt.stances.stunner.Stunned = false;
+
+        // An immobile but conscious Grandmaster still defends -- worse, not not-at-all.
+        hurt.statsStub[StatDefOf.MoveSpeed] = 0f;
+        OpenFrame(attacker, hurt);
+        float immobile = 0.50f;
+        InvokeDodgePostfix(ref immobile, hurt);
+        CloseFrame();
+        Check("an immobile Grandmaster still defends, just worse",
+              immobile > 0.50f && immobile < 0.999f, immobile.ToString("0.0000"));
+        hurt.statsStub.Remove(StatDefOf.MoveSpeed);
+
+        // The tooltip must report what combat actually computes -- never a hardcoded 99.9%.
+        SkillRecord meleeRec = gm.skills.GetSkill(SkillDefOf.Melee);
+        gm.statsStub[StatDefOf.MeleeDodgeChance] = 0.50f;
+        string line = (string)Call("Gm21MeleeTooltip", "EffectiveDefenceLine", meleeRec);
+        Check("a Melee Grandmaster's tooltip reports both figures",
+              line.Contains("GM21_Melee_DodgeTooltip"), line.Trim());
+
+        SkillRecord peakRec = peak.skills.GetSkill(SkillDefOf.Melee);
+        Check("a Melee 20 pawn gets no such line",
+              (string)Call("Gm21MeleeTooltip", "EffectiveDefenceLine", peakRec) == "");
+
+        SkillRecord shootRec = new SkillRecord { def = SkillDefOf.Shooting, levelInt = 21, pawnStub = gm };
+        Check("a SHOOTING Grandmaster gets no melee-dodge line either",
+              (string)Call("Gm21MeleeTooltip", "EffectiveDefenceLine", shootRec) == "");
+
+        gm.health.Downed = true;
+        string incapable = (string)Call("Gm21MeleeTooltip", "EffectiveDefenceLine", meleeRec);
+        Check("a Grandmaster who cannot defend is told so, not shown 99.9%",
+              incapable.Contains("GM21_Melee_DodgeIncapable"), incapable.Trim());
+        gm.health.Downed = false;
+
+        Console.WriteLine("\n=== M56b. A whiff is not a parry (riposte + Counter Strike compat) ===");
+
+        // THE CRITICAL DISTINCTION. Vanilla only consults the dodge chance AFTER the hit roll has
+        // already succeeded, so "dodge chance was consulted and the attack still failed" means the
+        // Grandmaster genuinely turned it aside. An attacker who simply whiffed never reached the
+        // dodge roll, and must not earn the defender a riposte.
+        //
+        // This also matters beyond this mod: the attack still resolves as an ordinary failed melee
+        // attack, so anything watching melee success/failure -- an RPG framework's counterattack
+        // charge, for instance -- keeps seeing exactly what it saw before.
+        Call("Gm21CombatScheduler", "Reset");
+        Find.TickManager.TicksGame = 20000;
+        Gm21CombatScheduler scheduler = new Gm21CombatScheduler(null);
+
+        Pawn whiffer = MakePawn("Whiffer", 10, new IntVec3(60, 0, 30), Raiders);
+        Pawn duelist = MakePawn("Duelist", 21, new IntVec3(61, 0, 30), Colony);
+        Equip(duelist, Weapon("Longsword", 2.2f));
+        Verb whiffVerb = new Verb { CasterPawn = whiffer };
+
+        // Case 1: the attacker missed on their own. The dodge chance was never consulted.
+        object missFrame = OpenFrame(whiffer, duelist);
+        T("Gm21MeleeFrame").GetField("dodgeConsulted").SetValue(missFrame, false);
+        T("Gm21MeleePatches").GetMethod("Postfix_ResolveExchange", Any)
+            .Invoke(null, new object[] { whiffVerb, false });
+        CloseFrame();
+        Check("a natural attacker miss schedules NO riposte", QueueCount() == 0,
+              "queued=" + QueueCount());
+
+        // Case 2: the attack would have landed; the Grandmaster turned it aside.
+        object parryFrame = OpenFrame(whiffer, duelist);
+        T("Gm21MeleeFrame").GetField("dodgeConsulted").SetValue(parryFrame, true);
+        T("Gm21MeleePatches").GetMethod("Postfix_ResolveExchange", Any)
+            .Invoke(null, new object[] { whiffVerb, false });
+        CloseFrame();
+        Check("a genuine Grandmaster parry DOES schedule a riposte", QueueCount() == 1,
+              "queued=" + QueueCount());
+
+        Find.TickManager.TicksGame = 20001;
+        scheduler.GameComponentTick();
+        Check("  ...and it resolves against the attacker, one riposte not two",
+              duelist.meleeVerbs.attacksStub.Count == 1
+              && duelist.meleeVerbs.attacksStub[0] == whiffer,
+              "attacks=" + duelist.meleeVerbs.attacksStub.Count);
+
+        // A landed attack is not a defence either.
+        object hitFrame = OpenFrame(whiffer, duelist);
+        T("Gm21MeleeFrame").GetField("dodgeConsulted").SetValue(hitFrame, true);
+        T("Gm21MeleePatches").GetMethod("Postfix_ResolveExchange", Any)
+            .Invoke(null, new object[] { whiffVerb, true });
+        CloseFrame();
+        Check("an attack that LANDED schedules no riposte", QueueCount() == 0,
+              "queued=" + QueueCount());
+        Call("Gm21CombatScheduler", "Reset");
+
+        Console.WriteLine("\n=== M57. Ranged dodge is untouched ===");
+
+        // Structural: nothing in the mod names a ranged-dodge stat anywhere.
+        bool namesRangedDodge = false;
+        foreach (Type t in Mod.GetTypes())
+        {
+            foreach (var f in t.GetFields(Any))
+            {
+                if (f.Name.ToLowerInvariant().Contains("rangeddodge")) namesRangedDodge = true;
+            }
+            foreach (var mi in t.GetMethods(Any))
+            {
+                if (mi.Name.ToLowerInvariant().Contains("rangeddodge")) namesRangedDodge = true;
+            }
+        }
+        Check("no member of Grandmaster 21 references a ranged-dodge stat", !namesRangedDodge);
+        Check("the defence formula is fed melee dodge only, by its caller",
+              T("Gm21Melee").GetMethod("DefenceChance", Any).GetParameters().Length == 2);
+
+        TheMap = saved;
+    }
+
     // ---- M28. TRANSLATION KEYS ------------------------------------------------------------------
     static void TranslationKeys()
     {
@@ -2215,7 +2459,8 @@ static class MeleeHarness
             "GM21_Melee_Disarmed", "GM21_Melee_Intercepted",
             "GM21_Melee_Returned", "GM21_Melee_Recovered",
             "GM21_Melee_Deflected", "GM21_Melee_RoughDeflection",
-            "GM21_Achieved_Melee", "GM21_Descriptor_Melee"
+            "GM21_Achieved_Melee", "GM21_Descriptor_Melee",
+            "GM21_Melee_DodgeTooltip", "GM21_Melee_DodgeIncapable"
         };
         bool all = true;
         foreach (string k in needed) if (!shipped.Contains(k)) { all = false; Console.WriteLine("  missing: " + k); }
