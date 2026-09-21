@@ -83,6 +83,39 @@ namespace Grandmaster21
         /// <summary>Floor on any retained-failure fraction, so nothing can reach a true 0/1.</summary>
         public const float MinRetained = 0.0005f;
 
+        /// <summary>
+        /// Fraction of the remaining failure a Grandmaster still suffers WHEN DEFENDING, which is
+        /// five times less than the general rule above.
+        ///
+        /// WHY DEFENCE HAS ITS OWN NUMBER. The general 1% is applied to things the Grandmaster is
+        /// trying to DO -- land a strike, read past an opponent's guard -- and 99% of the way there
+        /// is the right shape for those. Not being hit is different in kind: RimWorld's own
+        /// MeleeDodgeChance StatDef is hard-capped around 50% for every pawn in the game, however
+        /// enormous the modded stats feeding it, and that cap is what defines "peak normal
+        /// combatant". Level 20 lives under it. Level 21 is the one level that crosses it, and the
+        /// crossing is supposed to be decisive: at the vanilla 50% ceiling a Grandmaster keeps
+        /// 0.1% failure rather than 0.5%.
+        ///
+        /// The transformation deliberately consumes the ALREADY-RESOLVED vanilla value rather than
+        /// rebuilding it. Moving, Sight, traits, health, equipment, modded DEX and any other
+        /// framework's post-process curve have all had their say by the time the number reaches
+        /// us; Grandmaster mastery then acts on the result. That is what keeps this compatible
+        /// with stat frameworks this mod has never seen.
+        /// </summary>
+        public const float DefenceFailureRetained = 0.002f;
+
+        /// <summary>
+        /// Absolute ceiling on Grandmaster melee defence. Never 1.0.
+        ///
+        /// A literal certainty would make ordinary melee mathematically incapable of ever touching
+        /// the pawn, which removes the last thread by which an unlucky Grandmaster can lose a
+        /// fight, and invites pathological outcomes in any combat system that assumes a non-zero
+        /// hit probability. One failure in a thousand is not a balance lever -- it is the
+        /// difference between "very nearly untouchable" and "untouchable", and only the first of
+        /// those is a fighter.
+        /// </summary>
+        public const float MaxDefenceChance = 0.999f;
+
         // ---------------------------------------------------------------- gates
 
         /// <summary>Legitimate stored Melee 21. Reads levelInt, so aptitude cannot grant or remove it.</summary>
@@ -312,6 +345,46 @@ namespace Grandmaster21
             if (baseChance >= 1f) return 1f;
             if (baseChance < 0f) baseChance = 0f;
             return 1f - (1f - baseChance) * RetainedFor(quality);
+        }
+
+        /// <summary>
+        /// THE Grandmaster melee-defence number. One function, one roll, one answer.
+        ///
+        /// Every melee defence a Grandmaster makes comes through here: the parry inside a melee
+        /// exchange, and the parry that completes an ally interception. There is deliberately no
+        /// second defensive roll layered on top of vanilla's -- this REPLACES the value vanilla
+        /// computed, at the single point vanilla rolls against it, so a Grandmaster gets exactly
+        /// one defensive resolution like everybody else. It is simply a much better one.
+        ///
+        ///     gmDodge = 1 - (1 - vanillaDodge) x (0.002 / defenceComposite)
+        ///
+        /// At vanilla's 50% ceiling a healthy Grandmaster reaches 99.9%. Lower vanilla values
+        /// still land near it -- 10% becomes 99.82% -- because what is being removed is the
+        /// FAILURE, and a Grandmaster removes nearly all of whatever failure is there.
+        ///
+        /// The composite scales it both ways: a superhuman pawn presses a little closer to the
+        /// ceiling, an injured one falls measurably short of it. Capability gating happens before
+        /// this is ever called -- a downed, unconscious, asleep or stunned pawn is not defending
+        /// at all and never reaches this function.
+        /// </summary>
+        public static float DefenceChance(float vanillaDodge, float defenceComposite)
+        {
+            if (vanillaDodge < 0f) vanillaDodge = 0f;
+            if (vanillaDodge > 1f) vanillaDodge = 1f;
+
+            float retained = defenceComposite <= 0f
+                ? 1f
+                : DefenceFailureRetained / defenceComposite;
+            if (retained < MinRetained) retained = MinRetained;
+            if (retained > 1f) retained = 1f;
+
+            float chance = 1f - (1f - vanillaDodge) * retained;
+
+            // The cap is not decoration. A superhuman composite drives `retained` down to its
+            // floor, which at a 50% vanilla dodge would otherwise produce 99.975% -- past the
+            // ceiling this design deliberately keeps.
+            if (chance > MaxDefenceChance) return MaxDefenceChance;
+            return chance < 0f ? 0f : chance;
         }
 
         /// <summary>

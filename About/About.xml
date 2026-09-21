@@ -2,7 +2,7 @@
 <ModMetaData>
   <packageId>ared.grandmaster21</packageId>
   <name>Grandmaster 21</name>
-  <modVersion>0.10.3 Beta</modVersion>
+  <modVersion>0.10.4 Beta</modVersion>
   <author>aRed</author>
   <supportedVersions>
     <li>1.6</li>
@@ -45,6 +45,8 @@ Friendly EXPLOSIVES are handled differently on purpose. An area weapon has no si
 Every one of those abilities is driven by the pawn's OWN stats, so no two Grandmasters fight alike. A fast pawn excels at interception and projectile defence. A precise, perceptive one excels at disarming, criticals and returning projectiles to their sender. A physically powerful one excels at cleaving and at hurling deflected explosives absurd distances. A heavily modded pawn becomes correspondingly absurd, and that is intended. A pawn who is downed, unconscious, asleep, stunned, blind or armless loses the abilities that body part was providing.
 
 Armour, weapon damage, damage types and blast radius are untouched: the mastery is the fighter's, not the weapon's. There is no explosion immunity - a successfully redirected doomsday rocket can still kill the Grandmaster who redirected it.
+
+MELEE DODGE: RimWorld caps melee dodge chance at roughly 50% for every pawn, whatever stats feed it. Levels 0-20 stay entirely under that cap - a heavily modded level-20 pawn is still the peak NORMAL combatant. Level 21 is the one level that crosses it, transforming the already-resolved vanilla value into roughly 99.9% effective melee defence. The dodge StatDef itself is never modified, so every other pawn and every other mod reading it are unaffected, and ranged dodge is untouched entirely - a Melee Grandmaster answers projectiles by intercepting them, not by dodging them. A pawn who is downed, unconscious, asleep or stunned gets none of it.
 
 Melee Grandmasters also get their own Normal/Killer/Downed doctrine, separate from the Shooting aim mode. Downed doctrine additionally pulls the blow, stopping short of destroying the limb it is aimed at - something only melee can do.
 

@@ -130,8 +130,11 @@ namespace Grandmaster21
             if (!Rand.Chance(Chance(Gm21Melee.MoveSpeed(guardian), reaction, distance))) return false;
 
             // Arriving is not the same as succeeding. The blow still has to be turned aside, and
-            // that is the same defensive composite the passive parry uses.
-            float parry = Gm21Melee.Compensate(0f, Gm21Melee.Defence(guardian));
+            // that goes through the SAME defence function the passive parry uses -- one coherent
+            // Grandmaster melee defence, not a second parallel one with its own numbers. The
+            // vanilla dodge passed in is zero because this blow was never aimed at the guardian:
+            // they have no positional dodge to build on, only their mastery.
+            float parry = Gm21Melee.DefenceChance(0f, Gm21Melee.Defence(guardian));
             if (!Rand.Chance(parry)) return false;
 
             if (guardian.Map != null)

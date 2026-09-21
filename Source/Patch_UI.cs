@@ -31,6 +31,10 @@ namespace Grandmaster21
             if (sk.levelInt >= Gm21.GrandmasterLevel)
             {
                 __result += "\n\n" + AchievedTextFor(sk.def);
+
+                // Per-skill live detail. Returns "" for every skill that has nothing extra to
+                // say, so this stays a generic hook rather than a list of special cases.
+                __result += Gm21MeleeTooltip.EffectiveDefenceLine(sk);
                 return;
             }
 
