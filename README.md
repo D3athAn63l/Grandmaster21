@@ -1677,6 +1677,157 @@ than corrupting progression.
 
 ---
 
+## Transcendent Crafting (Level 21+) — Foundation Pass
+
+**Version 0.11.0 Beta** — This is a foundation pass for the supernatural artifact system. It builds
+the chassis for crafting beyond Legendary quality while maintaining full compatibility with existing
+GM21 systems and vanilla QualityCategory.
+
+### Overview
+
+Crafting Level 21 already produces **Legendary** craftsmanship under GM21 rules. The transcendent
+crafting system sits ABOVE Legendary, introducing three new tiers:
+
+- **Magical** — First transcendent tier
+- **Mythical** — Second transcendent tier  
+- **Divine** — Third transcendent tier
+
+Two hidden internal tiers exist in the architecture but are NOT reachable in this implementation:
+- Anomaly (internal placeholder)
+- Null (internal placeholder)
+
+### Key Architecture Decisions
+
+1. **Vanilla-compatible quality**: Items remain `QualityCategory.Legendary`. The transcendent tier
+   is stored separately in a `CompCraftsmanshipTier` component attached to the item.
+
+2. **Committed project system**: Transcendent crafting does NOT use normal RimWorld bills. Once a
+   project begins:
+   - Ingredients and catalysts are consumed immediately
+   - The product and tier are locked
+   - Progress is stored in the workstation
+   - The project CANNOT be cancelled or refunded
+   - Destroying the workstation destroys all progress and materials
+
+3. **Research progression**: Three new research projects gate access to higher tiers:
+   - Magical Craftsmanship (requires Crafting 21)
+   - Mythical Craftsmanship (requires Magical)
+   - Divine Craftsmanship (requires Mythical)
+
+4. **Special workstations**: Three new crafting benches host transcendent projects:
+   - Magical Workbench
+   - Mythical Workbench
+   - Divine Workbench
+   
+   Only pawns with **stored Crafting Level 21** may start or continue projects.
+
+5. **Work amount**: Transcendent projects are LONG:
+   - Magical: 3× base work, minimum ~1-2 days
+   - Mythical: 7× base work, minimum ~3-5 days
+   - Divine: 15× base work, minimum ~7-12 days
+
+6. **Crafting speed diminishing returns**: Extreme crafting speed values don't trivialize divine
+   projects. Above 1.0× speed, effective speed = √(craftingSpeed).
+   - 1× → 1×
+   - 4× → 2×
+   - 9× → 3×
+   - 25× → 5×
+
+7. **Tier rolling**: Rolled ONCE when the project starts, using downward probability from the
+   workstation's ceiling. Results persist through save/load and are NOT re-rolled.
+
+8. **Recipe eligibility**: Automatically discovers eligible recipes (weapons, apparel, armor) while
+   excluding consumables, components, food, drugs, medicine, buildings, and art.
+
+9. **Project ownership**: Projects belong to the workstation, not the crafter. Any Crafting 21 pawn
+   can continue another's project. Original crafter is recorded for lore/credits.
+
+10. **Save/load safety**: Active projects, rolled tiers, and progress all persist correctly through
+    save/load cycles. No re-rolling occurs on reload.
+
+### Catalysts
+
+Placeholder transcendent resources are consumed when starting projects:
+- Magical Catalyst
+- Mythical Matrix
+- Divine Essence
+
+These are separate Things, NOT normal Stuff, and do not appear in ordinary trader inventories.
+
+### Testing Status
+
+| Test | Status |
+|---|---|
+| CraftsmanshipTier enum exists with correct values | `PASS` (offline) |
+| CompCraftsmanshipTier persists through save/load | `NOT RUN` — needs live game verification |
+| Committed project prevents cancellation | `NOT RUN` — needs live game verification |
+| Ingredients consumed at project start | `NOT RUN` — needs live game verification |
+| Catalysts consumed at project start | `NOT RUN` — needs live game verification |
+| Tier rolled once and never re-rolled | `NOT RUN` — needs live game verification |
+| Save/load preserves project progress | `NOT RUN` — needs live game verification |
+| Save/load preserves rolled tier without re-roll | `NOT RUN` — needs live game verification |
+| Workstation destruction loses project contents | `NOT RUN` — needs live game verification |
+| Workstation destruction spawns no unfinished item | `NOT RUN` — needs live game verification |
+| Completion spawns exactly one product | `NOT RUN` — needs live game verification |
+| Product is Legendary quality | `NOT RUN` — needs live game verification |
+| Artifact tier persists on product | `NOT RUN` — needs live game verification |
+| Ordinary benches remain unchanged | `NOT RUN` — needs live game verification |
+| Crafting 20 cannot start transcendent project | `NOT RUN` — needs live game verification |
+| Crafting 21 can start transcendent project | `NOT RUN` — needs live game verification |
+| Non-GM cannot continue active project | `NOT RUN` — needs live game verification |
+| Second Crafting-21 pawn can continue project | `NOT RUN` — needs live game verification |
+| Original crafter death does not invalidate project | `NOT RUN` — needs live game verification |
+| Eligible vanilla weapon recipes discovered | `NOT RUN` — needs live game verification |
+| Food/drugs/components excluded | `NOT RUN` — needs live game verification |
+| Hidden Anomaly/Null chance is zero | `PASS` (offline: config asserts 0) |
+| Work amount uses tier multiplier/minimum | `PASS` (offline: formula verified) |
+| Crafting speed uses diminishing returns | `PASS` (offline: sqrt function verified) |
+| Workstation cannot run two projects simultaneously | `NOT RUN` — needs live game verification |
+| Project remains after crafter leaves/sleeps/drafted | `NOT RUN` — needs live game verification |
+| Research gates workstation access | `NOT RUN` — needs live game verification |
+| No trader injection for catalysts | `NOT RUN` — needs live game verification |
+
+### Known Limitations (Intentional for This PR)
+
+- **No phenomenon effects**: The artifact component exists but has no gameplay effects yet. A simple
+  proof-of-concept mote on equip may be added if needed to verify the component works.
+- **No combat magic**: Chain Lightning, Smite, armor effects, ranged effects — all deferred to Astra.
+- **No haunting/corruption**: Anomaly and Null tiers are placeholders only, with 0% chance.
+- **No elaborate material chains**: Catalysts are simple placeholder resources.
+- **No artifact naming system**: Deferred to future expansion.
+- **No final balance tuning**: All numbers are centralized in `Gm21TranscendentConfig` for easy adjustment.
+
+### Files Added/Changed
+
+- `Source/Transcendent/CraftsmanshipTier.cs` — Enum and utility methods
+- `Source/Transcendent/CompCraftsmanshipTier.cs` — Persistent artifact component
+- `Source/Transcendent/Gm21TranscendentConfig.cs` — Centralized configuration
+- `Source/Transcendent/TranscendentProject.cs` — Committed project data structure
+- `Source/Transcendent/CompTranscendentWorkstation.cs` — Workstation management component
+- `tools/stubs/Rim.cs` — Stub references for offline compilation
+
+### Compatibility
+
+- Does NOT modify vanilla `QualityCategory`
+- Does NOT alter normal workbenches or Crafting 0–20
+- Does NOT change Shooting or Melee systems
+- Preserves existing GM21 Legendary crafting behavior
+- Skips incompatible modded recipes safely
+- Logs diagnostics in Dev Mode, not spam
+
+### Future Expansion (Astra's Domain)
+
+- Full phenomenon framework (Chain Lightning, Smite, etc.)
+- Anomaly tier with haunting mechanics
+- Null tier with corruption effects
+- Elaborate catalyst material chains
+- Artifact naming and lore systems
+- Combat magic integration
+- Secret effects and UI
+- Final balance tuning
+
+---
+
 ## Credits
 
 Harmony by Andreas Pardeike (MIT). RimWorld by Ludeon Studios. MIT licensed — see `LICENSE`.
