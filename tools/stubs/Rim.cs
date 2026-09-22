@@ -382,6 +382,9 @@ namespace RimWorld
     {
         public static SkillDef Shooting = new SkillDef { defName = "Shooting" };
         public static SkillDef Melee = new SkillDef { defName = "Melee" };
+        public static SkillDef Crafting = new SkillDef { defName = "Crafting" };
+        public static SkillDef Artistic = new SkillDef { defName = "Artistic" };
+        public static SkillDef Construction = new SkillDef { defName = "Construction" };
     }
 
     public class PawnCapacityDef : Def { }
@@ -456,6 +459,12 @@ namespace RimWorld
     }
 
     public enum QualityCategory : byte { Awful, Poor, Normal, Good, Excellent, Masterwork, Legendary }
+    
+    public class StatDef : Def { }
+    public static class StatDefOf
+    {
+        public static StatDef GeneralLaborSpeed = new StatDef { defName = "GeneralLaborSpeed" };
+    }
 
     public static class QualityUtility
     {
@@ -490,5 +499,81 @@ namespace LudeonTK
         public DebugActionType actionType;
         public AllowedGameStates allowedGameStates;
         public DebugActionAttribute(string category, string name = null) { }
+    }
+}
+
+    // Additional stubs for transcendent crafting system
+    public class ThingComp
+    {
+        public Thing parent;
+        public virtual void PostSpawnSetup(bool respawningAfterLoad) { }
+        public virtual void PostExposeData() { }
+        public virtual IEnumerable<Gizmo> CompGetGizmosExtra() { yield break; }
+        public virtual void PostDestroy(DestroyMode mode, Map previousMap) { }
+        public virtual void PostPostMake() { }
+    }
+    
+    public class CompQuality : ThingComp
+    {
+        public QualityCategory Quality;
+        public void SetQuality(QualityCategory q, StatContext context) { Quality = q; }
+    }
+    
+    public enum StatContext { Crafter, Player }
+    
+    public static class Scribe_Deep
+    {
+        public static void Look<T>(ref T obj, string label, params object[] args) where T : class, IExposable { }
+    }
+    
+    public interface IExposable { void ExposeData(); }
+    
+    public static class GenPlace
+    {
+        public static bool TryPlaceThing(Thing thing, IntVec3 loc, Map map, ThingPlaceMode mode) { return true; }
+    }
+    
+    public enum ThingPlaceMode { Direct, Near }
+    
+    public static class ThingMaker
+    {
+        public static Thing MakeThing(ThingDef def, ThingDef stuff = null) { return new ThingWithComps(); }
+    }
+    
+    public class Command_Info : Command
+    {
+    }
+    
+    public static class ContentFinder<T> where T : class
+    {
+        public static T Get(string path, bool reportFailure = true) { return default(T); }
+    }
+    
+    public static class DefDatabase<T> where T : Def, new()
+    {
+        public static IEnumerable<T> AllDefs { get { return new List<T>(); } }
+    }
+    
+    public class RecipeDef : Def
+    {
+        public List<IngredientCount> ingredients = new List<IngredientCount>();
+        public List<RecipeProduct> products = new List<RecipeProduct>();
+        public int workAmount;
+    }
+    
+    public class IngredientCount
+    {
+        public ThingDef filter;
+    }
+    
+    public class RecipeProduct
+    {
+        public ThingDef thingDef;
+        public int count;
+    }
+    
+    public static class SkillUI
+    {
+        public enum SkillDrawMode { Gameplay, Menu }
     }
 }
