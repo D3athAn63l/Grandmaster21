@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+  <ResearchProjectDef>
+    <defName>GM21_MagicalCraftsmanship</defName>
+    <label>magical craftsmanship</label>
+    <description>Develop a workstation for Crafting Grandmasters to attempt Magical craftsmanship. Each project commits its ingredients and one Magical Catalyst permanently. The finished equipment is Legendary, with a 50% chance of separate Magical craftsmanship. Catalysts are acquired through the developer spawn menu in this experimental foundation release.</description>
+    <baseCost>6000</baseCost>
+    <techLevel>Spacer</techLevel>
+    <prerequisites><li>Fabrication</li></prerequisites>
+    <researchViewX>15</researchViewX>
+    <researchViewY>6</researchViewY>
+  </ResearchProjectDef>
+
+  <!-- Vanilla assets; also refreshed from the loaded source definitions at startup. -->
+  <ThingDef>
+    <defName>GM21_MagicalWorkstation</defName>
+    <label>magical workstation</label>
+    <description>A workstation for Crafting Grandmasters. Choose an existing equipment recipe, supply its ingredients and one Magical Catalyst, and let a Grandmaster commit the project. Work can pause and be resumed by another Crafting Grandmaster. Committed ingredients cannot be recovered. Destroying the workstation destroys its project.</description>
+    <thingClass>Grandmaster21.Transcendent.Building_MagicalWorkstation</thingClass>
+    <category>Building</category>
+    <altitudeLayer>Building</altitudeLayer>
+    <drawerType>MapMeshAndRealTime</drawerType>
+    <tickerType>Never</tickerType>
+    <selectable>true</selectable>
+    <useHitPoints>true</useHitPoints>
+    <graphicData>
+      <texPath>Things/Building/Production/TableMachining</texPath>
+      <graphicClass>Graphic_Multi</graphicClass>
+      <drawSize>(3.5,1.5)</drawSize>
+    </graphicData>
+    <size>(3,1)</size>
+    <rotatable>true</rotatable>
+    <passability>PassThroughOnly</passability>
+    <pathCost>50</pathCost>
+    <fillPercent>0.5</fillPercent>
+    <hasInteractionCell>true</hasInteractionCell>
+    <interactionCellOffset>(0,0,-1)</interactionCellOffset>
+    <designationCategory>Production</designationCategory>
+    <terrainAffordanceNeeded>Medium</terrainAffordanceNeeded>
+    <constructionSkillPrerequisite>12</constructionSkillPrerequisite>
+    <researchPrerequisites><li>GM21_MagicalCraftsmanship</li></researchPrerequisites>
+    <costList><Steel>250</Steel><Plasteel>100</Plasteel><ComponentSpacer>10</ComponentSpacer></costList>
+    <statBases>
+      <MaxHitPoints>400</MaxHitPoints>
+      <WorkToBuild>12000</WorkToBuild>
+      <Mass>50</Mass>
+      <Flammability>0.2</Flammability>
+      <WorkTableWorkSpeedFactor>1</WorkTableWorkSpeedFactor>
+    </statBases>
+    <building><isEdifice>true</isEdifice></building>
+  </ThingDef>
+
+  <ThingDef>
+    <defName>GM21_MagicalCatalyst</defName>
+    <label>magical catalyst</label>
+    <description>A catalyst consumed when a Magical project is committed. It is not a construction material. This experimental foundation release supplies catalysts through the developer spawn menu; a production chain is deferred.</description>
+    <thingClass>Verse.ThingWithComps</thingClass>
+    <category>Item</category>
+    <altitudeLayer>Item</altitudeLayer>
+    <drawerType>MapMeshOnly</drawerType>
+    <tickerType>Never</tickerType>
+    <selectable>true</selectable>
+    <useHitPoints>true</useHitPoints>
+    <graphicData>
+      <texPath>Things/Item/Resource/ComponentSpacer</texPath>
+      <graphicClass>Graphic_StackCount</graphicClass>
+    </graphicData>
+    <alwaysHaulable>true</alwaysHaulable>
+    <drawGUIOverlay>true</drawGUIOverlay>
+    <stackLimit>10</stackLimit>
+    <tradeability>None</tradeability>
+    <!-- Deliberately no Stuff properties, resource categories, recipeMaker or trader tags. -->
+    <statBases><MaxHitPoints>100</MaxHitPoints><Mass>0.2</Mass><MarketValue>2000</MarketValue><Flammability>0</Flammability></statBases>
+  </ThingDef>
+
+  <JobDef>
+    <defName>GM21_TranscendentCraft</defName>
+    <driverClass>Grandmaster21.Transcendent.JobDriver_TranscendentCraft</driverClass>
+    <reportString>working on a Magical project at TargetA.</reportString>
+    <casualInterruptible>true</casualInterruptible>
+  </JobDef>
+
+  <WorkGiverDef>
+    <defName>GM21_TranscendentCraft</defName>
+    <label>work on magical craftsmanship</label>
+    <giverClass>Grandmaster21.Transcendent.WorkGiver_TranscendentCraft</giverClass>
+    <workType>Crafting</workType>
+    <workTags>ManualSkilled</workTags>
+    <priorityInType>100</priorityInType>
+    <verb>craft</verb>
+    <gerund>crafting</gerund>
+    <scanThings>true</scanThings>
+    <scanCells>false</scanCells>
+    <requiredCapacities><li>Manipulation</li></requiredCapacities>
+  </WorkGiverDef>
+</Defs>

@@ -2,7 +2,7 @@
 <ModMetaData>
   <packageId>ared.grandmaster21</packageId>
   <name>Grandmaster 21</name>
-  <modVersion>0.10.4 Beta</modVersion>
+  <modVersion>0.11.0 Beta</modVersion>
   <author>aRed</author>
   <supportedVersions>
     <li>1.6</li>
@@ -52,9 +52,17 @@ Melee Grandmasters also get their own Normal/Killer/Downed doctrine, separate fr
 
 Incompatible with combat overhauls, which disable the melee package automatically.
 
+CRAFTING 21 - MAGICAL CRAFTSMANSHIP
+
+Research Magical Craftsmanship after Fabrication, build a magical workstation, and choose an eligible existing equipment recipe. A Crafting Grandmaster gathers the real ingredients and one Magical Catalyst, then permanently commits a workstation-owned project. Work can pause and another Crafting Grandmaster can continue it. A normal-speed project takes at least 18 working hours; higher crafting speeds receive diminishing returns.
+
+The result is always vanilla Legendary equipment in its selected material. Its separate craftsmanship has a 50% chance of being Magical, locked once at commitment. Magical currently adds a persistent label, not combat powers. Committed projects cannot be cancelled or refunded. Destroying the workstation loses its project; active workstations cannot be deconstructed or uninstalled.
+
+This is an experimental foundation: catalysts are obtained through Development mode's Spawn thing menu. The feature builds against real RimWorld 1.6 DLLs and has headless checks, but full save/reload and gameplay have not yet been verified in RimWorld.
+
 Other skills do not have Level 21 abilities yet.
 
-Before removing this mod, load your save and use "Prepare Save for Uninstall" at the bottom of Mod Settings. It prepares the current save for removal by reducing every level 21 skill to 20 and clearing stored Grandmaster progression. Then save, exit, disable the mod and reload the cleaned save. Keep a backup: the full remove-and-reload sequence has not yet been verified in gameplay testing.
+Before removing this mod, remove all magical workstations and catalysts from your save, then use "Prepare Save for Uninstall" at the bottom of Mod Settings. That action reduces every level 21 skill to 20 and clears stored Grandmaster progression; it does not remove crafting objects or artifact metadata. Destroying active workstations loses their projects. Then save, exit, disable the mod and reload the cleaned save. Keep a backup: the full remove-and-reload sequence has not yet been verified in gameplay testing.
 
 Incompatible with mods that also remove or replace the skill cap, such as unlimited-skill mods.</description>
 </ModMetaData>

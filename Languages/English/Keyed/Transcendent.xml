@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LanguageData>
+  <GM21_TC_Artifact>Craftsmanship: Magical</GM21_TC_Artifact>
+  <GM21_TC_Choose>Choose Magical project</GM21_TC_Choose>
+  <GM21_TC_ChooseDesc>Choose one equipment recipe. A Crafting Grandmaster will gather its ingredients and one Magical Catalyst, then permanently commit the project.</GM21_TC_ChooseDesc>
+  <GM21_TC_DialogHelp>Choose a researched equipment recipe, then its material if needed. A Crafting Grandmaster will gather the ingredients and one Magical Catalyst. Once committed, the project cannot be cancelled or refunded. Its 50% Magical outcome is revealed at completion.</GM21_TC_DialogHelp>
+  <GM21_TC_Unavailable>Requires Magical Craftsmanship research, a usable workstation, and compatible ingredient APIs.</GM21_TC_Unavailable>
+  <GM21_TC_Idle>No project selected. Requires a Crafting Grandmaster.</GM21_TC_Idle>
+  <GM21_TC_Queued>Selected: {0}\nWaiting for a Crafting Grandmaster, ingredients and one Magical Catalyst.</GM21_TC_Queued>
+  <GM21_TC_Progress>Project: {0}\nMaterial: {1}\nProgress: {2}\nCraftsmanship ceiling: Magical\nIngredients committed permanently.</GM21_TC_Progress>
+  <GM21_TC_NoStuff>Fixed recipe materials</GM21_TC_NoStuff>
+  <GM21_TC_Completed>Magical project completed: {0}.</GM21_TC_Completed>
+  <GM21_TC_Missing>Missing accessible recipe ingredients or one Magical Catalyst.</GM21_TC_Missing>
+  <GM21_TC_NoDeconstruct>Committed projects cannot be deconstructed. Destroying this workstation loses the project and its ingredients.</GM21_TC_NoDeconstruct>
+  <GM21_TC_Faulted>Project paused: saved data or a mod callback needs attention. See Player.log. No resources will be refunded or rerolled.</GM21_TC_Faulted>
+  <GM21_TC_OutputWaiting>Finished item retained inside workstation. Clear space nearby for delivery.</GM21_TC_OutputWaiting>
+  <GM21_TC_Recovery>Uncommitted ingredients retained after a failed start. Clear space nearby and recover them before choosing another project.</GM21_TC_Recovery>
+  <GM21_TC_Recover>Recover uncommitted ingredients</GM21_TC_Recover>
+</LanguageData>

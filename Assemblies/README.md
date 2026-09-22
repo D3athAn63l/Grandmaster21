@@ -39,6 +39,11 @@ On Linux/Mono the `netstandard 2.1` facade is required (`mono-devel` provides it
 `/usr/lib/mono/4.5/Facades/netstandard.dll`); without it `mcs` fails with CS0012 on
 `System.ValueType`.
 
+`CSC` may point to a compiler executable/wrapper and `FRAMEWORK_REFS` to a real framework
+reference-assembly directory (including `Facades/netstandard.dll`). Defaults remain `mcs` and
+`/usr/lib/mono/4.5`. The Magical slice was also built with Roslyn and .NET Framework 4.7.2
+reference assemblies; the game references must still be the real RimWorld/Unity/Harmony DLLs.
+
 ## Verifying a build
 
 ```bash
@@ -48,7 +53,20 @@ On Linux/Mono the `netstandard 2.1` facade is required (`mono-devel` provides it
 Checks every reflectively-resolved member, every Harmony injection parameter name, the `Learn`
 transpiler's IL pattern, and the progression suite against the real `SkillRecord`.
 
+For Magical craftsmanship, after building the mod:
+
+```bash
+./tools/verify-transcendent.sh /path/to/Managed /path/to/0Harmony.dll /path/to/Mono.Cecil.dll
+```
+
+This additional suite requires Mono.Cecil 0.11.x. It accepts the same `CSC`/`FRAMEWORK_REFS`
+overrides and a `RUNNER` executable (default `mono`, also supports .NET 8+ `dotnet`). It checks
+policy, real API signatures/ingredient selection, XML and save-writing. It does not launch the
+game or verify reload, hauling, needs, output placement or item transfers. See
+[Magical craftsmanship](../Docs/MagicalCrafting.md) for results and the remaining runtime gate.
+
 ## No RimWorld install?
 
-`./tools/build-stubs.sh` compile-checks the source and runs the offline logic suites against
-reference stubs. It does **not** produce a usable assembly — see `tools/stubs/README.md`.
+`./tools/build-stubs.sh` compile-checks the older source groups and runs their offline logic suites
+against reference stubs. It excludes `Source/Transcendent` and does **not** validate Magical
+craftsmanship or produce a usable assembly — see `tools/stubs/README.md`.
