@@ -33,8 +33,17 @@ namespace Grandmaster21.Transcendent
             if (initialized) return;
             initialized = true;
             // Only new definitions receive copied graphics. The source definitions are untouched.
-            CopyGraphic(TranscendentDefOf.GM21_MagicalWorkstation, DefDatabase<ThingDef>.GetNamed("TableMachining"));
-            CopyGraphic(TranscendentDefOf.GM21_MagicalCatalyst, ThingDefOf.ComponentSpacer);
+            foreach (var config in TranscendentTierConfig.All)
+            {
+                ThingDef bench = DefDatabase<ThingDef>.GetNamedSilentFail("GM21_" + config.label + "Workstation");
+                if (bench == null || config.Catalyst == null || config.Research == null)
+                {
+                    Log.Error("[Grandmaster 21] Missing progression definitions for " + config.label + "; affected bench unavailable.");
+                    continue;
+                }
+                CopyGraphic(bench, DefDatabase<ThingDef>.GetNamed("TableMachining"));
+                CopyGraphic(config.Catalyst, ThingDefOf.ComponentSpacer);
+            }
             RecipeDiscoveryReport report = new RecipeDiscoveryReport(Prefs.DevMode);
             foreach (RecipeDef recipe in DefDatabase<RecipeDef>.AllDefsListForReading.OrderBy(r => r.defName, StringComparer.Ordinal))
             {
