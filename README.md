@@ -2,8 +2,9 @@
 
 **RimWorld 1.6** — skills normally end at 20. This mod adds exactly one more level: **21, Grandmaster**.
 
-**Version 0.10.4 Beta.** The Shooting capstone has been verified in real RimWorld 1.6 gameplay.
-The Melee capstone has **not** — see [Release status](#release-status).
+**Version 0.11.0 Beta.** Adds the experimental Crafting 21 Magical vertical slice.
+The Shooting capstone has been verified in real RimWorld 1.6 gameplay. Melee and Magical
+craftsmanship have **not** — see [Release status](#release-status).
 
 Level 21 cannot be randomly generated. It must be earned by accumulating an enormous amount of
 experience *after* a pawn has already reached level 20. Level 21 represents Grandmaster mastery
@@ -416,8 +417,8 @@ The second skill-specific capstone, new in **0.10.0** and **not yet runtime test
 projectile doctrine was tightened in **0.10.1** and its friendly-explosive ruling simplified in
 **0.10.2**, its protected-pawn safety made a hard constraint in **0.10.3**, and its dodge chance
 given the Level-21 exception in **0.10.4**. Deliberately
-overpowered, and deliberately *different in kind* from Melee 20. Skills other than Shooting and
-Melee have no Level 21 ability yet, and none is invented here.
+overpowered, and deliberately *different in kind* from Melee 20. Skills other than Shooting,
+Melee and Crafting have no Level 21 ability yet.
 
 > Shooting 21 means the Grandmaster controls **the shot**.
 > Melee 21 means the Grandmaster controls **the fight**.
@@ -1026,9 +1027,44 @@ are transient by construction: a game reloaded mid-swing starts the next exchang
 
 ---
 
+## Crafting 21 — Magical craftsmanship
+
+New in **0.11.0 Beta**, and **not yet verified in a running game**.
+
+Research **Magical Craftsmanship** after Fabrication, then build a **magical workstation** from
+the Production menu. Choose an eligible existing weapon/apparel recipe and its material. A
+legitimate Crafting 21 pawn gathers the real ingredients plus **one Magical Catalyst** and
+permanently commits the project. Enable Crafting work for the pawn.
+
+The workstation owns the recipe, material, partial progress and one locked 50/50 outcome. Work
+can pause or move to another Crafting Grandmaster. Every result is **vanilla Legendary**, with
+either separate **Magical** craftsmanship or ordinary Legendary fallback. Magical currently
+adds persistent metadata and an inspect label; no combat powers are implemented.
+
+At combined work speed 1, the minimum is **18 working hours** (1.5 twelve-hour working days).
+Expensive recipes take longer. The recipe's actual pawn and bench work-speed stats apply, with
+square-root scaling above 1. Ordinary crafting speed and quality rules are unchanged.
+
+After commitment there is **no cancel, refund or reroll**. Active benches cannot be deconstructed
+or uninstalled. Destroying a bench destroys its project. Unsupported recipes, including
+multi-output, consumable, art and ambiguous material recipes, are excluded conservatively.
+
+**Catalyst acquisition is dev/test-only for this foundation:** enable Development mode and use
+Spawn thing to obtain `GM21_MagicalCatalyst`. There is no manufacturing recipe or trader supply
+yet. See [the feature guide](Docs/MagicalCrafting.md) for the full flow, audited APIs, persistence,
+recipe exclusions, work calculation, test results and required in-game checklist.
+
+---
+
 ## Removing Grandmaster 21 safely
 
-> **Do not remove the mod while a save still contains level 21 skills.**
+> **Do not remove the mod while a save still contains level 21 skills or Magical crafting objects.**
+
+From 0.11.0, remove every magical workstation and catalyst across maps, inventories and caravans
+before running the skill cleanup below. Destroying an active workstation loses its project.
+The cleanup action does not remove these objects or artifact metadata. Finished equipment keeps
+its original item Def; its Magical metadata belongs to this mod and is lost on removal. The full
+removal/reload sequence still needs an in-game test; keep a backup.
 
 Unknown save elements are ignored by RimWorld, so banked Grandmaster XP is discarded harmlessly.
 A stored level of **21 is a different matter**: vanilla `SkillRecord.ExposeData` reads it straight
@@ -1067,7 +1103,7 @@ For every skill record on every relevant pawn in the currently loaded game:
 * **the Grandmaster aim mode is cleared**, for the same reason — a cleaned save should contain no
   `gm21AimMode` element either.
 
-Afterwards the save contains no meaningful Grandmaster 21 state. The operation is idempotent:
+Afterwards the scanned pawns contain no meaningful Grandmaster skill/progression state. The operation is idempotent:
 running it twice reports zero on the second pass.
 
 #### Which pawns are scanned
@@ -1377,12 +1413,16 @@ a RimWorld install.
 ./tools/build-stubs.sh
 ```
 
-That compile-checks the source and runs all three suites against reference stubs whose signatures
+That compile-checks the older source groups and runs all three suites against reference stubs whose signatures
 mirror `Assembly-CSharp`. Between them they cover promotion, the transpiler fail-safe, permanence,
 the generation cap, decay, aptitude semantics, both quality overloads, the per-pawn cleanup, the
 authorised scope's exception safety, the accuracy and delay maths, aim-mode storage, Killer/Downed
 part selection across several anatomies, the targeting patch's gating, and that every translation
 key the code looks up is actually shipped.
+
+The Magical crafting source is excluded from the stub build. Build it against the real game DLLs
+and run `tools/verify-transcendent.sh`; setup and overrides are documented in
+[Assemblies/README.md](Assemblies/README.md).
 
 The melee suite additionally drives the **real patch bodies** for hit chance and defence, every
 stat composite, the capability gates, the reaction scheduler — including 300 counter-exchanges with
@@ -1432,16 +1472,23 @@ hand-written approximations. Only a real build does that. See `tools/stubs/READM
 
 ## Release status
 
-**0.10.4 Beta.** Builds clean against RimWorld 1.6 and passes every check that could be run in the
-environment it was built in.
+**0.11.0 Beta.** The Magical slice builds against real RimWorld 1.6/Unity/Harmony assemblies with
+zero warnings/errors. Its 114 headless policy/API/XML/save-writing checks pass, with one additional
+implicit-work stat probe blocked by a missing Steamworks DLL. The existing
+runtime-target harness reports 168 passes and one failure caused by a missing Steamworks DLL in
+the supplied assembly set. Full save/reload and map gameplay are **not runtime verified**.
+See [Magical craftsmanship](Docs/MagicalCrafting.md) for architecture, limits and the runtime checklist.
+The [empty-recipe discovery repair](Docs/MagicalRecipeDiscoveryFix.md) documents the real
+reference-resolution regression, subtype compatibility fixes and bounded rejection diagnostics.
 
 **The Melee Grandmaster package has had NO runtime gameplay testing.** Every RimWorld member it
 touches is confirmed present with the right signature and parameter names against the real 1.6
 assembly metadata, and its decision logic is covered by 295 offline checks — but patches resolving
-is not patches binding, and patches binding is not patches behaving. Treat 0.10.4 as untested in
+is not patches binding, and patches binding is not patches behaving. Treat Melee as untested in
 play, and keep a backup save.
 
-The Shooting package is unchanged in this version and retains its 0.9.0 runtime result below.
+The Shooting and Melee implementation is unchanged in this version. Shooting retains its 0.9.0
+runtime result below.
 
 ### Runtime test — PASS (RimWorld 1.6, 0.9.0) — Shooting only
 

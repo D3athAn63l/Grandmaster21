@@ -8,7 +8,8 @@
 set -euo pipefail
 MANAGED="${1:?usage: build.sh <Managed dir> <0Harmony.dll>}"
 HARMONY="${2:?usage: build.sh <Managed dir> <0Harmony.dll>}"
-MONO=/usr/lib/mono/4.5
+MONO="${FRAMEWORK_REFS:-/usr/lib/mono/4.5}"
+COMPILER="${CSC:-mcs}"
 
 [ -f "$MANAGED/Assembly-CSharp.dll" ] || { echo "error: no Assembly-CSharp.dll in $MANAGED" >&2; exit 1; }
 [ -f "$HARMONY" ] || { echo "error: no Harmony assembly at $HARMONY" >&2; exit 1; }
@@ -38,13 +39,13 @@ namespace Grandmaster21
 STAMPEOF
 
 mkdir -p Assemblies
-mcs -target:library -out:Assemblies/Grandmaster21.dll -optimize+ -nostdlib -noconfig -warn:2 \
+"$COMPILER" -target:library -out:Assemblies/Grandmaster21.dll -optimize+ -nostdlib -noconfig -warn:2 \
   -r:"$MONO/mscorlib.dll" -r:"$MONO/System.dll" -r:"$MONO/System.Core.dll" \
   -r:"$MONO/Facades/netstandard.dll" \
   -r:"$MANAGED/Assembly-CSharp.dll" \
   -r:"$MANAGED/UnityEngine.dll" -r:"$MANAGED/UnityEngine.CoreModule.dll" \
   -r:"$MANAGED/UnityEngine.IMGUIModule.dll" -r:"$MANAGED/UnityEngine.TextRenderingModule.dll" \
   -r:"$HARMONY" \
-  Source/*.cs Source/Shooting/*.cs Source/Melee/*.cs
+  Source/*.cs Source/Shooting/*.cs Source/Melee/*.cs Source/Transcendent/*.cs
 
 echo "Built Assemblies/Grandmaster21.dll  ($STAMP, commit $COMMIT)"
