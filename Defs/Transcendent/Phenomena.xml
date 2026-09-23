@@ -1,6 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Defs>
   <DamageDef>
+    <defName>GM21_ArtifactLightning</defName>
+    <label>artifact lightning</label>
+    <workerClass>DamageWorker_AddInjury</workerClass>
+    <externalViolence>true</externalViolence>
+    <deathMessage>{0} was struck by artifact lightning.</deathMessage>
+    <hediff>Burn</hediff>
+    <armorCategory>Heat</armorCategory>
+    <makesBlood>false</makesBlood>
+  </DamageDef>
+  <DamageDef>
     <defName>GM21_ArtifactFlame</defName>
     <label>artifact flame</label>
     <workerClass>DamageWorker_AddInjury</workerClass>

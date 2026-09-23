@@ -73,13 +73,14 @@ namespace Grandmaster21.Transcendent
             switch (artifact.phenomenon)
             {
                 case ArtifactPhenomenon.ChainLightning:
+                    DamageDef lightning = DefDatabase<DamageDef>.GetNamed("GM21_ArtifactLightning");
                     HashSet<Pawn> visited = new HashSet<Pawn>();
                     Pawn next = primary;
                     for (int i = 0; i < ChainTargets && next != null; i++)
                     {
                         IntVec3 from = next.Position;
                         visited.Add(next);
-                        Damage(wielder, next, DamageDefOf.Blunt, (12 - i * 2) * scale);
+                        Damage(wielder, next, lightning, (12 - i * 2) * scale);
                         next = Nearby(wielder, from, ChainRadius).FirstOrDefault(p => !visited.Contains(p));
                     }
                     break;

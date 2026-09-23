@@ -119,6 +119,7 @@ namespace Grandmaster21.Transcendent
             prepared.finalTier = ArtifactRolls.Roll(prepared.ceiling, prepared.seed);
             prepared.phenomenonSeed = unchecked(prepared.seed ^ 0x473231);
             prepared.phenomenon = ArtifactIdentity.Assign(prepared.product, prepared.finalTier, prepared.phenomenonSeed);
+            ApplyDeveloperOverride(prepared);
             project = prepared; // Persistence boundary; from here onward nothing is refundable.
             job.bill = null; // Remove the job's reference BEFORE deleting its internal bill.
             job.placedThings = null;
@@ -256,6 +257,7 @@ namespace Grandmaster21.Transcendent
         {
             foreach (Gizmo g in base.GetGizmos()) yield return g;
             if (Faction != Faction.OfPlayer) yield break;
+            foreach (Gizmo dev in DeveloperGizmos()) yield return dev;
             if (HasRecovery)
                 yield return new Command_Action
                 {

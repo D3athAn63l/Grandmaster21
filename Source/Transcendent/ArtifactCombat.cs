@@ -30,6 +30,7 @@ namespace Grandmaster21.Transcendent
                 harmony.Patch(bullet, prefix: Method("BulletPrefix"), finalizer: Method("Restore"));
                 harmony.Patch(melee, prefix: Method("MeleePrefix"), finalizer: Method("Restore"));
                 harmony.Patch(damage, postfix: Method("AfterDamage"));
+                harmony.Patch(AccessTools.DeclaredMethod(typeof(Pawn), "SpawnSetup", new[] { typeof(Map), typeof(bool) }), postfix: Method("PawnSpawned"));
             }
             catch (Exception ex)
             {
@@ -38,6 +39,7 @@ namespace Grandmaster21.Transcendent
             }
         }
         private static HarmonyMethod Method(string name) { return new HarmonyMethod(typeof(ArtifactCombat), name); }
+        private static void PawnSpawned(Pawn __instance) { ArtifactWatcher.TrackPawn(__instance); }
         private static void Enter(Thing weapon, Pawn wielder)
         {
             CompArtifact comp = weapon == null || weapon.Destroyed ? null : weapon.TryGetComp<CompArtifact>();
