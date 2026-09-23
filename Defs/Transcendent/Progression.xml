@@ -83,6 +83,9 @@
       <MarketValue>8000</MarketValue>
       <Flammability>0</Flammability>
     </statBases>
+    <thingCategories>
+      <li>GM21_Catalysts</li>
+    </thingCategories>
   </ThingDef>
   <ResearchProjectDef>
     <defName>GM21_DivineCraftsmanship</defName>
@@ -167,6 +170,9 @@
       <MarketValue>12000</MarketValue>
       <Flammability>0</Flammability>
     </statBases>
+    <thingCategories>
+      <li>GM21_Catalysts</li>
+    </thingCategories>
   </ThingDef>
   <RecipeDef>
     <defName>GM21_MakeMagicalCatalyst</defName>
@@ -342,4 +348,9 @@
       <GM21_DivineEssence>1</GM21_DivineEssence>
     </products>
   </RecipeDef>
+  <ThingCategoryDef>
+    <defName>GM21_Catalysts</defName>
+    <label>transcendent catalysts</label>
+    <parent>Root</parent>
+  </ThingCategoryDef>
 </Defs>

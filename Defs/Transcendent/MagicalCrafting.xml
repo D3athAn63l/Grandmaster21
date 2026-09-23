@@ -83,6 +83,9 @@
       <MarketValue>2000</MarketValue>
       <Flammability>0</Flammability>
     </statBases>
+    <thingCategories>
+      <li>GM21_Catalysts</li>
+    </thingCategories>
   </ThingDef>
   <JobDef>
     <defName>GM21_TranscendentCraft</defName>

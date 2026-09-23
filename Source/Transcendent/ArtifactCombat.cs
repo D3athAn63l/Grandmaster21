@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using System.Collections.Generic;
 using HarmonyLib;
 using RimWorld;
 using Verse;
@@ -31,6 +32,7 @@ namespace Grandmaster21.Transcendent
                 harmony.Patch(melee, prefix: Method("MeleePrefix"), finalizer: Method("Restore"));
                 harmony.Patch(damage, postfix: Method("AfterDamage"));
                 harmony.Patch(AccessTools.DeclaredMethod(typeof(Pawn), "SpawnSetup", new[] { typeof(Map), typeof(bool) }), postfix: Method("PawnSpawned"));
+                harmony.Patch(AccessTools.DeclaredMethod(typeof(Pawn_EquipmentTracker), "GetGizmos"), postfix: Method("EquipmentGizmos"));
             }
             catch (Exception ex)
             {
@@ -40,6 +42,21 @@ namespace Grandmaster21.Transcendent
         }
         private static HarmonyMethod Method(string name) { return new HarmonyMethod(typeof(ArtifactCombat), name); }
         private static void PawnSpawned(Pawn __instance) { ArtifactWatcher.TrackPawn(__instance); }
+        private static void EquipmentGizmos(Pawn_EquipmentTracker __instance, ref IEnumerable<Gizmo> __result)
+        {
+            // Equipment doesn't forward arbitrary ThingComp gizmos in vanilla.
+            if (Prefs.DevMode) __result = WithArtifactTools(__result, __instance);
+        }
+        private static IEnumerable<Gizmo> WithArtifactTools(IEnumerable<Gizmo> original, Pawn_EquipmentTracker equipment)
+        {
+            foreach (Gizmo gizmo in original) yield return gizmo;
+            if (!Prefs.DevMode) yield break;
+            foreach (Thing weapon in equipment.AllEquipmentListForReading)
+            {
+                CompArtifact artifact = weapon.TryGetComp<CompArtifact>();
+                if (artifact != null) foreach (Gizmo gizmo in artifact.CompGetGizmosExtra()) yield return gizmo;
+            }
+        }
         private static void Enter(Thing weapon, Pawn wielder)
         {
             CompArtifact comp = weapon == null || weapon.Destroyed ? null : weapon.TryGetComp<CompArtifact>();

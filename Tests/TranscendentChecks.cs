@@ -15,7 +15,7 @@ using Mono.Cecil.Cil;
 using RimWorld;
 using Verse;
 
-internal static class TranscendentChecks
+internal static partial class TranscendentChecks
 {
     public class EquipmentSubclass : ThingWithComps { }
     public class ApparelSubclass : Apparel { }
@@ -332,7 +332,7 @@ internal static class TranscendentChecks
             int split = commit.Body.Instructions.ToList().FindIndex(i => i.Operand is MethodReference
                 && ((MethodReference)i.Operand).Name == "SplitOff");
             Check("live efficiency guard precedes ingredient staging", guard >= 0 && split > guard);
-            Check("no new Harmony patches", types.All(t => !t.CustomAttributes.Any(x => x.AttributeType.Namespace == "HarmonyLib")));
+            Check("combat patches installed explicitly, outside global PatchAll", types.All(t => !t.CustomAttributes.Any(x => x.AttributeType.Namespace == "HarmonyLib")));
             Check("building project deep-scribed", bench.Methods.Single(m => m.Name == "ExposeData").Body.Instructions.Any(i =>
                 i.Operand is GenericInstanceMethod && ((GenericInstanceMethod)i.Operand).GenericArguments.Any(x => x.Name == "TranscendentProject")));
             Check("artifact component serialization exists", types.Single(t => t.Name == "CompArtifact").Methods.Any(m => m.Name == "PostExposeData"));
@@ -343,7 +343,7 @@ internal static class TranscendentChecks
         foreach (string path in Directory.GetFiles(root, "*.xml", SearchOption.AllDirectories)) XDocument.Load(path);
         Check("all repository XML well formed", true);
         XDocument defs = XDocument.Load(Path.Combine(root, "Defs/Transcendent/MagicalCrafting.xml"));
-        foreach (XElement el in defs.Root.Elements())
+        foreach (XElement el in Directory.GetFiles(Path.Combine(root, "Defs/Transcendent"), "*.xml").SelectMany(p => XDocument.Load(p).Root.Elements()))
         {
             Type type = typeof(ThingDef).Assembly.GetType("Verse." + el.Name.LocalName) ?? typeof(ThingDef).Assembly.GetType("RimWorld." + el.Name.LocalName);
             bool valid = type != null;
@@ -353,7 +353,7 @@ internal static class TranscendentChecks
                 if (field == null) { valid = false; Console.WriteLine("Unknown field: " + el.Name + "." + child.Name); continue; }
                 if (field.FieldType.IsEnum) Enum.Parse(field.FieldType, child.Value);
                 if (field.FieldType == typeof(Type))
-                    valid &= (Mod.GetType(child.Value) ?? typeof(ThingDef).Assembly.GetType(child.Value) ?? typeof(ThingDef).Assembly.GetType("Verse." + child.Value)) != null;
+                    valid &= (Mod.GetType(child.Value) ?? typeof(ThingDef).Assembly.GetType(child.Value) ?? typeof(ThingDef).Assembly.GetType("Verse." + child.Value) ?? typeof(ThingDef).Assembly.GetType("RimWorld." + child.Value)) != null;
             }
             Check("real Def schema: " + el.Element("defName").Value, valid);
         }
@@ -400,6 +400,7 @@ internal static class TranscendentChecks
         try
         {
             MathAndAuthorization(); RecipePolicy(); ApiAndIl(args[0]); XmlSchema(args[1]); SaveWriting(args[2]);
+            TierChecks(); PhenomenonChecks(); ProgressionChecks(args[1]); CombatContracts(args[0]); NewPersistence(args[2]);
         }
         catch (Exception e) { Console.WriteLine(e); fail++; }
         Console.WriteLine("PASS: " + pass + " FAIL: " + fail + " BLOCKED: " + blocked);

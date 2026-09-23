@@ -110,6 +110,7 @@ namespace Grandmaster21.Transcendent
                     foreach (Hediff_Injury wound in wielder.health.hediffSet.hediffs.OfType<Hediff_Injury>()
                         .Where(h => !h.IsPermanent()).OrderByDescending(h => h.Severity).ToList())
                     {
+                        if (wielder.Dead) break;
                         float heal = Math.Min(budget, Math.Max(0, wound.Severity));
                         if (heal <= 0) break;
                         wound.Heal(heal); budget -= heal;
