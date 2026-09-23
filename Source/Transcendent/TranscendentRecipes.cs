@@ -143,7 +143,7 @@ namespace Grandmaster21.Transcendent
                     if (d == null || d.category != ThingCategory.Item || !CompatibleItemClass(d.thingClass))
                         return Reject("ingredientClass", out reason);
                     if (!used.Add(d)) return Reject("overlappingIngredients", out reason);
-                    if (d == catalyst) return Reject("catalystIngredient", out reason);
+                    if (d == catalyst || TranscendentTierConfig.IsCatalyst(d)) return Reject("catalystIngredient", out reason);
                     if (d.HasComp(typeof(CompQuality)) || d.IsIngestible || d.IsMedicine || d.IsDrug)
                         return Reject("ingredientKind", out reason);
                 }

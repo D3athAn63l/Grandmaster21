@@ -1,19 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LanguageData>
   <GM21_TC_Artifact>Craftsmanship: Magical</GM21_TC_Artifact>
-  <GM21_TC_Choose>Choose Magical project</GM21_TC_Choose>
-  <GM21_TC_ChooseDesc>Choose one equipment recipe. A Crafting Grandmaster will gather its ingredients and one Magical Catalyst, then permanently commit the project.</GM21_TC_ChooseDesc>
-  <GM21_TC_DialogHelp>Choose a researched equipment recipe, then its material if needed. A Crafting Grandmaster will gather the ingredients and one Magical Catalyst. Once committed, the project cannot be cancelled or refunded. Its 50% Magical outcome is revealed at completion.</GM21_TC_DialogHelp>
-  <GM21_TC_Unavailable>Requires Magical Craftsmanship research, a usable workstation, and compatible ingredient APIs.</GM21_TC_Unavailable>
+  <GM21_TC_Choose>Choose transcendent project</GM21_TC_Choose>
+  <GM21_TC_ChooseDesc>Choose one equipment recipe. A Crafting Grandmaster will gather its ingredients and the workstation’s catalyst, then permanently commit the project.</GM21_TC_ChooseDesc>
+  <GM21_TC_DialogHelp>Choose a researched equipment recipe, then its material if needed. A Crafting Grandmaster will gather the ingredients and the workstation’s catalyst. Once committed, the project cannot be cancelled or refunded. Its 50% Magical outcome is revealed at completion.</GM21_TC_DialogHelp>
+  <GM21_TC_Unavailable>Requires this workstation’s research, a usable workstation, and compatible ingredient APIs.</GM21_TC_Unavailable>
   <GM21_TC_Idle>No project selected. Requires a Crafting Grandmaster.</GM21_TC_Idle>
-  <GM21_TC_Queued>Selected: {0}\nWaiting for a Crafting Grandmaster, ingredients and one Magical Catalyst.</GM21_TC_Queued>
-  <GM21_TC_Progress>Project: {0}\nMaterial: {1}\nProgress: {2}\nCraftsmanship ceiling: Magical\nIngredients committed permanently.</GM21_TC_Progress>
+  <GM21_TC_Queued>Selected: {0}\nWaiting for a Crafting Grandmaster, ingredients and the workstation’s catalyst.</GM21_TC_Queued>
+  <GM21_TC_Progress>Project: {0}\nMaterial: {1}\nProgress: {2}\nCraftsmanship ceiling: {3}\nIngredients committed permanently.</GM21_TC_Progress>
   <GM21_TC_NoStuff>Fixed recipe materials</GM21_TC_NoStuff>
-  <GM21_TC_Completed>Magical project completed: {0}.</GM21_TC_Completed>
-  <GM21_TC_Missing>Missing accessible recipe ingredients or one Magical Catalyst.</GM21_TC_Missing>
+  <GM21_TC_Completed>Transcendent project completed: {0}.</GM21_TC_Completed>
+  <GM21_TC_Missing>Missing accessible recipe ingredients or the workstation’s catalyst.</GM21_TC_Missing>
   <GM21_TC_NoDeconstruct>Committed projects cannot be deconstructed. Destroying this workstation loses the project and its ingredients.</GM21_TC_NoDeconstruct>
   <GM21_TC_Faulted>Project paused: saved data or a mod callback needs attention. See Player.log. No resources will be refunded or rerolled.</GM21_TC_Faulted>
   <GM21_TC_OutputWaiting>Finished item retained inside workstation. Clear space nearby for delivery.</GM21_TC_OutputWaiting>
   <GM21_TC_Recovery>Uncommitted ingredients retained after a failed start. Clear space nearby and recover them before choosing another project.</GM21_TC_Recovery>
   <GM21_TC_Recover>Recover uncommitted ingredients</GM21_TC_Recover>
+  <GM21_TC_Tier>Craftsmanship: {0}</GM21_TC_Tier>
+  <GM21_TC_Phenomenon>Phenomenon: {0}</GM21_TC_Phenomenon>
+  <GM21_TC_DialogHelpTiers>Ceiling: {0}. Requires one {1} plus the recipe ingredients. Only a Crafting Grandmaster can commit and work. No cancellation or refund after commitment. Lower-tier or ordinary Legendary outcomes are possible.</GM21_TC_DialogHelpTiers>
+  <GM21_TC_Phenomenon_ChainLightning>Chain lightning</GM21_TC_Phenomenon_ChainLightning>
+  <GM21_TC_Phenomenon_Smite>Smite</GM21_TC_Phenomenon_Smite>
+  <GM21_TC_Phenomenon_FlameWave>Flame wave</GM21_TC_Phenomenon_FlameWave>
+  <GM21_TC_Phenomenon_FrostNova>Frost nova</GM21_TC_Phenomenon_FrostNova>
+  <GM21_TC_Phenomenon_GravityCrush>Gravity crush</GM21_TC_Phenomenon_GravityCrush>
+  <GM21_TC_Phenomenon_VampiricStrike>Vampiric strike</GM21_TC_Phenomenon_VampiricStrike>
+  <GM21_TC_Phenomenon_SpatialSlash>Spatial slash</GM21_TC_Phenomenon_SpatialSlash>
 </LanguageData>

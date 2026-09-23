@@ -36,7 +36,7 @@ namespace Grandmaster21.Transcendent
             chosen = new List<ThingCount>();
             if (!Available || !Find(bill, pawn, bench, chosen, null)) return false;
             IngredientCount catalyst = new IngredientCount();
-            catalyst.filter.SetAllow(TranscendentDefOf.GM21_MagicalCatalyst, true);
+            catalyst.filter.SetAllow(bench.Config.Catalyst, true);
             catalyst.SetBaseCount(1);
             List<ThingCount> extra = new List<ThingCount>();
             if (!WorkGiver_DoBill.TryFindBestFixedIngredients(new List<IngredientCount> { catalyst }, pawn, bench, extra, bill.ingredientSearchRadius)) return false;
@@ -63,7 +63,7 @@ namespace Grandmaster21.Transcendent
                 delivered[t] = existing + c.Count;
             }
             if (delivered.Any(kv => kv.Value > kv.Key.stackCount)) return false;
-            List<Thing> available = delivered.Keys.Where(t => t.def != TranscendentDefOf.GM21_MagicalCatalyst
+            List<Thing> available = delivered.Keys.Where(t => t.def != bench.Config.Catalyst
                 && bill.IsFixedOrAllowedIngredient(t)).ToList();
             if (!Select(available, bill, chosen, bench.InteractionCell, false, null)) return false;
             if (chosen.Count == 0 || chosen.Any(c => c.Count <= 0 || c.Count > delivered[c.Thing])) return false;
@@ -74,7 +74,7 @@ namespace Grandmaster21.Transcendent
                 if (dominant == null || dominant.def != bench.PendingStuff || !dominant.def.stuffProps.CanMake(bill.recipe.products[0].thingDef)) return false;
             }
             else dominant = chosen.OrderByDescending(c => c.Count).First().Thing;
-            Thing catalyst = delivered.Keys.FirstOrDefault(t => t.def == TranscendentDefOf.GM21_MagicalCatalyst && delivered[t] >= 1);
+            Thing catalyst = delivered.Keys.FirstOrDefault(t => t.def == bench.Config.Catalyst && delivered[t] >= 1);
             if (catalyst == null) return false;
             chosen.Add(new ThingCount(catalyst, 1));
             return true;
