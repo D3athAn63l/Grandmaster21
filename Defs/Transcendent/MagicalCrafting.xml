@@ -46,6 +46,7 @@
       <Mass>50</Mass>
       <Flammability>0.2</Flammability>
       <WorkTableWorkSpeedFactor>1</WorkTableWorkSpeedFactor>
+      <WorkTableEfficiencyFactor>1</WorkTableEfficiencyFactor>
     </statBases>
     <building><isEdifice>true</isEdifice></building>
   </ThingDef>

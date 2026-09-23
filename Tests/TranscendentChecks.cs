@@ -17,7 +17,12 @@ using Verse;
 
 internal static class TranscendentChecks
 {
-    static int pass, fail;
+    public class EquipmentSubclass : ThingWithComps { }
+    public class ApparelSubclass : Apparel { }
+    public abstract class AbstractEquipment : ThingWithComps { }
+    public class CustomWorker : RecipeWorker { }
+    public class CustomRecipe : RecipeDef { }
+    static int pass, fail, blocked;
     static readonly Assembly Mod = typeof(TranscendentProject).Assembly;
     static readonly BindingFlags Any = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
     static void Check(string name, bool result)
@@ -47,6 +52,8 @@ internal static class TranscendentChecks
         r.products.Add(new ThingDefCountClass(product, 1));
         r.ingredients.Add(Ingredient(ingredient, 10));
         r.fixedIngredientFilter.SetAllow(ingredient, true);
+        // Discovery runs AFTER this native lifecycle step, not against fresh new RecipeDef().
+        r.ResolveReferences();
         return r;
     }
     static bool Supported(RecipeDef r, SkillDef skill, ThingDef catalyst)
@@ -55,6 +62,14 @@ internal static class TranscendentChecks
         return (bool)Mod.GetType("Grandmaster21.Transcendent.TranscendentRecipes")
             .GetMethod("IsSupported", Any, null, new[] { typeof(RecipeDef), typeof(SkillDef), typeof(ThingDef), typeof(string).MakeByRefType() }, null)
             .Invoke(null, args);
+    }
+    static string Rejection(RecipeDef r, SkillDef skill, ThingDef catalyst)
+    {
+        object[] args = { r, skill, catalyst, null };
+        Mod.GetType("Grandmaster21.Transcendent.TranscendentRecipes")
+            .GetMethod("IsSupported", Any, null, new[] { typeof(RecipeDef), typeof(SkillDef), typeof(ThingDef), typeof(string).MakeByRefType() }, null)
+            .Invoke(null, args);
+        return (string)args[3];
     }
     static void MathAndAuthorization()
     {
@@ -88,12 +103,36 @@ internal static class TranscendentChecks
         try { System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(StatDefOf).TypeHandle); }
         finally { binding.SetValue(null, false); }
         StatDefOf.MedicalPotency = new StatDef { defName = "TestMedicalPotency" };
+        StatDefOf.WorkTableEfficiencyFactor = new StatDef { defName = "WorkTableEfficiencyFactor", defaultBaseValue = 1 };
+        StatDefOf.WorkTableWorkSpeedFactor = new StatDef { defName = "WorkTableWorkSpeedFactor", defaultBaseValue = 1 };
+        // DeepProfiler reads this preference in the real ResolveReferences implementation.
+        FieldInfo prefs = typeof(Prefs).GetField("data", Any);
+        prefs.SetValue(null, FormatterServices.GetUninitializedObject(prefs.FieldType));
         SkillDef crafting = new SkillDef { defName = "TestCrafting" };
         ThingDef catalyst = Def("TestCatalyst"), steel = Def("TestSteel"), product = Def("TestWeapon");
         product.stackLimit = 1; product.tools = new List<Tool> { new Tool() };
         product.comps.Add(new CompProperties { compClass = typeof(CompQuality) });
         Func<RecipeDef> make = () => Recipe(crafting, product, steel);
         Check("durable single-output crafting weapon accepted", Supported(make(), crafting, catalyst));
+        Check("real reference resolution populates default bench efficiency", make().workTableEfficiencyStat == StatDefOf.WorkTableEfficiencyFactor);
+        Check("resolved vanilla default is accepted", Supported(make(), crafting, catalyst));
+        product.thingClass = typeof(EquipmentSubclass);
+        Check("ThingWithComps subclass accepted", Supported(make(), crafting, catalyst));
+        product.thingClass = typeof(AbstractEquipment);
+        Check("abstract product class rejected", Rejection(make(), crafting, catalyst) == "productClass");
+        product.thingClass = typeof(Thing);
+        Check("non-ThingWithComps product rejected", Rejection(make(), crafting, catalyst) == "productClass");
+        product.thingClass = null;
+        Check("missing product class rejected", Rejection(make(), crafting, catalyst) == "productClass");
+        product.thingClass = typeof(ThingWithComps);
+        steel.thingClass = typeof(EquipmentSubclass);
+        Check("ordinary ingredient subclass accepted", Supported(make(), crafting, catalyst));
+        foreach (Type unsafeClass in new[] { typeof(Thing), typeof(Corpse), typeof(MinifiedThing), typeof(UnfinishedThing) })
+        {
+            steel.thingClass = unsafeClass;
+            Check("unsafe ingredient class rejected: " + unsafeClass.Name, Rejection(make(), crafting, catalyst) == "ingredientClass");
+        }
+        steel.thingClass = typeof(ThingWithComps);
         RecipeDef r = make(); r.products.Add(new ThingDefCountClass(product, 1));
         Check("multiple outputs rejected", !Supported(r, crafting, catalyst));
         r = make(); r.products[0].count = 2;
@@ -114,17 +153,35 @@ internal static class TranscendentChecks
         Check("catalyst cannot also be a recipe ingredient", !Supported(r, crafting, catalyst));
         r = make(); r.efficiencyStat = new StatDef();
         Check("variable output quantity rejected", !Supported(r, crafting, catalyst));
+        r = make(); r.workTableEfficiencyStat = new StatDef { defName = "CustomEfficiency" };
+        Check("custom bench efficiency rejected", Rejection(r, crafting, catalyst) == "efficiency");
+        r = make(); r.workerClass = typeof(CustomWorker);
+        Check("custom RecipeWorker rejected", Rejection(r, crafting, catalyst) == "customWorker");
+        Check("custom RecipeDef remains conservatively rejected", Rejection(new CustomRecipe(), crafting, catalyst) == "recipeClass");
+        r = make(); r.workSkill = new SkillDef();
+        Check("wrong skill diagnostic", Rejection(r, crafting, catalyst) == "wrongSkill");
+        r = make(); r.products.Add(new ThingDefCountClass(product, 1));
+        Check("multiple-product diagnostic", Rejection(r, crafting, catalyst) == "productCount");
+        r = make(); r.specialProducts = new List<SpecialProductType> { default(SpecialProductType) };
+        Check("special-product diagnostic", Rejection(r, crafting, catalyst) == "specialProducts");
+        r = make(); r.allowMixingIngredients = true;
+        Check("mixed-ingredient diagnostic", Rejection(r, crafting, catalyst) == "mixedIngredients");
         product.destroyOnDrop = true;
         Check("destroy-on-drop outputs rejected", !Supported(make(), crafting, catalyst)); product.destroyOnDrop = false;
         product.comps.Clear();
         Check("no quality rejected", !Supported(make(), crafting, catalyst));
+        Check("missing quality diagnostic", Rejection(make(), crafting, catalyst) == "noQuality");
         product.comps.Add(new CompProperties { compClass = typeof(CompQuality) });
         product.category = ThingCategory.Building;
         Check("building rejected", !Supported(make(), crafting, catalyst)); product.category = ThingCategory.Item;
         product.tools.Clear();
         Check("non-equipment rejected", !Supported(make(), crafting, catalyst));
+        Check("non-equipment diagnostic", Rejection(make(), crafting, catalyst) == "nonEquipment");
         product.apparel = new ApparelProperties(); product.thingClass = typeof(Apparel);
         Check("durable apparel accepted", Supported(make(), crafting, catalyst));
+        product.thingClass = typeof(ApparelSubclass);
+        Check("Apparel subclass accepted", Supported(make(), crafting, catalyst));
+        product.thingClass = typeof(Apparel);
         product.comps.Add(new CompProperties { compClass = typeof(CompApparelReloadable) });
         Check("charge-based apparel rejected conservatively", !Supported(make(), crafting, catalyst)); product.comps.RemoveAt(1);
 
@@ -153,6 +210,96 @@ internal static class TranscendentChecks
         Check("native selector rejects insufficient quantity", !selectFrom(new List<Thing> { pileA, pileB }));
         var wrong = new ThingWithComps { def = catalyst, stackCount = 100 };
         Check("native selector rejects wrong ingredient", !selectFrom(new List<Thing> { wrong }));
+
+        Type policy = Mod.GetType("Grandmaster21.Transcendent.TranscendentRecipes");
+        MethodInfo neutral = policy.GetMethod("NeutralEfficiency", Any);
+        foreach (float value in new[] { 1f, 0f, 0.5f, 2f, float.NaN, float.PositiveInfinity })
+            Check("live efficiency must be exactly one: " + value, (bool)neutral.Invoke(null, new object[] { value }) == (value == 1f));
+        MethodInfo register = policy.GetMethod("RegisterEligible", Any);
+        RecipeDef first = make(), second = make(); second.defName = "SecondRecipeSameProduct";
+        first.productHasIngredientStuff = true; second.productHasIngredientStuff = true;
+        register.Invoke(null, new object[] { first }); register.Invoke(null, new object[] { first }); register.Invoke(null, new object[] { second });
+        Check("artifact comp injected exactly once for shared product", product.comps.Count(c => c.compClass == typeof(CompArtifact)) == 1);
+        Check("registration does not duplicate recipes", ((List<RecipeDef>)policy.GetField("Eligible", Any).GetValue(null)).Count == 2);
+        ((List<RecipeDef>)policy.GetField("Eligible", Any).GetValue(null)).Clear();
+        ((HashSet<RecipeDef>)policy.GetField("EligibleSet", Any).GetValue(null)).Clear();
+        NativeGeneratedCandidates(crafting, catalyst);
+        Diagnostics();
+    }
+
+    static void NativeGeneratedCandidates(SkillDef crafting, ThingDef catalyst)
+    {
+        // Representative equipment metadata, NOT a claim to load the shipped Core XML.
+        // Exercise the actual ingredient generator used by implied ThingDef.recipeMaker recipes,
+        // then native reference resolution. The old DLL rejects every resulting candidate.
+        StuffCategoryDef metal = new StuffCategoryDef { defName = "FixtureMetal" };
+        StuffCategoryDef fabric = new StuffCategoryDef { defName = "FixtureFabric" };
+        ThingDef steel = Def("FixtureSteel"), cloth = Def("FixtureCloth"), component = Def("FixtureComponent");
+        steel.stuffProps = new StuffProperties { categories = new List<StuffCategoryDef> { metal } };
+        cloth.stuffProps = new StuffProperties { categories = new List<StuffCategoryDef> { fabric } };
+        DefDatabase<ThingDef>.Add(steel); DefDatabase<ThingDef>.Add(cloth); DefDatabase<ThingDef>.Add(component);
+        StatDefOf.WorkToMake = new StatDef { defName = "WorkToMake", defaultBaseValue = 18000 };
+        bool triedImplicitWork = false;
+        string[] names = { "MeleeWeapon_LongSword", "MeleeWeapon_Knife", "Gun_Revolver", "Gun_AssaultRifle", "Apparel_Duster", "Apparel_PowerArmor" };
+        foreach (string name in names)
+        {
+            ThingDef p = Def("Fixture_" + name);
+            p.stackLimit = 1; p.comps.Add(new CompProperties { compClass = typeof(CompQuality) });
+            bool apparel = name.StartsWith("Apparel", StringComparison.Ordinal);
+            if (apparel) { p.apparel = new ApparelProperties(); p.thingClass = typeof(Apparel); }
+            else p.tools = new List<Tool> { new Tool() };
+            bool stuff = name.StartsWith("MeleeWeapon", StringComparison.Ordinal) || name == "Apparel_Duster";
+            if (stuff)
+            {
+                p.stuffCategories = new List<StuffCategoryDef> { apparel ? fabric : metal };
+                p.costStuffCount = 80; p.stuffCategorySummary = "fixture material";
+            }
+            else p.costList = new List<ThingDefCountClass> { new ThingDefCountClass(steel, 60), new ThingDefCountClass(component, 7) };
+            p.statBases.Add(new StatModifier { stat = StatDefOf.WorkToMake, value = 18000 });
+            // Ordinary recipeMaker workAmount defaults to -1, using the product's WorkToMake.
+            p.recipeMaker = new RecipeMakerProperties { workSkill = crafting };
+            RecipeDef r = new RecipeDef { defName = "Make_" + p.defName, workSkill = p.recipeMaker.workSkill, workAmount = p.recipeMaker.workAmount };
+            r.products.Add(new ThingDefCountClass(p, p.recipeMaker.productCount));
+            RecipeDefGenerator.SetIngredients(r, p);
+            r.ResolveReferences();
+            if (!triedImplicitWork)
+            {
+                triedImplicitWork = true;
+                try { Check("native implicit work amount", r.workAmount == -1f && r.WorkAmountForStuff(null) == 18000f); }
+                catch (FileNotFoundException ex)
+                {
+                    if (ex.FileName == null || !ex.FileName.StartsWith("com.rlabrecque.steamworks.net", StringComparison.Ordinal)) throw;
+                    blocked++;
+                    Console.WriteLine("BLOCKED native implicit WorkToMake evaluation: supplied DLL set lacks Steamworks. No stat stub substituted.");
+                }
+            }
+            // Keep policy/ingredient/reference-resolution tests executable without a full game
+            // stat pipeline. This fixture amount is explicit, not a claimed vanilla WorkToMake run.
+            r.workAmount = 18000;
+            string reason = Rejection(r, crafting, catalyst);
+            Check("native generated/resolved equivalent: " + name + (reason == null ? "" : " -> " + reason), reason == null);
+            Check("native material semantics: " + name, r.productHasIngredientStuff == stuff
+                && r.ingredients.Count == (stuff ? 1 : 2) && r.workTableEfficiencyStat == StatDefOf.WorkTableEfficiencyFactor);
+        }
+        DefDatabase<ThingDef>.Clear();
+    }
+
+    static void Diagnostics()
+    {
+        Type reportType = Mod.GetType("Grandmaster21.Transcendent.RecipeDiscoveryReport");
+        object report = Activator.CreateInstance(reportType, Any, null, new object[] { true }, null);
+        MethodInfo record = reportType.GetMethod("Record", Any);
+        for (int i = 0; i < 20; i++) record.Invoke(report, new object[] { "Rejected" + i, "customWorker", null });
+        record.Invoke(report, new object[] { "Accepted", null, null });
+        string summary = (string)reportType.GetProperty("Summary", Any).GetValue(report, null);
+        var samples = (List<string>)reportType.GetField("Samples", Any).GetValue(report);
+        Check("diagnostics count scanned/supported/reason", summary.Contains("scanned=21 supported=1") && summary.Contains("customWorker=20"));
+        Check("dev samples bounded per category", samples.Count == 2 && samples.All(s => s.Contains("customWorker")));
+        for (int i = 0; i < 20; i++) record.Invoke(report, new object[] { "Other" + i, "category" + i, null });
+        Check("dev samples bounded globally", samples.Count == 8);
+        object quiet = Activator.CreateInstance(reportType, Any, null, new object[] { false }, null);
+        record.Invoke(quiet, new object[] { "Bad", "ingredientClass", null });
+        Check("no rejected-def samples outside dev mode", ((List<string>)reportType.GetField("Samples", Any).GetValue(quiet)).Count == 0);
     }
     static void ApiAndIl(string dll)
     {
@@ -180,6 +327,11 @@ internal static class TranscendentChecks
             var commit = bench.Methods.Single(m => m.Name == "TryCommit");
             Check("RNG site is commitment", commit.Body.Instructions.Any(i => i.Operand is MethodReference
                 && ((MethodReference)i.Operand).FullName.Contains("Verse.Rand::get_Int")));
+            int guard = commit.Body.Instructions.ToList().FindIndex(i => i.Operand is MethodReference
+                && ((MethodReference)i.Operand).Name == "HasNeutralEfficiency");
+            int split = commit.Body.Instructions.ToList().FindIndex(i => i.Operand is MethodReference
+                && ((MethodReference)i.Operand).Name == "SplitOff");
+            Check("live efficiency guard precedes ingredient staging", guard >= 0 && split > guard);
             Check("no new Harmony patches", types.All(t => !t.CustomAttributes.Any(x => x.AttributeType.Namespace == "HarmonyLib")));
             Check("building project deep-scribed", bench.Methods.Single(m => m.Name == "ExposeData").Body.Instructions.Any(i =>
                 i.Operand is GenericInstanceMethod && ((GenericInstanceMethod)i.Operand).GenericArguments.Any(x => x.Name == "TranscendentProject")));
@@ -211,6 +363,7 @@ internal static class TranscendentChecks
         var bench = thingDefs.Single(x => x.Element("defName").Value == "GM21_MagicalWorkstation");
         Check("bench cannot be minified", bench.Element("minifiedDef") == null);
         Check("blueprint has graphic data before generation", bench.Element("graphicData") != null);
+        Check("new bench explicitly declares neutral efficiency", bench.Element("statBases").Element("WorkTableEfficiencyFactor").Value == "1");
         Check("no ordinary bench/recipe XML patches", !Directory.Exists(Path.Combine(root, "Patches")));
     }
     static void SaveWriting(string path)
@@ -249,7 +402,7 @@ internal static class TranscendentChecks
             MathAndAuthorization(); RecipePolicy(); ApiAndIl(args[0]); XmlSchema(args[1]); SaveWriting(args[2]);
         }
         catch (Exception e) { Console.WriteLine(e); fail++; }
-        Console.WriteLine("PASS: " + pass + " FAIL: " + fail);
+        Console.WriteLine("PASS: " + pass + " FAIL: " + fail + " BLOCKED: " + blocked);
         return fail == 0 ? 0 : 1;
     }
 }

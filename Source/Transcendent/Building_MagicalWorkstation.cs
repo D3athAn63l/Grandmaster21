@@ -69,6 +69,9 @@ namespace Grandmaster21.Transcendent
                 || job.bill != Pending || !Pending.recipe.AvailableNow) return false;
             string reason;
             if (!TranscendentRecipes.IsSupported(Pending.recipe, out reason)) return false;
+            // Vanilla populates this stat on normal recipes. Non-neutral modded values would
+            // change output quantity; reject before staging/consumption or the one-time roll.
+            if (!TranscendentRecipes.HasNeutralEfficiency(Pending.recipe, this)) return false;
             List<ThingCount> selected;
             Thing dominant;
             if (!TranscendentIngredients.TryValidatePlaced(this, pawn, job, out selected, out dominant)) return false;

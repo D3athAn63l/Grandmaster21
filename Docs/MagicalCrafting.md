@@ -70,14 +70,15 @@ are instantiated; ordinary items default to no artifact tier.
 Discovery uses Def metadata and exact verified types, not recipe-name heuristics. Recipes must
 use Crafting, a plain `RecipeDef`/`RecipeWorker`, exactly one primary product with count one,
 and the standard volume ingredient-value getter. Products must be durable, nonstacking weapons
-or apparel with `CompQuality`, using plain `ThingWithComps` or `Apparel` item classes.
+or apparel with `CompQuality`, using concrete `ThingWithComps`-compatible item classes (including
+Apparel subclasses). Corpse, minified and unfinished-item wrappers are excluded.
 
 The first slice rejects:
 
 - Multi-output and batch recipes, special side products, efficiency-based output scaling,
   special workers, surgery, mech gestation and forming recipes.
 - Mixing within ingredient slots, whole-stack semantics, empty/overlapping ingredient filters,
-  nonpositive or nonfinite quantities, and ingredients with custom Thing classes or quality.
+  nonpositive or nonfinite quantities, and ingredients with incompatible Thing classes or quality.
 - Food, drugs, medicine, raw-material/component outputs, consumables, buildings, art and
   non-equipment. Single-use shooting verbs, destroy-on-drop/delayed-destruction items, usable
   items and charge-based apparel/equipment are excluded conservatively.
@@ -89,6 +90,12 @@ The first slice rejects:
 The list is also filtered by native `RecipeDef.AvailableNow` research availability. These rules
 intentionally omit some otherwise useful modded equipment. Harmony changes to ordinary product
 generation and custom recipe-worker side effects are not adopted by this pipeline.
+
+The standard `WorkTableEfficiencyFactor` populated by vanilla reference resolution is allowed;
+custom efficiency stats remain excluded. The new bench explicitly sets factor 1, and commitment
+rejects any non-neutral live efficiency before consuming ingredients. See
+[the discovery repair audit](MagicalRecipeDiscoveryFix.md) for the zero-recipes root cause,
+categorized startup diagnostics and regression coverage.
 
 ## Ingredient commitment and failure handling
 
@@ -155,7 +162,8 @@ repeat/storage controls, recipe completion quests/tales or additional skill XP.
 
 - Real-DLL optimized build: **passed, zero warnings/errors**, using Roslyn with real .NET
   Framework 4.7.2 reference assemblies and the supplied RimWorld/Unity/Harmony assemblies.
-- New headless suite: **67 passed, zero failed**. It covers authorization primitives, work
+- Updated headless suite: **114 passed, zero failed, one environment-blocked** (native implicit
+  WorkToMake evaluation requires the missing Steamworks.NET DLL). It covers authorization primitives, work
   calibration, recipe rejection cases, actual native ingredient selection, reflected API
   signatures, emitted IL/schema, XML, and real Scribe save-writing for projects and item metadata.
 - XML is well formed and new top-level Def fields/types match real assembly metadata. Built-in

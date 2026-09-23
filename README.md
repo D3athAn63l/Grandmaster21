@@ -1473,10 +1473,13 @@ hand-written approximations. Only a real build does that. See `tools/stubs/READM
 ## Release status
 
 **0.11.0 Beta.** The Magical slice builds against real RimWorld 1.6/Unity/Harmony assemblies with
-zero warnings/errors. Its 67 headless policy/API/XML/save-writing checks pass. The existing
+zero warnings/errors. Its 114 headless policy/API/XML/save-writing checks pass, with one additional
+implicit-work stat probe blocked by a missing Steamworks DLL. The existing
 runtime-target harness reports 168 passes and one failure caused by a missing Steamworks DLL in
 the supplied assembly set. Full save/reload and map gameplay are **not runtime verified**.
 See [Magical craftsmanship](Docs/MagicalCrafting.md) for architecture, limits and the runtime checklist.
+The [empty-recipe discovery repair](Docs/MagicalRecipeDiscoveryFix.md) documents the real
+reference-resolution regression, subtype compatibility fixes and bounded rejection diagnostics.
 
 **The Melee Grandmaster package has had NO runtime gameplay testing.** Every RimWorld member it
 touches is confirmed present with the right signature and parameter names against the real 1.6
