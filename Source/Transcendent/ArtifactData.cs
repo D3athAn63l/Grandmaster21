@@ -149,7 +149,7 @@ namespace Grandmaster21.Transcendent
     {
         // 2,500 ticks/game hour; 12 working hours/day; 1.5 working days at 1 work/tick.
         internal const double MagicalMinimum = 45000;
-        internal static double WorkAmount(float original) { return System.Math.Max(original * 3d, MagicalMinimum); }
+        internal static double WorkAmount(float original) { return TranscendentTierConfig.Magical.Work(original); }
         internal static double EffectiveSpeed(double actual)
         {
             if (double.IsNaN(actual) || double.IsInfinity(actual) || actual <= 0) return 0;

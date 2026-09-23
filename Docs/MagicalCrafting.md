@@ -1,206 +1,148 @@
-# Crafting 21: Magical craftsmanship
+# Crafting 21: Transcendent craftsmanship
 
-This experimental vertical slice adds one workstation and a separate, persistent Magical
-craftsmanship marker. Every successful project produces one **vanilla Legendary** item. At
-commitment it has a 50% chance of Magical craftsmanship and a 50% chance of ordinary Legendary
-craftsmanship. Magical items have no additional combat powers in this release.
+Magical, Mythical and Divine share one workstation-owned project system. They use the same
+eligible recipe pool and require authoritative stored Crafting 21 for commitment, work and
+completion. Research belongs to the colony and survives the Grandmaster's death.
 
-## Playing the slice
+## Progression
 
-1. Research **Magical Craftsmanship**, after Fabrication (6,000 research).
-2. Build a **magical workstation** from the Production menu. It costs 250 steel, 100 plasteel
-   and 10 advanced components, requires Construction 12, and occupies three cells.
-3. For this foundation release, use Development mode's **Spawn thing** action to obtain
-   `GM21_MagicalCatalyst`. This is the only supplied acquisition path. Catalysts are not Stuff,
-   have no resource category or trader tags, and cannot be traded.
-4. Select the workstation, choose an eligible researched recipe, and choose its material when
-   applicable. Supply the ordinary recipe ingredients and one catalyst.
-5. Give a legitimate **Crafting 21 Grandmaster** Crafting work. They reserve the workstation,
-   haul the ingredients, and commit them when everything has arrived. Recipe skill requirements
-   must also be met at the start. A displayed/stat-modified 21 does not grant authorization.
-6. The pawn works over time. Needs, drafting, combat and sleep can interrupt the job; another
-   authorized Crafting Grandmaster can resume the same workstation project.
-7. The completed item is placed near the workstation. Inspecting a Magical result shows
-   **Craftsmanship: Magical** in addition to its normal Legendary quality. Its original material
-   is unchanged. Ordinary Legendary fallback items have no Magical label.
+| Research | Prerequisite | Research cost | Workstation | Catalyst |
+| --- | --- | ---: | --- | --- |
+| Magical Craftsmanship | Fabrication | 6,000 | Magical workstation | Magical Catalyst |
+| Mythical Craftsmanship | Magical Craftsmanship | 8,000 | Mythical workstation | Mythical Matrix |
+| Divine Craftsmanship | Mythical Craftsmanship | 12,000 | Divine workstation | Divine Essence |
 
-Each workstation owns one project. A selection may be replaced **before commitment**; after
-commitment there is no cancel or refund. The outcome is hidden until completion and is never
-rerolled on resume or completion. Destroying the workstation loses the committed project and
-any completed item still retained inside it. Building salvage does not refund project inputs.
-An active workstation cannot be deconstructed; the definition cannot be minified/uninstalled.
-Development mode has a destructive emergency abort with no refund.
+Build workstations from Production. Manufacture catalysts at a **fabrication bench** using its
+ordinary bills after finishing the corresponding research. No DLC is required. Catalysts are
+not Stuff, do not replace equipment material and are not stocked by traders. Their separate
+stockpile category is **Transcendent catalysts**, outside vanilla resource ingredient categories.
 
-## Architecture and verified API choices
+| One manufactured catalyst | Materials | Crafting skill | Recipe work |
+| --- | --- | ---: | ---: |
+| Magical Catalyst | 50 plasteel, 10 gold, 2 advanced components | 12 | 18,000 |
+| Mythical Matrix | 2 Magical Catalysts, 100 plasteel, 25 gold, 4 advanced components | 15 | 45,000 |
+| Divine Essence | 3 Mythical Matrices, 200 plasteel, 75 gold, 10 advanced components | 18 | 90,000 |
 
-The implementation was independently audited against the supplied real RimWorld 1.6
-`Assembly-CSharp.dll`, Unity modules and Harmony DLL. No runtime stubs are used to compile this
-feature. It starts from main at `2ef0f2579df3d811c495cb722dc4b208048789ce`, not the earlier prototype PR.
+Catalyst manufacture uses normal bill work speed. Only the subsequent transcendent project
+requires a Grandmaster. Costs are provisional and centralized in `Defs/Transcendent/Progression.xml`.
+Proof-item research gates are deferred; vanilla research prerequisites provide progression.
 
-| Concern | Implementation |
-|---|---|
-| Player selection | `Dialog_MagicalRecipes`, workstation gizmo, native `FloatMenu` for Stuff |
-| Authorization | Existing `Gm21.IsGrandmaster(pawn, SkillDefOf.Crafting)` reads stored Grandmaster state; start, work and completion each check authorization |
-| Workstation | `Building_WorkTable` subclass implementing `IThingHolder`, with one `TranscendentProject` and one `ThingOwner<Thing>` |
-| Scheduling | Dedicated `WorkGiver_Scanner`, `JobDef` and `JobDriver`; native reservations, pathing and carrying toils |
-| Ingredient filters | One internal `Bill_Production`, persisted by the existing `BillStack`; no Bills tab or ordinary bench recipe edits |
-| Ingredient search | Real private static `WorkGiver_DoBill.TryFindBestBillIngredients` and `TryFindBestBillIngredientsInSet_NoMix`, bound once to typed delegates; public `TryFindBestFixedIngredients` for the catalyst |
-| Commitment | `Thing.SplitOff`, native owner staging, one `Rand.Int`, then `ClearAndDestroyContents(DestroyMode.Vanish)` |
-| Output | `ThingMaker.MakeThing(product, stuff)`, `CompQuality.SetQuality(Legendary, ...)`, a real `CompArtifact`, and owner `TryDrop` |
-| Research | Real `ResearchProjectDef`, Fabrication prerequisite and workstation `researchPrerequisites` |
-| Deconstruction | Override of the real virtual `Building.DeconstructibleBy(Faction)`; no Harmony patch |
+## Projects and outcomes
 
-The normal `JobDriver_DoBill` stores long work in an `UnfinishedThing` associated with its
-creator. This feature deliberately owns the state in the building so workers can change. Its
-toil sequence stays structurally identical for start and resume, preserving saved toil indices.
+1. Choose a researched equipment recipe and its Stuff at the desired workstation.
+2. Enable Crafting work for a legitimate Crafting Grandmaster. The pawn reserves the bench,
+   hauls the normal ingredients and exactly one matching catalyst, then commits them.
+3. Work can stop for needs, drafting or danger. Another valid Crafting Grandmaster can resume it.
+4. Completion delivers one ordinary RimWorld item, always **Legendary**, retaining the selected
+   material and original initiator's provenance. Craftsmanship and phenomenon are separate data.
 
-Another audited difference matters for hauling: native `PlaceHauledThingInCell` only records
-`job.placedThings` for known vanilla job definitions. This custom job instead uses
-`Pawn_CarryTracker.TryDropCarriedThing` with `HaulAIUtility.UpdateJobWithPlacedThings` and a physical
-reservation callback. It uses the native ingredient placement-cell search.
+| Ceiling | Nominal top roll | Downward fallback | Final nominal known distribution |
+| --- | --- | --- | --- |
+| Magical | 50% Magical | Legendary | 50% Magical / 50% Legendary |
+| Mythical | 40% Mythical | On failure: 70% Magical, otherwise Legendary | 40% Mythical / 42% Magical / 18% Legendary |
+| Divine | 30% Divine | On failure: 60% Mythical; then 80% Magical; otherwise Legendary | 30% Divine / 42% Mythical / 22.4% Magical / 5.6% Legendary |
 
-There are no new Harmony patches, global crafting-stat modifications, per-tick map/pawn scans,
-or autonomous building progress. Recipe discovery and metadata-comp attachment run once at
-startup. Ordinary recipe definitions and workbenches remain unchanged. The only additions to
-existing output ThingDefs are `CompProperties_Artifact`, needed before new items and saved items
-are instantiated; ordinary items default to no artifact tier.
-
-## Eligible recipes
-
-Discovery uses Def metadata and exact verified types, not recipe-name heuristics. Recipes must
-use Crafting, a plain `RecipeDef`/`RecipeWorker`, exactly one primary product with count one,
-and the standard volume ingredient-value getter. Products must be durable, nonstacking weapons
-or apparel with `CompQuality`, using concrete `ThingWithComps`-compatible item classes (including
-Apparel subclasses). Corpse, minified and unfinished-item wrappers are excluded.
-
-The first slice rejects:
-
-- Multi-output and batch recipes, special side products, efficiency-based output scaling,
-  special workers, surgery, mech gestation and forming recipes.
-- Mixing within ingredient slots, whole-stack semantics, empty/overlapping ingredient filters,
-  nonpositive or nonfinite quantities, and ingredients with incompatible Thing classes or quality.
-- Food, drugs, medicine, raw-material/component outputs, consumables, buildings, art and
-  non-equipment. Single-use shooting verbs, destroy-on-drop/delayed-destruction items, usable
-  items and charge-based apparel/equipment are excluded conservatively.
-- Ambiguous Stuff recipes. A Stuff product must use `productHasIngredientStuff`; its first
-  disjoint ingredient slot must contain only Stuff that can make that product. The player's
-  chosen material restricts that slot. Fixed-material products must not request ingredient Stuff.
-- The catalyst as an ordinary recipe ingredient.
-
-The list is also filtered by native `RecipeDef.AvailableNow` research availability. These rules
-intentionally omit some otherwise useful modded equipment. Harmony changes to ordinary product
-generation and custom recipe-worker side effects are not adopted by this pipeline.
-
-The standard `WorkTableEfficiencyFactor` populated by vanilla reference resolution is allowed;
-custom efficiency stats remain excluded. The new bench explicitly sets factor 1, and commitment
-rejects any non-neutral live efficiency before consuming ingredients. See
-[the discovery repair audit](MagicalRecipeDiscoveryFix.md) for the zero-recipes root cause,
-categorized startup diagnostics and regression coverage.
-
-## Ingredient commitment and failure handling
-
-Native ingredient search applies the bill filters, native quantities, search radius,
-reachability, forbidden state and reservations. The catalyst is searched separately and exactly
-one is added. At the bench, delivered receipts are checked against live stack counts, map and
-location, then passed through the native no-mix selector again. Selected quantities may not
-exceed what this job actually delivered, even if delivery merged into a larger stack.
-
-All required quantities are split and staged in a nonmerging native owner before the random
-choice. A precommit failure attempts to drop those uncommitted inputs; if placement is blocked,
-the owner saves them and a recovery gizmo exposes them. No project or tier roll exists yet.
-
-After staging, the workstation records the complete project and one locked roll, clears the
-job's bill reference, removes the internal bill, and destroys the staged inputs. The project
-stores a Def/count receipt, not refundable ingredients. Resumed jobs never repeat consumption.
-An exception during irreversible consumption faults the project without a refund or another roll.
-Arbitrary third-party exceptions inside split/spawn callbacks cannot be comprehensively tested
-or guaranteed; native operations and the explicit failure boundaries were reviewed.
-
-Completion sets Legendary quality and the locked artifact tier without calling the normal
-random-quality generator. The saved owner retains the one generated output until placement
-succeeds. Separate creation/delivery latches prevent regeneration when delivery is blocked.
-If a placement callback throws after spawning, its owner entry is removed to avoid saving the
-same item both on the map and inside the workstation. Invalid saved data or other completion
-exceptions stop the project for inspection rather than refunding or rerolling it.
-
-## Persistence
-
-`TranscendentProject : IExposable` is deep-scribed by the workstation. It records schema version,
-project ID, RecipeDef, product Def, selected Stuff Def, initiating pawn ID/name, committed
-Def/count ledger, total/completed work, random seed, final tier, ingredient color, output latches
-and fault state. Defs use `Scribe_Defs`; values use `Scribe_Values`; receipts use a deep collection.
-The workstation owner is deep-scribed with the workstation as holder. Jobs persist their project
-ID and use native target/bill serialization while gathering.
-
-`CompArtifact.PostExposeData` saves artifact tier and origin on the item itself, independently of
-`CompQuality`. This is intended to follow the normal item serialization through inventory,
-equipment, apparel, stockpiles, maps and caravans. None of those transfer/reload scenarios has yet
-been exercised in a running game. Changing/removing recipe or item mods during a project is
-unsupported; missing Defs stop a project and can also prevent metadata injection on old items.
+All choices are made once at commitment. Pause, reload, worker change and completion never
+reroll them. Legendary fallback has no phenomenon. One active project occupies each workstation.
+Committed ingredients cannot be cancelled, refunded, salvaged or moved. Destruction loses the
+project. Deconstruction is blocked while a project or retained items exist; benches cannot be
+minified. A DEV abort destroys contents without refund.
 
 ## Work calibration
 
-The audited native `Toils_Recipe.DoRecipeWork` subtracts the recipe's pawn `workSpeedStat`, times
-the bench's `workTableSpeedStat` when present, times elapsed ticks. At combined speed 1 this is
-one work unit per tick. A RimWorld day has 60,000 ticks, or 2,500 per hour.
+`max(original recipe work × multiplier, minimum)` uses the selected Stuff and native recipe
+work-speed stats. Combined pawn and bench speed at or below 1 is unchanged; above 1 its square
+root is applied only to project work. Invalid/nonfinite speeds stall.
 
-```text
-totalWork = max(recipe.WorkAmountForStuff(selectedStuff) * 3, 45000)
-actualSpeed = (recipe pawn workSpeedStat, or 1) * (recipe bench workTableSpeedStat, or 1)
-effectiveSpeed = actualSpeed <= 1 ? actualSpeed : sqrt(actualSpeed)
-completedWork += effectiveSpeed * elapsedTicks
-```
+| Tier | Multiplier | Minimum work | Hours at speed 1 | Twelve-hour working days |
+| --- | ---: | ---: | ---: | ---: |
+| Magical | 3 | 45,000 | 18 | 1.5 |
+| Mythical | 7 | 120,000 | 48 | 4 |
+| Divine | 15 | 270,000 | 108 | 9 |
 
-45,000 work means 18 working hours: 1.5 days at a 12-hour work schedule, before meals, hauling,
-travel and sleep. Expensive base recipes can exceed that floor. Combined speeds 0.5, 1, 4, 100
-and 1,000,000 become 0.5, 1, 2, 10 and 1,000. Invalid/nonfinite speeds stall safely. This uses
-each recipe's actual stats, not a hardcoded general-labor stat, and changes no global stats.
-The custom job does not implement vanilla debug fast-crafting, recipe effects/sounds, bill
-repeat/storage controls, recipe completion quests/tales or additional skill XP.
+These are working hours at 2,500 ticks per game hour, not elapsed world days. Travel, sleep and
+needs add calendar time. Expensive recipes may exceed these minimum durations.
 
-## Validation and remaining runtime gate
+## Weapon phenomena
 
-- Real-DLL optimized build: **passed, zero warnings/errors**, using Roslyn with real .NET
-  Framework 4.7.2 reference assemblies and the supplied RimWorld/Unity/Harmony assemblies.
-- Updated headless suite: **114 passed, zero failed, one environment-blocked** (native implicit
-  WorkToMake evaluation requires the missing Steamworks.NET DLL). It covers authorization primitives, work
-  calibration, recipe rejection cases, actual native ingredient selection, reflected API
-  signatures, emitted IL/schema, XML, and real Scribe save-writing for projects and item metadata.
-- XML is well formed and new top-level Def fields/types match real assembly metadata. Built-in
-  texture paths are supplied in XML before blueprint generation; startup copies graphics from
-  the loaded machining-table/advanced-component Defs. Asset rendering still needs the game.
-- Existing runtime-target harness: **168 passed; one environment-blocked check**, reported as a
-  failure by that harness because `com.rlabrecque.steamworks.net` is absent from the supplied DLL
-  set. This is not a claim that the whole existing harness passed.
-- Full Scribe **reload**, Def loading with game data, map hauling, gameplay and rendered UI:
-  **not verified**. The Unity player is unavailable. Save-writing is not a reload test.
+Each new transcendent weapon receives one compatible identity at commitment. Magical / Mythical /
+Divine valid hits have **8% / 18% / 30%** manifestation chance, with a **180-tick successful-proc
+cooldown**. One attack gets one opportunity even when it deals multiple damage packets. Identity,
+seed, attempt count and cooldown persist on the actual item.
 
-Run `tools/verify-transcendent.sh` as described in `Assemblies/README.md`. The fixtures use real
-game classes, but bypass Def constructors that require Unity shaders; they are not a simulated
-game or replacement runtime assemblies.
+| Phenomenon | Provisional mechanics |
+| --- | --- |
+| Chain Lightning | Up to four distinct hostile pawns, six-cell maximum per jump, decreasing electrical burn injury |
+| Smite | Direct blunt damage to hostile pawns within five cells; at most sixteen targets |
+| Flame Wave | Controlled burn injuries within three cells; creates no fire |
+| Frost Nova | Within four cells, movement ×0.6 for 300 ticks; does not stack |
+| Gravity Crush | Extra blunt damage and a 90-tick stun if the target remains standing |
+| Vampiric Strike | Extra stab damage, then heals nonpermanent wounds for 35% of damage dealt, capped at eight severity |
+| Spatial Slash | High-penetration cut plus at most one nearby secondary hostile; no teleportation |
 
-Before merging, run this in-game checklist on a disposable save:
+Targets must be standing, alive, hostile and on the wielder's map. Colony pawns and colony
+prisoners are protected. Secondary targets need line of sight from the effect center; searches
+use bounded map cells. Smite never attacks buildings or terrain. Generated damage cannot trigger
+more phenomena. Other mods' normal damage/armor callbacks still apply.
 
-| Scenario | Required result |
-|---|---|
-| Startup/research/selection | No Def or texture errors; research unlocks bench; compatible researched recipes and materials appear |
-| Unauthorized pawn and missing inputs | Stored Crafting 20 (including aptitude-boosted pawns) cannot start/work/finish; missing material or catalyst consumes nothing |
-| Commitment | Exact real recipe quantities and exactly one catalyst disappear once; no refund/cancel option |
-| Pause/resume/worker change | Draft, combat, needs and sleep interrupt; another stored Crafting 21 continues the same work and locked roll |
-| Save/exit/reload | Recipe, Stuff, seed/tier, total work and partial work match; continue and finish exactly once |
-| Output blockage/reload | Clear nearby space after saving/reloading; exactly one retained Legendary item is delivered |
-| Both outcomes | Magical and ordinary Legendary fallback occur; material remains unchanged; no later tier can roll |
-| Item transfer/reload | Marker survives equipment, apparel, inventory, stockpile, map transfer and caravan round trips |
-| Destruction/deconstruction | Active bench cannot deconstruct or uninstall; destruction/emergency abort loses all project value |
-| Unrelated behavior | Ordinary crafting, quality rules, Shooting, Melee and Grandmaster progression retain main's behavior |
+Triggers support the audited vanilla melee-damage verb and `Bullet.Impact` paths, including
+subclasses that call those implementations. Custom lasers, explosive projectile workers and
+replacement combat verbs require adapters; merely discovering a modded weapon recipe does not
+prove its custom attack path can trigger a phenomenon. Dead/downed victims do not start effects.
+Apparel retains craftsmanship metadata but receives no offensive phenomenon in this version.
 
-## Removal and deferred work
+## Saves and compatibility
 
-The existing **Prepare Save for Uninstall** action still cleans pawn skill/progression state. It
-does not delete new workstations, catalysts or artifact metadata. Before using it, remove every
-magical workstation and catalyst across maps, inventories and caravans; destroying active benches
-loses their projects. Finished equipment uses its original item Def but loses this mod's metadata
-when the mod is removed. The full cleanup/removal/reload cycle remains unverified; keep a backup.
+Existing bench DefNames, CLR type, job/toil order and save keys are retained. Schema-one Magical
+projects preserve progress and outcome; old artifacts and already committed old projects do
+**not** gain a newly rolled phenomenon. New schema-two projects also save their ceiling and
+phenomenon seed. Invalid projects retain their state and fault without refunds/rerolls.
 
-Mythical and Divine gameplay, further research, proof/key items, phenomena, artifact powers,
-custom art, catalyst manufacturing and broader recipe adapters are intentionally deferred.
+The artifact component travels with the normal equipment Thing, including holders, inventory,
+caravans and transfers. Output-created and output-delivered latches retain the same item if
+placement fails. Changed/removed item or recipe mods mid-project remain unsupported.
+
+Recipe discovery retains its conservative checks and compact rejection summary. Ordinary recipes,
+workstations, quality enum, Shooting, Melee and Grandmaster progression implementation are unchanged.
+See [the discovery audit](MagicalRecipeDiscoveryFix.md) for the historical filter repair.
+
+## Development testing and current evidence
+
+DEV workstation menus can force the next permitted tier/phenomenon, inspect committed state,
+finish work, or destroy a project without refund. Finish-work still requires a real Crafting
+Grandmaster to complete/deliver it. Test overrides are session-only and consumed on commitment.
+DEV artifact controls inspect state, set a compatible phenomenon and manually trigger it using an
+equipped weapon and a hostile target. None of these controls appear in normal gameplay.
+
+The owner runtime-tested the original Magical foundation in a heavily modded environment:
+1,600 scanned recipes / 217 supported; hauling, catalyst consumption, active crafting save → quit
+→ reload → resume → completion; Legendary plasteel equipment with separate Magical metadata.
+That validates the base, not the new combat and progression additions.
+
+The expanded headless suite uses real RimWorld/Unity/Harmony assemblies for probability, policy,
+schema, XML, API/IL and Scribe save-writing checks. Steamworks is absent from the supplied set,
+blocking native implicit-work evaluation and Scribe readback initialization. Live Harmony tests
+cannot execute on this host's .NET 8 runtime with the supplied MonoMod build. No replacement
+runtime stubs are used to claim feature correctness.
+
+Before release, use a copied save to test each tier and each weapon phenomenon in game. Include:
+
+- Catalyst bills and stockpile filters with Core only; research progression and each workstation.
+- Active-work reload, changing Grandmasters, and a failed/blocked output placement followed by reload.
+- Destruction and DEV abort without refunds, and deconstruction denial.
+- Ordinary Legendary fallback with no power; Stuff and original initiator retained.
+- Allies/prisoners/buildings inside Smite and Flame Wave areas; verify zero collateral effects.
+- Burst fire, multiple damage packets, dead/downed victims, and weapon switching before bullet impact.
+- Vampire healing on wounded/healthy/dead wielders and repeated procs without recursive chains.
+- Equipped/inventory/apparel/caravan/map-transfer persistence and cooldown continuity.
+- Existing Shooting/Melee behavior and ordinary nonartifact weapons.
+
+Cosmetics, apparel powers, proof-item research gates, and custom combat adapters are deferred.
+Balance is provisional. Final art, sound and elaborate visuals are intentionally absent.
+
+## Removal
+
+Remove all transcendent workstations and catalysts across maps and holders before preparing a
+save for uninstall. Destroying active benches loses their projects. Skill cleanup does not remove
+crafting objects or artifact data. Finished equipment keeps its original Def when this mod is
+removed; its separate metadata disappears. Keep a backup for the untested full uninstall cycle.

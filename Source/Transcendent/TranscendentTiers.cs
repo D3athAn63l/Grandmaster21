@@ -15,7 +15,7 @@ namespace Grandmaster21.Transcendent
             ceiling = tier; this.multiplier = multiplier; this.minimum = minimum;
             label = tier.ToString(); researchName = "GM21_" + label + "Craftsmanship"; catalystName = catalyst;
         }
-        internal static readonly TranscendentTierConfig Magical = new TranscendentTierConfig(ArtifactTier.Magical, 3, 45000, "GM21_MagicalCatalyst");
+        internal static readonly TranscendentTierConfig Magical = new TranscendentTierConfig(ArtifactTier.Magical, 3, TranscendentMath.MagicalMinimum, "GM21_MagicalCatalyst");
         internal static readonly TranscendentTierConfig Mythical = new TranscendentTierConfig(ArtifactTier.Mythical, 7, 120000, "GM21_MythicalMatrix");
         internal static readonly TranscendentTierConfig Divine = new TranscendentTierConfig(ArtifactTier.Divine, 15, 270000, "GM21_DivineEssence");
         internal static readonly TranscendentTierConfig[] All = { Magical, Mythical, Divine };

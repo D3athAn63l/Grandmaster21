@@ -2,9 +2,10 @@
 
 **RimWorld 1.6** — skills normally end at 20. This mod adds exactly one more level: **21, Grandmaster**.
 
-**Version 0.11.0 Beta.** Adds the experimental Crafting 21 Magical vertical slice.
-The Shooting capstone has been verified in real RimWorld 1.6 gameplay. Melee and Magical
-craftsmanship have **not** — see [Release status](#release-status).
+**Version 0.12.0 Beta.** Crafting 21 now includes Magical, Mythical and Divine progression. The original Magical
+foundation has passed real gameplay, including active-work save/reload and completion. This
+continuation adds catalyst manufacturing and weapon phenomena; these additions still need
+in-game playtesting. See [Release status](#release-status).
 
 Level 21 cannot be randomly generated. It must be earned by accumulating an enormous amount of
 experience *after* a pawn has already reached level 20. Level 21 represents Grandmaster mastery
@@ -1027,43 +1028,49 @@ are transient by construction: a game reloaded mid-swing starts the next exchang
 
 ---
 
-## Crafting 21 — Magical craftsmanship
+## Crafting 21 — Transcendent craftsmanship
 
-New in **0.11.0 Beta**, and **not yet verified in a running game**.
+Progress through **Magical → Mythical → Divine** research after Fabrication. Each tier unlocks
+its own workstation and a catalyst manufacturing recipe at the fabrication bench. Only a
+legitimate stored **Crafting Grandmaster (21)** can commit, work on, resume or finish a project.
+Choose from the same conservative pool of eligible weapon/apparel recipes at every workstation.
 
-Research **Magical Craftsmanship** after Fabrication, then build a **magical workstation** from
-the Production menu. Choose an eligible existing weapon/apparel recipe and its material. A
-legitimate Crafting 21 pawn gathers the real ingredients plus **one Magical Catalyst** and
-permanently commits the project. Enable Crafting work for the pawn.
+| Project ceiling | Catalyst consumed | Minimum work at speed 1 | Nominal fallback outcomes |
+| --- | --- | --- | --- |
+| Magical | Magical Catalyst | 18 hours / 1.5 working days | 50% Magical, 50% ordinary Legendary |
+| Mythical | Mythical Matrix | 48 hours / 4 working days | 40% Mythical, 42% Magical, 18% ordinary Legendary |
+| Divine | Divine Essence | 108 hours / 9 working days | 30% Divine, 42% Mythical, 22.4% Magical, 5.6% ordinary Legendary |
 
-The workstation owns the recipe, material, partial progress and one locked 50/50 outcome. Work
-can pause or move to another Crafting Grandmaster. Every result is **vanilla Legendary**, with
-either separate **Magical** craftsmanship or ordinary Legendary fallback. Magical currently
-adds persistent metadata and an inspect label; no combat powers are implemented.
+A working day means twelve hours. Work is the larger of the tier minimum and the recipe's work
+multiplied by 3, 7 or 15. Speeds above 1 receive square-root scaling only for these projects.
 
-At combined work speed 1, the minimum is **18 working hours** (1.5 twelve-hour working days).
-Expensive recipes take longer. The recipe's actual pawn and bench work-speed stats apply, with
-square-root scaling above 1. Ordinary crafting speed and quality rules are unchanged.
+The workstation owns the committed recipe, Stuff, progress, outcome and phenomenon identity.
+Another Crafting Grandmaster can resume it. There is **no cancellation, refund or reroll** after
+commitment. Active benches cannot be deconstructed or uninstalled; destruction loses the project.
+Every output retains its ordinary item Def and Stuff and is **vanilla Legendary**. Craftsmanship
+is separate metadata, never a new quality enum or a replacement material.
 
-After commitment there is **no cancel, refund or reroll**. Active benches cannot be deconstructed
-or uninstalled. Destroying a bench destroys its project. Unsupported recipes, including
-multi-output, consumable, art and ambiguous material recipes, are excluded conservatively.
+New transcendent weapons receive one phenomenon: **Chain Lightning, Smite, Flame Wave, Frost
+Nova, Gravity Crush, Vampiric Strike or Spatial Slash**. Valid damaging melee/bullet hits can
+manifest it, with 8% / 18% / 30% reliability for Magical / Mythical / Divine and a short cooldown.
+Effects target nearby hostile standing pawns, protecting colony pawns and prisoners. Smite does
+not damage buildings or terrain, and Flame Wave does not start fires. Apparel retains tier
+metadata; offensive phenomena are weapons-only. Ordinary Legendary fallback has no phenomenon.
 
-**Catalyst acquisition is dev/test-only for this foundation:** enable Development mode and use
-Spawn thing to obtain `GM21_MagicalCatalyst`. There is no manufacturing recipe or trader supply
-yet. See [the feature guide](Docs/MagicalCrafting.md) for the full flow, audited APIs, persistence,
-recipe exclusions, work calculation, test results and required in-game checklist.
+Existing 0.11 projects and items retain their locked identity and do not gain a new random power
+on load. See [the crafting guide](Docs/MagicalCrafting.md) for manufacturing costs, compatibility,
+Dev Mode testing and the remaining gameplay checklist.
 
 ---
 
 ## Removing Grandmaster 21 safely
 
-> **Do not remove the mod while a save still contains level 21 skills or Magical crafting objects.**
+> **Do not remove the mod while a save still contains level 21 skills or transcendent crafting objects.**
 
-From 0.11.0, remove every magical workstation and catalyst across maps, inventories and caravans
+From 0.11.0, remove every transcendent workstation and catalyst across maps, inventories and caravans
 before running the skill cleanup below. Destroying an active workstation loses its project.
 The cleanup action does not remove these objects or artifact metadata. Finished equipment keeps
-its original item Def; its Magical metadata belongs to this mod and is lost on removal. The full
+its original item Def; its craftsmanship metadata belongs to this mod and is lost on removal. The full
 removal/reload sequence still needs an in-game test; keep a backup.
 
 Unknown save elements are ignored by RimWorld, so banked Grandmaster XP is discarded harmlessly.
@@ -1472,14 +1479,19 @@ hand-written approximations. Only a real build does that. See `tools/stubs/READM
 
 ## Release status
 
-**0.11.0 Beta.** The Magical slice builds against real RimWorld 1.6/Unity/Harmony assemblies with
-zero warnings/errors. Its 114 headless policy/API/XML/save-writing checks pass, with one additional
-implicit-work stat probe blocked by a missing Steamworks DLL. The existing
-runtime-target harness reports 168 passes and one failure caused by a missing Steamworks DLL in
-the supplied assembly set. Full save/reload and map gameplay are **not runtime verified**.
-See [Magical craftsmanship](Docs/MagicalCrafting.md) for architecture, limits and the runtime checklist.
-The [empty-recipe discovery repair](Docs/MagicalRecipeDiscoveryFix.md) documents the real
-reference-resolution regression, subtype compatibility fixes and bounded rejection diagnostics.
+The Magical foundation was runtime-tested by the owner in a heavily modded game: 1,600 recipes
+scanned, 217 supported; ingredients and catalyst consumed; active project saved/reloaded/resumed;
+Legendary plasteel output and separate Magical metadata retained.
+
+The continuation builds against the supplied real RimWorld 1.6, Unity and Harmony DLLs. Headless
+checks cover tier rolls, persistence fields/save-writing, eligibility, XML and combat API contracts.
+Native implicit work and Scribe readback need a missing Steamworks dependency on this host;
+Harmony execution also needs the game's compatible Mono runtime. These are not gameplay passes.
+The new progression, combat effects, map transfers and destructive edge cases require in-game
+playtesting. See [the crafting guide](Docs/MagicalCrafting.md).
+
+The [recipe discovery repair](Docs/MagicalRecipeDiscoveryFix.md) is the historical audit for the
+now-tested discovery implementation; its conservative selection policy is retained.
 
 **The Melee Grandmaster package has had NO runtime gameplay testing.** Every RimWorld member it
 touches is confirmed present with the right signature and parameter names against the real 1.6
