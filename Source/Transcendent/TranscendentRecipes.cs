@@ -19,7 +19,7 @@ namespace Grandmaster21.Transcendent
     [StaticConstructorOnStartup]
     internal static class TranscendentStartup
     {
-        static TranscendentStartup() { TranscendentRecipes.Initialize(); }
+        static TranscendentStartup() { TranscendentRecipes.Initialize(); ArtifactCombat.Install(); }
     }
 
     internal static class TranscendentRecipes

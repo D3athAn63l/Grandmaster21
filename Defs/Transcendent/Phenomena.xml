@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+  <DamageDef>
+    <defName>GM21_ArtifactFlame</defName>
+    <label>artifact flame</label>
+    <workerClass>DamageWorker_AddInjury</workerClass>
+    <externalViolence>true</externalViolence>
+    <deathMessage>{0} was consumed by artifact flame.</deathMessage>
+    <hediff>Burn</hediff>
+    <armorCategory>Heat</armorCategory>
+    <makesBlood>false</makesBlood>
+    <harmAllLayersUntilOutside>true</harmAllLayersUntilOutside>
+  </DamageDef>
+  <HediffDef>
+    <defName>GM21_ArtifactFrost</defName>
+    <label>artifact frost</label>
+    <description>Movement briefly slowed by a freezing manifestation.</description>
+    <hediffClass>HediffWithComps</hediffClass>
+    <isBad>true</isBad>
+    <initialSeverity>1</initialSeverity>
+    <comps>
+      <li Class="HediffCompProperties_Disappears">
+        <disappearsAfterTicks>300</disappearsAfterTicks>
+        <showRemainingTime>true</showRemainingTime>
+      </li>
+    </comps>
+    <stages><li><statFactors><MoveSpeed>0.6</MoveSpeed></statFactors></li></stages>
+  </HediffDef>
+</Defs>
