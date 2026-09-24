@@ -44,7 +44,7 @@ namespace Grandmaster21.Transcendent
             }
         }
 
-        private string TierText
+        private string IdentityText
         {
             get
             {
@@ -53,7 +53,9 @@ namespace Grandmaster21.Transcendent
                 return "GM21_TC_Tier".Translate(label).ToString() + (phenomenon == ArtifactPhenomenon.None ? "" : "\n" + "GM21_TC_Phenomenon".Translate(ArtifactIdentity.Label(phenomenon)).ToString());
             }
         }
-        public override string CompInspectStringExtra() { return TierText; }
+        private string TierText { get { return tier == ArtifactTier.None ? null : IdentityText + (phenomenon == ArtifactPhenomenon.None ? "" : "\n" + ArtifactPhenomenonInfo.Details(phenomenon, tier)); } }
+        public override string CompInspectStringExtra()
+        { return tier == ArtifactTier.None ? null : IdentityText + (phenomenon == ArtifactPhenomenon.None ? "" : "\n" + ArtifactPhenomenonInfo.Summary(tier)); }
         public override string CompTipStringExtra() { return TierText; }
         public override string GetDescriptionPart() { return TierText; }
         public override bool AllowStackWith(Thing other)

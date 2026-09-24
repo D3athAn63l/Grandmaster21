@@ -26,4 +26,15 @@
   <GM21_TC_Phenomenon_GravityCrush>Gravity crush</GM21_TC_Phenomenon_GravityCrush>
   <GM21_TC_Phenomenon_VampiricStrike>Vampiric strike</GM21_TC_Phenomenon_VampiricStrike>
   <GM21_TC_Phenomenon_SpatialSlash>Spatial slash</GM21_TC_Phenomenon_SpatialSlash>
+  <GM21_TC_Chance>Manifestation chance: {0}</GM21_TC_Chance>
+  <GM21_TC_Cooldown>Cooldown after manifestation: {0} ticks (~{1} seconds at 1×)</GM21_TC_Cooldown>
+  <GM21_TC_TriggerSafety>Triggers on a damaging hit against a standing hostile, including a hit that downs or kills it. Allies and colony prisoners are protected. Damage shown is before armor.</GM21_TC_TriggerSafety>
+  <GM21_TC_Effect_ChainLightning>Arcs through up to {0} hostile pawns, at most {1} cells per jump. Decreasing electrical damage: {2}.</GM21_TC_Effect_ChainLightning>
+  <GM21_TC_Effect_Smite>Strikes up to {1} hostile pawns within {0} cells of impact for {2} blunt damage each. Buildings and terrain are unharmed.</GM21_TC_Effect_Smite>
+  <GM21_TC_Effect_FlameWave>Burns up to {1} hostile pawns within {0} cells of impact for {2} heat damage each. Does not ignite fires.</GM21_TC_Effect_FlameWave>
+  <GM21_TC_Effect_FrostNova>Chills up to {1} hostile pawns within {0} cells. Movement speed ×{2} for {3} ticks. Does not stack or refresh existing frost.</GM21_TC_Effect_FrostNova>
+  <GM21_TC_Effect_GravityCrush>Deals {0} bonus blunt damage to the primary hostile, then stuns it for {1} ticks if still standing. Skips an unavailable primary.</GM21_TC_Effect_GravityCrush>
+  <GM21_TC_Effect_VampiricStrike>Deals {0} bonus stab damage. Heals {1}% of actual bonus damage, up to {2}; if the triggering hit already downed or killed the victim, uses its actual damage instead. Regenerating restores another {3}%, up to {4} total over {5} ticks (~{6} seconds at 1×). Highest-severity ordinary wounds first; no scars, diseases or missing-part restoration. Repeated bursts refresh duration and keep the larger remaining budget.</GM21_TC_Effect_VampiricStrike>
+  <GM21_TC_Effect_SpatialSlash>Deals {0} cut damage with {3}% armor penetration to the primary hostile; may strike one secondary within {2} cells for {1}. Skips unavailable targets. No teleportation.</GM21_TC_Effect_SpatialSlash>
+  <GM21_TC_RegenRemaining>Remaining wound-healing budget: {0}. Highest-severity nonpermanent injuries first.</GM21_TC_RegenRemaining>
 </LanguageData>

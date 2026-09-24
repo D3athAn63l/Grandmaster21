@@ -36,4 +36,12 @@
     </comps>
     <stages><li><statFactors><MoveSpeed>0.6</MoveSpeed></statFactors></li></stages>
   </HediffDef>
+  <HediffDef>
+    <defName>GM21_ArtifactRegenerating</defName>
+    <label>Regenerating</label>
+    <description>A brief Vampiric recovery burst. Heals ordinary nonpermanent wounds, starting with the most severe. Cannot restore missing parts, erase scars or cure disease.</description>
+    <hediffClass>Grandmaster21.Transcendent.Hediff_ArtifactRegenerating</hediffClass>
+    <isBad>false</isBad>
+    <initialSeverity>1</initialSeverity>
+  </HediffDef>
 </Defs>

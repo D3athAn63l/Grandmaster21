@@ -119,6 +119,23 @@ namespace Grandmaster21.Transcendent
                     });
                 }
             };
+            yield return new Command_Action
+            {
+                defaultLabel = "DEV: Phenomenon VFX only",
+                defaultDesc = "Preview the current phenomenon on a selected cell. No damage, healing, rolls or cooldown changes.",
+                action = () =>
+                {
+                    Pawn wielder = parent.ParentHolder is Pawn_EquipmentTracker equipment ? equipment.pawn : null;
+                    if (wielder == null || !wielder.Spawned || phenomenon == ArtifactPhenomenon.None) return;
+                    Find.Targeter.BeginTargeting(new TargetingParameters { canTargetLocations = true, canTargetPawns = true, canTargetBuildings = true }, target =>
+                    {
+                        var trace = new ArtifactFeedback.Trace { map = wielder.Map, center = target.Cell,
+                            wielderPosition = wielder.Position.ToVector3Shifted(), phenomenon = phenomenon, tier = tier };
+                        trace.targets.Add(target.Cell.ToVector3Shifted());
+                        ArtifactFeedback.Show(trace);
+                    });
+                }
+            };
             if (tier == ArtifactTier.Anomaly)
                 yield return new Command_Action { defaultLabel = "DEV: Manifest", action = () => ArtifactWatcher.Manifest(this) };
         }

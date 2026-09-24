@@ -322,7 +322,8 @@ internal static partial class TranscendentChecks
             var bench = types.Single(t => t.Name == "Building_MagicalWorkstation");
             int randomSites = types.SelectMany(t => t.Methods).Where(m => m.HasBody)
                 .SelectMany(m => m.Body.Instructions).Count(i => i.Operand is MethodReference
-                    && ((MethodReference)i.Operand).DeclaringType.FullName == "Verse.Rand");
+                    && ((MethodReference)i.Operand).DeclaringType.FullName == "Verse.Rand"
+                    && !new[] { "PushState", "PopState" }.Contains(((MethodReference)i.Operand).Name));
             Check("one RNG site in feature", randomSites == 1);
             var commit = bench.Methods.Single(m => m.Name == "TryCommit");
             Check("RNG site is commitment", commit.Body.Instructions.Any(i => i.Operand is MethodReference
@@ -400,7 +401,7 @@ internal static partial class TranscendentChecks
         try
         {
             MathAndAuthorization(); RecipePolicy(); ApiAndIl(args[0]); XmlSchema(args[1]); SaveWriting(args[2]);
-            TierChecks(); PhenomenonChecks(); ProgressionChecks(args[1]); CombatContracts(args[0]); NewPersistence(args[2]); SurgicalChecks(args[0], args[1]);
+            TierChecks(); PhenomenonChecks(); ProgressionChecks(args[1]); CombatContracts(args[0]); NewPersistence(args[2]); SurgicalChecks(args[0], args[1]); FeedbackChecks(args[0], args[1], args[2]);
         }
         catch (Exception e) { Console.WriteLine(e); fail++; }
         Console.WriteLine("PASS: " + pass + " FAIL: " + fail + " BLOCKED: " + blocked);

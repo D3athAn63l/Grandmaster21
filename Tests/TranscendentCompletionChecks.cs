@@ -115,7 +115,7 @@ internal static partial class TranscendentChecks
         Check("no hidden research or workstation definitions", defs.All(x => !new[] { "Anomaly", "Null", "Watcher" }.Any(s => x.Element("defName").Value.Contains(s))));
         foreach (XElement d in defs.Where(x => x.Name == "DamageDef"))
             Check(d.Element("defName").Value + " no explosion/ignition", d.Element("workerClass").Value == "DamageWorker_AddInjury" && !d.Elements().Any(x => x.Name.LocalName.StartsWith("ignite") || x.Name.LocalName.StartsWith("explosion")));
-        XElement frost = defs.Single(x => x.Name == "HediffDef");
+        XElement frost = defs.Single(x => x.Name == "HediffDef" && x.Element("defName").Value == "GM21_ArtifactFrost");
         Check("frost expires and has bounded slowdown", frost.Descendants("disappearsAfterTicks").Single().Value == "300" && frost.Descendants("MoveSpeed").Single().Value == "0.6");
         string[] playerFiles = { "README.md", "About/About.xml", "Languages/English/Keyed/Transcendent.xml" };
         foreach (string file in playerFiles)

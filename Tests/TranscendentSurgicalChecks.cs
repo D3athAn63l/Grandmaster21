@@ -111,12 +111,12 @@ internal static partial class TranscendentChecks
             foreach (float actual in new[] { -1f, 0f, float.NaN, float.PositiveInfinity, float.NegativeInfinity, 1f, 10f, 30f, float.MaxValue })
             {
                 float expected = actual > 0 && !float.IsInfinity(actual) && !float.IsNaN(actual) ? Math.Min(8f, actual * .35f) : 0;
-                Check(state + " Vampire uses actual trigger " + actual, Math.Abs((float)Invoke("ArtifactEffects", "VampireBudget", wielder, primary, 3f, actual) - expected) < .0001f);
+                Check(state + " Vampire uses actual trigger " + actual, Math.Abs((float)Invoke("ArtifactEffects", "HealingBudget", Invoke("ArtifactEffects", "VampireDamage", wielder, primary, 3f, actual, null, null)) - expected) < .0001f);
             }
         }
         Set(primary.health, "healthState", PawnHealthState.Mobile);
-        Check("unavailable standing Vampire target cannot heal from trigger", (float)Invoke("ArtifactEffects", "VampireBudget", null, primary, 3f, 100f) == 0);
-        Check("missing Vampire target cannot heal", (float)Invoke("ArtifactEffects", "VampireBudget", wielder, null, 3f, 100f) == 0);
+        Check("unavailable standing Vampire target cannot heal from trigger", (float)Invoke("ArtifactEffects", "VampireDamage", null, primary, 3f, 100f, null, null) == 0);
+        Check("missing Vampire target cannot heal", (float)Invoke("ArtifactEffects", "VampireDamage", wielder, null, 3f, 100f, null, null) == 0);
         var current = Feature("ArtifactCombat").GetField("current", Any);
         object outer = HitFixture(artifact, wielder, primary, true), inner = HitFixture(artifact, wielder, primary, true);
         current.SetValue(null, inner); var originalException = new InvalidOperationException("foreign mod failure");
@@ -170,11 +170,11 @@ internal static partial class TranscendentChecks
             Check("captured dispatch no primary safety veto", !Calls(m("ArtifactEffects", "TryTriggerCaptured")).Any(c => c.Name == "SafeTarget"));
             Check("captured dispatch requires map and in-bounds cell", Calls(m("ArtifactEffects", "TryTriggerCaptured")).Any(c => c.Name == "InBounds") && m("ArtifactEffects", "TryTriggerCaptured").Body.Instructions.Any(i => (i.Operand as FieldReference)?.Name == "impactMap"));
             Check("all area effects receive captured center parameter", m("ArtifactEffects", "Apply").Parameters[3].Name == "center" && m("ArtifactEffects", "TryTriggerCaptured").Body.Instructions.Any(i => (i.Operand as FieldReference)?.Name == "impactCell"));
-            Check("primary position used only for visited chain hop", Calls(m("ArtifactEffects", "Apply")).Count(c => c.Name == "get_Position") == 1);
+            Check("effect positions read only for chain hop and frost feedback", Calls(m("ArtifactEffects", "Apply")).Count(c => c.Name == "get_Position") == 2);
             Check("extra damage always rechecks strict safety", Calls(m("ArtifactEffects", "Damage")).Any(c => c.Name == "SafeTarget"));
             Check("strict safety retains dead/downed/player/prisoner/map/hostility", new[] { "get_Dead", "get_Downed", "get_OfPlayer", "get_IsPrisonerOfColony", "get_Map", "HostileTo" }.All(n => Calls(m("ArtifactEffects", "SafeTarget")).Any(c => c.Name == n)));
             Check("nearby remains LOS bounded", Calls(m("ArtifactEffects", "Nearby")).Any(c => c.Name == "LineOfSight") && Calls(m("ArtifactEffects", "Nearby")).Any(c => c.Name == "InBounds"));
-            Check("Vampire budget selects death/down before actual bonus damage", new[] { "get_Dead", "get_Downed", "Damage", "HealingBudget" }.All(n => Calls(m("ArtifactEffects", "VampireBudget")).Any(c => c.Name == n)));
+            Check("Vampire budget selects death/down before actual bonus damage", new[] { "get_Dead", "get_Downed", "Damage", "PositiveFinite" }.All(n => Calls(m("ArtifactEffects", "VampireDamage")).Any(c => c.Name == n)));
             Check("DEV wrapper captures standing target into repaired path", Calls(m("ArtifactEffects", "TryTrigger")).Any(c => c.Name == "Capture") && Calls(m("ArtifactEffects", "TryTrigger")).Any(c => c.Name == "TryTriggerCaptured"));
             Check("DEV dispatch retains explicit DevMode gate", Calls(m("ArtifactEffects", "TryTriggerCaptured")).Any(c => c.Name == "get_DevMode"));
             Check("finalizer contains no exception suppression catch", m("ArtifactCombat", "Restore").Body.ExceptionHandlers.Count == 0);
