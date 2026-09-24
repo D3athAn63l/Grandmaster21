@@ -400,7 +400,7 @@ internal static partial class TranscendentChecks
         try
         {
             MathAndAuthorization(); RecipePolicy(); ApiAndIl(args[0]); XmlSchema(args[1]); SaveWriting(args[2]);
-            TierChecks(); PhenomenonChecks(); ProgressionChecks(args[1]); CombatContracts(args[0]); NewPersistence(args[2]);
+            TierChecks(); PhenomenonChecks(); ProgressionChecks(args[1]); CombatContracts(args[0]); NewPersistence(args[2]); SurgicalChecks(args[0], args[1]);
         }
         catch (Exception e) { Console.WriteLine(e); fail++; }
         Console.WriteLine("PASS: " + pass + " FAIL: " + fail + " BLOCKED: " + blocked);

@@ -20,28 +20,44 @@ namespace Grandmaster21.Transcendent
         }
         internal static float HealingBudget(float damage)
         {
-            return float.IsNaN(damage) || float.IsInfinity(damage) || damage <= 0 ? 0 : Math.Min(MaxHealing, damage * .35f);
+            return PositiveFinite(damage) ? Math.Min(MaxHealing, damage * .35f) : 0;
         }
+        internal static bool PositiveFinite(float damage) { return damage > 0 && !float.IsInfinity(damage) && !float.IsNaN(damage); }
         internal static float Scale(ArtifactTier tier)
         {
             switch (tier) { case ArtifactTier.Magical: return 1; case ArtifactTier.Mythical: return 1.4f; case ArtifactTier.Divine: return 1.8f; case ArtifactTier.Anomaly: return 2.4f; case ArtifactTier.Null: return 3; default: return 0; }
         }
         internal static bool TryTrigger(CompArtifact artifact, Pawn wielder, Pawn target, bool developer)
         {
-            if (InEffect || artifact == null || artifact.parent == null || artifact.parent.Destroyed
+            // Direct DEV testing starts from a standing hostile and uses real bonus-strike damage.
+            if (InEffect) return false;
+            return TryTriggerCaptured(ArtifactCombat.Capture(artifact, wielder, target), 0f, developer);
+        }
+        internal static bool TryTriggerCaptured(ArtifactCombat.Hit hit, float triggeringDamage, bool developer)
+        {
+            if (InEffect || hit == null || !hit.validBeforeDamage) return false;
+            CompArtifact artifact = hit.artifact;
+            Pawn wielder = hit.wielder;
+            if (artifact == null || artifact.parent == null || artifact.parent.Destroyed
                 || !ArtifactIdentity.Valid(artifact.tier, artifact.phenomenon, artifact.parent.def)
-                || artifact.phenomenon == ArtifactPhenomenon.None || !SafeTarget(wielder, target)) return false;
-            int now = Find.TickManager.TicksGame;
+                || artifact.phenomenon == ArtifactPhenomenon.None || wielder == null || wielder.Dead
+                || !wielder.Spawned || hit.impactMap == null || wielder.Map != hit.impactMap
+                || !hit.impactCell.InBounds(hit.impactMap)) return false;
             if (developer && !Prefs.DevMode) return false;
+            if (!TryRoll(artifact, Find.TickManager.TicksGame, developer)) return false;
+            effectDepth++;
+            try { Apply(artifact, wielder, hit.primary, hit.impactCell, triggeringDamage); }
+            catch (Exception ex) { Log.ErrorOnce("[Grandmaster 21] Artifact phenomenon callback failed: " + ex, 213702); }
+            finally { effectDepth--; }
+            return true;
+        }
+        internal static bool TryRoll(CompArtifact artifact, int now, bool developer)
+        {
             if (!developer && now < artifact.nextProcTick) return false;
             int attempt = artifact.procCounter;
             artifact.procCounter = unchecked(attempt + 1);
             if (!developer && ArtifactRolls.Unit(artifact.phenomenonSeed, unchecked(attempt + 100)) >= ArtifactRolls.Reliability(artifact.tier)) return false;
             artifact.nextProcTick = now + CooldownTicks; // Commit cooldown/counter before any callbacks.
-            effectDepth++;
-            try { Apply(artifact, wielder, target); }
-            catch (Exception ex) { Log.ErrorOnce("[Grandmaster 21] Artifact phenomenon callback failed: " + ex, 213702); }
-            finally { effectDepth--; }
             return true;
         }
         // Cell-bounded queries, stable ordering, never a map-wide pawn search.
@@ -66,16 +82,23 @@ namespace Grandmaster21.Transcendent
             DamageInfo info = new DamageInfo(def, amount, penetration, -1f, wielder, spawnFilth: false);
             return target.TakeDamage(info).totalDamageDealt;
         }
-        private static void Apply(CompArtifact artifact, Pawn wielder, Pawn primary)
+        private static float VampireBudget(Pawn wielder, Pawn primary, float scale, float triggeringDamage)
+        {
+            // Only death/downing unlocks the triggering-hit fallback. Other newly unsafe targets do not.
+            if (primary == null) return 0;
+            if (primary.Dead || primary.Downed) return HealingBudget(triggeringDamage);
+            if (!SafeTarget(wielder, primary)) return 0;
+            return HealingBudget(Damage(wielder, primary, DamageDefOf.Stab, 14 * scale));
+        }
+        private static void Apply(CompArtifact artifact, Pawn wielder, Pawn primary, IntVec3 center, float triggeringDamage)
         {
             float scale = Scale(artifact.tier);
-            IntVec3 center = primary.Position;
             switch (artifact.phenomenon)
             {
                 case ArtifactPhenomenon.ChainLightning:
                     DamageDef lightning = DefDatabase<DamageDef>.GetNamed("GM21_ArtifactLightning");
                     HashSet<Pawn> visited = new HashSet<Pawn>();
-                    Pawn next = primary;
+                    Pawn next = SafeTarget(wielder, primary) ? primary : Nearby(wielder, center, ChainRadius).FirstOrDefault();
                     for (int i = 0; i < ChainTargets && next != null; i++)
                     {
                         IntVec3 from = next.Position;
@@ -97,7 +120,7 @@ namespace Grandmaster21.Transcendent
                     HediffDef frost = DefDatabase<HediffDef>.GetNamed("GM21_ArtifactFrost");
                     foreach (Pawn pawn in Nearby(wielder, center, 4f))
                     {
-                        if (pawn.health.hediffSet.GetFirstHediffOfDef(frost) == null) pawn.health.AddHediff(frost);
+                        if (SafeTarget(wielder, pawn) && pawn.health.hediffSet.GetFirstHediffOfDef(frost) == null) pawn.health.AddHediff(frost);
                     }
                     break;
                 case ArtifactPhenomenon.GravityCrush:
@@ -105,7 +128,7 @@ namespace Grandmaster21.Transcendent
                     if (SafeTarget(wielder, primary)) primary.stances.stunner.StunFor(90, wielder, false);
                     break;
                 case ArtifactPhenomenon.VampiricStrike:
-                    float budget = HealingBudget(Damage(wielder, primary, DamageDefOf.Stab, 14 * scale));
+                    float budget = VampireBudget(wielder, primary, scale, triggeringDamage);
                     if (wielder.Dead || wielder.health == null) break;
                     foreach (Hediff_Injury wound in wielder.health.hediffSet.hediffs.OfType<Hediff_Injury>()
                         .Where(h => !h.IsPermanent()).OrderByDescending(h => h.Severity).ToList())

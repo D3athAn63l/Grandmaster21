@@ -14,6 +14,10 @@ namespace Grandmaster21.Transcendent
         {
             internal CompArtifact artifact;
             internal Pawn wielder;
+            internal Pawn primary;
+            internal Map impactMap;
+            internal IntVec3 impactCell;
+            internal bool validBeforeDamage;
             internal bool attempted;
         }
         [ThreadStatic] internal static Hit current;
@@ -57,34 +61,48 @@ namespace Grandmaster21.Transcendent
                 if (artifact != null) foreach (Gizmo gizmo in artifact.CompGetGizmosExtra()) yield return gizmo;
             }
         }
-        private static void Enter(Thing weapon, Pawn wielder)
+        internal static Hit Capture(CompArtifact artifact, Pawn wielder, Pawn primary)
+        {
+            bool valid = ArtifactEffects.SafeTarget(wielder, primary);
+            return new Hit { artifact = artifact, wielder = wielder, primary = primary,
+                validBeforeDamage = valid, impactMap = valid ? primary.Map : null,
+                impactCell = valid ? primary.Position : IntVec3.Invalid };
+        }
+        private static void Enter(Thing weapon, Pawn wielder, Pawn primary)
         {
             CompArtifact comp = weapon == null || weapon.Destroyed ? null : weapon.TryGetComp<CompArtifact>();
             current = comp == null || comp.phenomenon == ArtifactPhenomenon.None || ArtifactEffects.InEffect ? null
-                : new Hit { artifact = comp, wielder = wielder };
+                : Capture(comp, wielder, primary);
         }
-        private static void BulletPrefix(Bullet __instance, out Hit __state)
+        private static void BulletPrefix(Bullet __instance, Thing hitThing, out Hit __state)
         {
             __state = current;
-            Enter(Equipment.GetValue(__instance) as Thing, __instance.Launcher as Pawn);
+            Enter(Equipment.GetValue(__instance) as Thing, __instance.Launcher as Pawn, hitThing as Pawn);
         }
-        private static void MeleePrefix(Verb_MeleeAttackDamage __instance, out Hit __state)
+        private static void MeleePrefix(Verb_MeleeAttackDamage __instance, LocalTargetInfo target, out Hit __state)
         {
             __state = current;
-            Enter(__instance.EquipmentSource, __instance.CasterPawn);
+            Enter(__instance.EquipmentSource, __instance.CasterPawn, target.Thing as Pawn);
         }
         private static Exception Restore(Exception __exception, Hit __state)
         {
             current = __state;
             return __exception; // Never suppress another mod's/game's exception.
         }
+        internal static bool ConsumeOpportunity(Hit hit, Pawn victim, DamageInfo dinfo, float actualDamage)
+        {
+            if (ArtifactEffects.InEffect || hit == null || hit.attempted || !hit.validBeforeDamage
+                || victim == null || victim != hit.primary || !ArtifactEffects.PositiveFinite(actualDamage)
+                || hit.artifact == null || hit.artifact.parent == null
+                || dinfo.Instigator != hit.wielder || dinfo.Weapon != hit.artifact.parent.def) return false;
+            hit.attempted = true; // Multi-damage tools/bullets get one opportunity per hit.
+            return true;
+        }
         private static void AfterDamage(Pawn __instance, DamageInfo dinfo, float totalDamageDealt)
         {
             Hit hit = current;
-            if (ArtifactEffects.InEffect || hit == null || hit.attempted || totalDamageDealt <= 0
-                || dinfo.Instigator != hit.wielder || dinfo.Weapon != hit.artifact.parent.def) return;
-            hit.attempted = true; // Multi-damage tools/bullets get one opportunity per hit.
-            try { ArtifactEffects.TryTrigger(hit.artifact, hit.wielder, __instance, false); }
+            if (!ConsumeOpportunity(hit, __instance, dinfo, totalDamageDealt)) return;
+            try { ArtifactEffects.TryTriggerCaptured(hit, totalDamageDealt, false); }
             catch (Exception ex) { Log.ErrorOnce("[Grandmaster 21] Artifact trigger failed; effect suppressed: " + ex, 213701); }
         }
     }

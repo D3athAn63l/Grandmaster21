@@ -181,6 +181,7 @@
     <jobString>Manufacturing a catalyst.</jobString>
     <workAmount>18000</workAmount>
     <workSpeedStat>GeneralLaborSpeed</workSpeedStat>
+    <unfinishedThingDef>UnfinishedComponent</unfinishedThingDef>
     <workSkill>Crafting</workSkill>
     <skillRequirements>
       <Crafting>12</Crafting>
@@ -233,6 +234,7 @@
     <jobString>Manufacturing a catalyst.</jobString>
     <workAmount>45000</workAmount>
     <workSpeedStat>GeneralLaborSpeed</workSpeedStat>
+    <unfinishedThingDef>UnfinishedComponent</unfinishedThingDef>
     <workSkill>Crafting</workSkill>
     <skillRequirements>
       <Crafting>15</Crafting>
@@ -294,6 +296,7 @@
     <jobString>Manufacturing a catalyst.</jobString>
     <workAmount>90000</workAmount>
     <workSpeedStat>GeneralLaborSpeed</workSpeedStat>
+    <unfinishedThingDef>UnfinishedComponent</unfinishedThingDef>
     <workSkill>Crafting</workSkill>
     <skillRequirements>
       <Crafting>18</Crafting>

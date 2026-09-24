@@ -23,8 +23,10 @@ stockpile category is **Transcendent catalysts**, outside vanilla resource ingre
 | Mythical Matrix | 2 Magical Catalysts, 100 plasteel, 25 gold, 4 advanced components | 15 | 45,000 |
 | Divine Essence | 3 Mythical Matrices, 200 plasteel, 75 gold, 10 advanced components | 18 | 90,000 |
 
-Catalyst manufacture uses normal bill work speed. Only the subsequent transcendent project
-requires a Grandmaster. Costs are provisional and centralized in `Defs/Transcendent/Progression.xml`.
+Catalyst manufacture uses vanilla `GeneralLaborSpeed` and `UnfinishedComponent` work storage.
+Interrupting a started craft or saving/reloading keeps its unfinished work and ingredients.
+Vanilla binds the unfinished item to its original crafter; a different crafter cannot take it over.
+Only the subsequent transcendent project requires a Grandmaster and allows GM worker handoff. Costs are provisional and centralized in `Defs/Transcendent/Progression.xml`.
 Proof-item research gates are deferred; vanilla research prerequisites provide progression.
 
 ## Projects and outcomes
@@ -77,7 +79,7 @@ seed, attempt count and cooldown persist on the actual item.
 | Flame Wave | Controlled burn injuries within three cells; creates no fire |
 | Frost Nova | Within four cells, movement ×0.6 for 300 ticks; does not stack |
 | Gravity Crush | Extra blunt damage and a 90-tick stun if the target remains standing |
-| Vampiric Strike | Extra stab damage, then heals nonpermanent wounds for 35% of damage dealt, capped at eight severity |
+| Vampiric Strike | Heals 35% of actual bonus stab damage; if the triggering hit already killed/downed the primary, uses that hit’s actual damage instead. Maximum eight severity total |
 | Spatial Slash | High-penetration cut plus at most one nearby secondary hostile; no teleportation |
 
 Targets must be standing, alive, hostile and on the wielder's map. Colony pawns and colony
@@ -88,10 +90,27 @@ more phenomena. Other mods' normal damage/armor callbacks still apply.
 Triggers support the audited vanilla melee-damage verb and `Bullet.Impact` paths, including
 subclasses that call those implementations. Custom lasers, explosive projectile workers and
 replacement combat verbs require adapters; merely discovering a modded weapon recipe does not
-prove its custom attack path can trigger a phenomenon. Dead/downed victims do not start effects.
+prove its custom attack path can trigger a phenomenon. Targets already dead/downed when the hit
+begins are ineligible. A standing hostile killed/downed by that hit still gets the normal proc
+opportunity, provided actual damage is positive and finite. Failed rolls and cooldown-blocked
+opportunities cannot retry on later damage packets from the same attack.
+
+Smite, Flame Wave and Frost Nova use the captured impact cell. Chain Lightning can begin at a
+nearby safe hostile when the primary is unavailable. Gravity skips an unavailable primary; Spatial
+Slash can still hit its one nearby secondary. No effect reattacks the corpse/downed primary.
+Vampiric Strike uses actual damage from the first qualifying packet, not theoretical damage or
+the sum of later packets. Zero, negative and nonfinite damage provide no healing; permanent
+injuries and dead wielders cannot be healed. A still-valid primary retains the bonus-strike rule,
+even if that bonus strike itself downs/kills it.
 Apparel retains craftsmanship metadata but receives no offensive phenomenon in this version.
 
 ## Saves and compatibility
+
+**Upgrading an earlier PR #9 test build:** remove its three catalyst bill types before updating
+and recreate those bills afterward. Vanilla saves the old bill CLR class; it does not automatically
+convert an existing ordinary production bill into an unfinished-work bill. Interrupt active
+catalyst jobs before that preparation. Previously accumulated non-UFT job work is not migrated.
+This restriction concerns catalyst bills, not workstation-owned artifact projects.
 
 Existing bench DefNames, CLR type, job/toil order and save keys are retained. Schema-one Magical
 projects preserve progress and outcome; old artifacts and already committed old projects do
@@ -125,17 +144,12 @@ blocking native implicit-work evaluation and Scribe readback initialization. Liv
 cannot execute on this host's .NET 8 runtime with the supplied MonoMod build. No replacement
 runtime stubs are used to claim feature correctness.
 
-Before release, use a copied save to test each tier and each weapon phenomenon in game. Include:
-
-- Catalyst bills and stockpile filters with Core only; research progression and each workstation.
-- Active-work reload, changing Grandmasters, and a failed/blocked output placement followed by reload.
-- Destruction and DEV abort without refunds, and deconstruction denial.
-- Ordinary Legendary fallback with no power; Stuff and original initiator retained.
-- Allies/prisoners/buildings inside Smite and Flame Wave areas; verify zero collateral effects.
-- Burst fire, multiple damage packets, dead/downed victims, and weapon switching before bullet impact.
-- Vampire healing on wounded/healthy/dead wielders and repeated procs without recursive chains.
-- Equipped/inventory/apparel/caravan/map-transfer persistence and cooldown continuity.
-- Existing Shooting/Melee behavior and ordinary nonartifact weapons.
+The surgical repair suite now reports **384 passes, zero failures and two dependency-blocked
+probes**. This includes executable pre/post-hit gate, deterministic roll/cooldown, invalid damage,
+lethal/downing healing and direct finalizer checks, plus API/IL and recipe XML checks. Map combat,
+loaded Core Def resolution and full reload/delivery remain untested here. Follow the ordered
+[owner torture-test checklist](Crafting21TortureTest.md) before release. The direct DEV trigger
+still tests a standing hostile using real bonus damage; it does not simulate a lethal weapon hit.
 
 Cosmetics, apparel powers, proof-item research gates, and custom combat adapters are deferred.
 Balance is provisional. Final art, sound and elaborate visuals are intentionally absent.

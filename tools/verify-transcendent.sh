@@ -19,7 +19,7 @@ cp "$HARMONY" "$CECIL" Assemblies/Grandmaster21.dll "$OUT/"
   -r:"$FRAMEWORK/mscorlib.dll" -r:"$FRAMEWORK/System.dll" -r:"$FRAMEWORK/System.Core.dll" \
   -r:"$FRAMEWORK/System.Xml.dll" -r:"$FRAMEWORK/System.Xml.Linq.dll" -r:"$FRAMEWORK/Facades/netstandard.dll" \
   -r:"$OUT/Assembly-CSharp.dll" -r:"$OUT/UnityEngine.CoreModule.dll" \
-  -r:"$OUT/Mono.Cecil.dll" -r:"$OUT/Grandmaster21.dll" Tests/TranscendentChecks.cs Tests/TranscendentCompletionChecks.cs
+  -r:"$OUT/Mono.Cecil.dll" -r:"$OUT/Grandmaster21.dll" Tests/TranscendentChecks.cs Tests/TranscendentCompletionChecks.cs Tests/TranscendentSurgicalChecks.cs
 if [[ "$(basename "$RUNNER")" == dotnet ]]; then
   cat > "$OUT/transcendent.runtimeconfig.json" <<'JSON'
 {"runtimeOptions":{"tfm":"net8.0","framework":{"name":"Microsoft.NETCore.App","version":"8.0.0"},"rollForward":"LatestMajor"}}

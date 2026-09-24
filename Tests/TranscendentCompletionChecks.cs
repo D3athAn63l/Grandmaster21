@@ -139,7 +139,7 @@ internal static partial class TranscendentChecks
         {
             Func<string, TypeDefinition> type = n => a.MainModule.Types.Single(t => t.Name == n);
             Func<string, string, MethodDefinition> method = (t, n) => type(t).Methods.Single(m => m.Name == n);
-            var effect = method("ArtifactEffects", "TryTrigger");
+            var effect = method("ArtifactEffects", "TryTriggerCaptured");
             Check("proc guard restored in finally", effect.Body.ExceptionHandlers.Any(h => h.HandlerType == ExceptionHandlerType.Finally));
             Check("generated damage has no weapon provenance", Calls(method("ArtifactEffects", "Damage")).Any(c => c.Name == ".ctor" && c.DeclaringType.Name == "DamageInfo"));
             Check("all effect damage targets Pawn only", method("ArtifactEffects", "Damage").Parameters[1].ParameterType.FullName == "Verse.Pawn");
