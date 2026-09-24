@@ -223,11 +223,21 @@ was not available on this host; DefOf/field/API validation is not a visual pass.
 | --- | --- | --- |
 | Chain | Bent blue LineEMP links in actual order, LightningGlow impacts | EnergyShield_AbsorbDamage |
 | Smite | Gold vertical-looking beam, ExplosionFlash, radius-five segmented ring | Thunder_OnMap (volume .45) |
-| Flame | Orange outward FireGlow, HeatGlow center, victim flashes | HissJet |
+| Flame | Orange outward FireGlow, HeatGlow center, victim flashes | Interact_Ignite |
 | Frost | Cyan segmented ring, outward AirPuff mist, victim flashes | EnergyShield_Reset |
 | Gravity | Purple inward DustPuff, small compression ring/ShotFlash | Pawn_Melee_Punch_HitBuilding_Generic |
 | Vampire | Eight crimson MetaPuffs converging on wielder, Heart and HealingCross | Power_OnSmall |
 | Spatial | Narrow violet LineEMP slash + ShotFlash at primary/secondary | Execute_Cut |
+
+Final runtime cleanup: the owner confirmed the feedback pass in game, including regeneration,
+health/battle provenance and information. Flame's former HissJet caused the native sustainer-as-one-shot
+error. Supplied RimWorld 1.6 assembly evidence: `RimWorld.Jetter.StartJetting` passes HissJet to
+`TrySpawnSustainer`; `Verse.Sound.SoundStarter.PlayOneShot` rejects `soundDef.sustain`.
+The replacement `Interact_Ignite` is assigned to `Verb_Ignite`'s `soundCast` in
+`RimWorld.VerbDefsHardcodedNative.AllVerbDefs`; `Verse.Verb.TryCastNextBurstShot` plays that field with
+`verbProps.soundCast.PlayOneShot(new TargetInfo(caster.Position, caster.MapHeld))`.
+Its SoundDefOf field has no MayRequire/DLC attribute. Only the sound is reused; no ignition verb runs.
+`DEV: Artifact state` now explains its existing log-only action in a Dev-only tooltip.
 
 One phenomenon-name text mote and one positional sound per proc. Other cues use volume .65.
 Tier changes visual intensity modestly (1 + .12*(scale-1)); Magical remains visible. Rings/radial

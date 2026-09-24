@@ -195,6 +195,57 @@ internal static partial class TranscendentChecks
             }
             var dev = NestedTypes(t("CompArtifact")).SelectMany(x => x.Methods).Where(x => x.HasBody).ToList();
             Check("VFX-only DEV command exists", dev.SelectMany(x => x.Body.Instructions).Any(i => Equals(i.Operand, "DEV: Phenomenon VFX only")));
+            CleanupChecks(t("ArtifactFeedback"), t("CompArtifact"), native);
         }
+    }
+    static void CleanupChecks(TypeDefinition feedback, TypeDefinition artifact, AssemblyDefinition native)
+    {
+        var render = feedback.Methods.Single(x => x.Name == "Render");
+        var sounds = render.Body.Instructions.Select(i => i.Operand as FieldReference)
+            .Where(f => f != null && f.DeclaringType.Name == "SoundDefOf").Select(f => f.Name).ToArray();
+        Check("Flame uses ignition one-shot and other six assignments remain unchanged", sounds.SequenceEqual(new[] {
+            "EnergyShield_AbsorbDamage", "Thunder_OnMap", "Interact_Ignite", "EnergyShield_Reset",
+            "Pawn_Melee_Punch_HitBuilding_Generic", "Power_OnSmall", "Execute_Cut" }));
+        Check("feedback has no HissJet reference or sustainer lifecycle", NestedTypes(feedback).SelectMany(x => x.Methods).Where(x => x.HasBody)
+            .SelectMany(x => x.Body.Instructions).All(i => (i.Operand as FieldReference)?.Name != "HissJet"
+                && !((i.Operand as MethodReference)?.Name ?? "").Contains("Sustainer")));
+        Check("render has one sound dispatch per phenomenon", Calls(render).Count(c => c.DeclaringType.Name == "ArtifactFeedback" && c.Name == "Sound") == 7);
+
+        // Audit the supplied native assembly, not a guessed SoundDef name or a synthetic sound fixture.
+        var verbs = NestedTypes(native.MainModule.Types.Single(x => x.FullName == "RimWorld.VerbDefsHardcodedNative"))
+            .SelectMany(x => x.Methods).Where(x => x.HasBody).SelectMany(x => x.Body.Instructions).ToList();
+        int ignition = verbs.FindIndex(i => (i.Operand as FieldReference)?.Name == "Interact_Ignite");
+        Check("vanilla ignition assigns Interact_Ignite to soundCast", ignition >= 0 && ignition + 1 < verbs.Count
+            && verbs[ignition + 1].OpCode == OpCodes.Stfld && (verbs[ignition + 1].Operand as FieldReference)?.Name == "soundCast");
+        var shot = native.MainModule.Types.Single(x => x.FullName == "Verse.Verb").Methods.Single(x => x.Name == "TryCastNextBurstShot");
+        var shotIL = shot.Body.Instructions.ToList();
+        int playback = shotIL.FindIndex(i => (i.Operand as MethodReference)?.Name == "PlayOneShot");
+        var soundPath = shotIL.Take(Math.Max(0, playback)).Reverse().Take(16).ToList();
+        Check("vanilla soundCast reaches positional PlayOneShot", playback >= 0
+            && soundPath.Any(i => (i.Operand as FieldReference)?.Name == "soundCast")
+            && soundPath.Any(i => (i.Operand as MethodReference)?.DeclaringType.Name == "TargetInfo"));
+
+        var methods = NestedTypes(artifact).SelectMany(x => x.Methods).Where(x => x.HasBody).ToList();
+        var iterator = methods.Single(x => x.Body.Instructions.Any(i => Equals(i.Operand, "DEV: Artifact state")));
+        var il = iterator.Body.Instructions.ToList();
+        int label = il.FindIndex(i => Equals(i.Operand, "DEV: Artifact state"));
+        int desc = il.FindIndex(label, i => i.OpCode == OpCodes.Stfld && (i.Operand as FieldReference)?.Name == "defaultDesc");
+        string tooltip = desc > 0 ? il[desc - 1].Operand as string : null;
+        Check("artifact state command has explanatory diagnostic log tooltip", tooltip != null
+            && new[] { "Developer diagnostic", "prints", "Player.log", "No popup", "tier", "phenomenon", "seed", "proc counter", "cooldown", "origin" }.All(tooltip.Contains));
+        int gate = il.FindIndex(i => (i.Operand as MethodReference)?.Name == "get_DevMode");
+        var disabled = gate >= 0 ? il[gate + 1].Operand as Instruction : null;
+        Check("DevMode off exits artifact iterator before any command", gate >= 0 && gate < label
+            && (il[gate + 1].OpCode == OpCodes.Brfalse || il[gate + 1].OpCode == OpCodes.Brfalse_S)
+            && disabled != null && disabled.OpCode == OpCodes.Ldc_I4_0 && disabled.Next.OpCode == OpCodes.Ret);
+        var log = methods.Single(x => x.Body.Instructions.Any(i => Equals(i.Operand, " counter=")));
+        var strings = log.Body.Instructions.Where(i => i.OpCode == OpCodes.Ldstr).Select(i => (string)i.Operand).ToArray();
+        Check("artifact state retains exact log text and no window call", strings.SequenceEqual(new[] {
+            "[Grandmaster 21][DEV] ", " tier=", " phenomenon=", " seed=", " counter=", " cooldown=", " origin=", " / " })
+            && Calls(log).Count(c => c.DeclaringType.Name == "Log" && c.Name == "Message") == 1
+            && !Calls(log).Any(c => c.DeclaringType.Name == "WindowStack"));
+        Check("artifact state log retains all original diagnostic fields", log.Body.Instructions.Select(i => i.Operand as FieldReference)
+            .Where(f => f != null && f.DeclaringType.Name == "CompArtifact").Select(f => f.Name).SequenceEqual(new[] {
+                "tier", "phenomenon", "phenomenonSeed", "procCounter", "nextProcTick", "projectId", "initiatorName" }));
     }
 }

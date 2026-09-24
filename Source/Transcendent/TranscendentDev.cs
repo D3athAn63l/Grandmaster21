@@ -94,6 +94,7 @@ namespace Grandmaster21.Transcendent
             yield return new Command_Action
             {
                 defaultLabel = "DEV: Artifact state",
+                defaultDesc = "Developer diagnostic: prints this artifact's tier, phenomenon, seed, proc counter, cooldown and origin to the developer log / Player.log. No popup opens.",
                 action = () => Log.Message("[Grandmaster 21][DEV] " + parent.GetUniqueLoadID() + " tier=" + tier + " phenomenon=" + phenomenon
                     + " seed=" + phenomenonSeed + " counter=" + procCounter + " cooldown=" + nextProcTick + " origin=" + projectId + " / " + initiatorName)
             };

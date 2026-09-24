@@ -109,7 +109,8 @@ namespace Grandmaster21.Transcendent
                     color = Flame;
                     Radial(t.map, center, ArtifactPhenomenonInfo.FlameRadius, FleckDefOf.FireGlow, color, false);
                     Particle(t.map, center, FleckDefOf.HeatGlow, color, 2f * intensity);
-                    Sound(SoundDefOf.HissJet, t); break;
+                    // Vanilla Verb_Ignite uses this as soundCast, played by Verb.TryCastNextBurstShot via PlayOneShot.
+                    Sound(SoundDefOf.Interact_Ignite, t); break;
                 case ArtifactPhenomenon.FrostNova:
                     color = Ice;
                     Ring(t.map, center, ArtifactPhenomenonInfo.FrostRadius, color);
