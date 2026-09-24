@@ -1,5 +1,7 @@
 # Crafting 21: ordered owner torture test (0.12.0 Beta)
 
+For the latest presentation/regeneration pass, start with [the focused feedback checklist](Crafting21FeedbackTest.md).
+
 Use disposable copies, keep Player.log, and record build stamp, mod list, item IDs, seeds/counters,
 observed damage and before/after work. Headless checks are not gameplay approval. Stop on a new
 startup, save or duplication error before moving to combat. Run first with Core + Harmony + GM21,
@@ -67,7 +69,7 @@ unrelated mods do not establish a Core-only pass.
     | Spatial Slash | Skip dead/downed primary, retain at most one safe secondary within three cells of impact; no teleportation |
 
 11. **Exact Vampire budgets.** Wound the wielder with several nonpermanent injuries. For actual
-    eligible damage 10, total healing is at most 3.5 severity; for 30 or more it is at most 8,
+    eligible damage 10, immediate healing is at most 3.5 severity; for 30 or more immediate healing is at most 8,
     shared across all wounds, further limited by available wounds. On a surviving primary, use
     observed bonus stab damage after armor; zero absorbed bonus means zero healing even if the
     original hit dealt damage. On downing/lethal primary, use observed triggering packet damage,

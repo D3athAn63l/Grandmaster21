@@ -1056,6 +1056,12 @@ manifest it, with 8% / 18% / 30% reliability for Magical / Mythical / Divine and
 Effects target nearby hostile standing pawns, protecting colony pawns and prisoners. Smite does
 not damage buildings or terrain, and Flame Wave does not start fires. Apparel retains tier
 metadata; offensive phenomena are weapons-only. Ordinary Legendary fallback has no phenomenon.
+Item inspection shows actual chance/cooldown; tooltips and the info card describe the effective
+mechanics. Each proc gets distinct brief visuals, a local sound and a name callout. Health and
+battle entries identify the phenomenon while retaining normal injury behavior. Vampiric Strike
+also gives a 60-tick wound-only regeneration burst: 20% of qualifying actual damage, capped at
+six additional healing, alongside its existing 35% immediate heal capped at eight. See the
+[focused feedback test](Docs/Crafting21FeedbackTest.md) for visual and regeneration checks.
 
 Existing 0.11 projects and items retain their locked identity and do not gain a new random power
 on load. See [the crafting guide](Docs/MagicalCrafting.md) for manufacturing costs, compatibility,

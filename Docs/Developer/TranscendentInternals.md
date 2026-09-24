@@ -137,12 +137,12 @@ an existing Anomaly item in Home. Normal gameplay never sees these controls.
 
 ## Validation and adversarial review
 
-Feature suite: 384 passes, zero failures, two dependency-blocked probes on the supplied host.
+Feature suite: 587 passes, zero failures, two dependency-blocked probes on the supplied host.
 It covers deterministic fallback boundaries, 200,000 Divine seeds, secret order/ceilings, work,
 legacy project validity, artifact eligibility, bounded healing, recursion short-circuit, API/IL
 contracts, one-project rejection, XML fields/references, stockpile category, translations and
 Scribe save-writing. Native readback remains blocked: ParseHelper initializes Steamworks types.
-The repair adds 112 checks: captured-validity gate fixtures with real Pawn health-state changes,
+The earlier surgical repair added 112 checks: captured-validity gate fixtures with real Pawn health-state changes,
 finite damage/provenance/packet latching, deterministic success/failure/cooldown, lethal/downing Vampire
 budgets, direct finalizer restoration, native unfinished-work contracts, XML and effect/hook IL wiring.
 Friendly/prisoner prevalid=false fixtures and IL safety checks are not live faction/map tests. Neither
@@ -160,11 +160,93 @@ The base hauling/owner transaction, authorization and output-delivery code remai
 unchanged. There are no changes to Shooting/Melee/progression/quality implementation. Public
 crafting docs/defs/translations contain no secret-tier names or probabilities.
 
-Outstanding real-game gates: manufacture/research/load Defs; all seven effects and each forced
-result; held/equipped/caravan persistence; weapon switch while projectile in flight; sparse Home
+Other real-game gates beyond the reported seven-effect/forced-result tests: manufacture/research/load Defs; held/equipped/caravan persistence; weapon switch while projectile in flight; sparse Home
 manifestation; destructive/retained-output edge cases and combat-mod interactions. Core XML, the
 Unity player and Steamworks were not supplied. XML metadata/reference checks cannot replace
-loading the actual installed mod list. The owner tested the prior Magical foundation, not these
-new mechanics. Art, elaborate VFX, apparel effects and custom combat adapters remain deferred.
+loading the actual installed mod list. The owner now confirms all seven mechanics, forced results
+and owned artifact display. The new presentation/regen behavior and native regen readback still
+need owner verification. Apparel effects and custom combat adapters remain deferred.
 
 Ordered owner validation: [Crafting21 torture-test checklist](../Crafting21TortureTest.md).
+
+## Gameplay feedback pass (owner-tested mechanics, new presentation pending)
+
+`ArtifactPhenomenonInfo` centralizes offensive values/ranges, caps, durations, regeneration constants
+and description arguments. Gameplay uses the same values. Chance comes directly from
+ArtifactRolls.Reliability. Frost's native XML duration/movement values are checked against description
+constants. Selected-item inspection stays compact; tooltips and info-card descriptions include scaled
+values rounded to one decimal. None/ordinary items retain no-power behavior. Owned [N/0] remains
+unexplained, with its real 85% combat chance; no creation odds, seed or proc counter enter normal text.
+
+No new DamageDefs or injury HediffDefs were needed. Existing Lightning/Flame retain AddInjury +
+Heat/Burn. Smite/Gravity retain the actual DamageDefOf.Blunt, Vampire Stab and Spatial Cut, including
+the native workers' special part propagation, internal-hit and stun behavior. DamageInfo.Weapon stays
+null, keeping the independent generated-provenance barrier. After damage, ArtifactProvenance sets
+native Hediff.sourceDef/sourceLabel (metadata only); the native Health label shows e.g. bruise (Smite).
+It also tags an existing wound if native AddHediff merged the returned injury into that changed
+same-Def/same-part wound. This preserves injury type, severity, healing, bleeding and scars. A merged
+wound's qualifier is the latest contributing artifact, not a full injury history.
+
+Eight local RulePackDefs provide r_logentry grammar: six damaging phenomena, Frost status and lethal
+Vampire recovery. Positive damage gets one BattleLogEntry_DamageTaken per victim, associated through
+DamageResult.AssociateWithLog; Frost/recovery use BattleLogEntry_Event. Existing native source/log
+fields persist normally. Zero/absorbed damage creates no false injury entry. Attribution and grammar
+errors are caught independently from mechanics with bounded logging; battle presentation preserves
+Rand state. Native DamageDef/worker identity remains intact for compatibility with other health mods.
+
+`Hediff_ArtifactRegenerating` and `GM21_ArtifactRegenerating` are the only new gameplay save object/Def.
+Immediate healing remains min(8, damage*0.35); regeneration is min(6, the SAME damage*0.20). Qualifying
+actual damage is the bonus stab for a valid primary, or the triggering packet when primary already
+went down/died. Regen uses TickInterval(delta), with a bounded six-pulse scheduler over 60 ticks and
+10-tick cadence. Each due pulse allocates remainingBudget / remainingPulseCount, commits that allowance
+before callbacks, then reselects highest-severity eligible injury. Unused allowance expires. Only
+Hediff_Injury with injuryProps, non-chronic, positive finite severity and CanHealNaturally qualifies;
+scars, missing parts, diseases and arbitrary Hediffs cannot be healed. Native Heal callbacks remain.
+
+Repeated application finds the existing local Hediff, refreshes 60 ticks and resets pulse phase to ten;
+remaining budget becomes max(oldRemaining,new), capped six. TryMergeWith is a second stacking barrier.
+Saved keys: gm21RegenTicks, gm21RegenPulse, gm21RegenBudget. Load clamps invalid/out-of-range data.
+Notify_PawnDied cancels remaining budget and duration. No artifact/project schema or save key changed.
+The supplied RegenNanites archive was inspected for context only; none of its broad condition or
+missing-part healing was adopted. Disable it for isolated GM21 healing measurements.
+
+ArtifactFeedback records at most sixteen recipient positions during mechanics, then emits feedback
+after dispatch. All fallible rendering/audio runs under a catch and Rand PushState/PopState finally.
+No custom textures, shaders, weather events, explosions, fire workers or camera effects are invoked.
+Known unconditionally declared Core FleckDefOf fields: LineEMP, LightningGlow, ExplosionFlash,
+FireGlow, HeatGlow, AirPuff, DustPuff, ShotFlash, MetaPuff, Heart and HealingCross. FleckCreationData
+uses instanceColor, scale/exactScale, short solidTimeOverride and (for moving particles) velocity and
+airTimeLeft. No flecks or transient text motes are persisted by this mod. Actual Core asset rendering
+was not available on this host; DefOf/field/API validation is not a visual pass.
+
+| Effect | Composition | SoundDefOf |
+| --- | --- | --- |
+| Chain | Bent blue LineEMP links in actual order, LightningGlow impacts | EnergyShield_AbsorbDamage |
+| Smite | Gold vertical-looking beam, ExplosionFlash, radius-five segmented ring | Thunder_OnMap (volume .45) |
+| Flame | Orange outward FireGlow, HeatGlow center, victim flashes | HissJet |
+| Frost | Cyan segmented ring, outward AirPuff mist, victim flashes | EnergyShield_Reset |
+| Gravity | Purple inward DustPuff, small compression ring/ShotFlash | Pawn_Melee_Punch_HitBuilding_Generic |
+| Vampire | Eight crimson MetaPuffs converging on wielder, Heart and HealingCross | Power_OnSmall |
+| Spatial | Narrow violet LineEMP slash + ShotFlash at primary/secondary | Execute_Cut |
+
+One phenomenon-name text mote and one positional sound per proc. Other cues use volume .65.
+Tier changes visual intensity modestly (1 + .12*(scale-1)); Magical remains visible. Rings/radial
+patterns have sixteen segments/particles; Flame/Frost/Smite victim feedback caps at sixteen, Chain
+at four and Spatial at two. Largest composition is 48 flecks plus one text mote. Regen uses at most
+six local recovery flecks. There is no global per-tick scan, new ordinary-item ticker, maintained
+effecter or persistent aura. The existing rare-manifestation Smoke placeholder/Manifest hook is
+unchanged; no unverified silhouette asset was invented. DEV VFX-only preview has no mechanical calls.
+
+The 587-check suite is 203 checks above the surgical baseline. It covers all tier/description
+combinations, absence of creation spoilers, shared probability, effective values, regen invalid
+inputs/caps, eligibility/ordering, batched intervals, expiry, refresh/merge, death cancellation,
+Scribe write fields and reconstructed scheduler continuity, actual native wound labels, merged-wound
+attribution, battle grammar/API and feedback safety/reference IL. Healing uses a controlled native
+virtual-method fixture, not a running pawn health engine. Native Scribe readback, actual BattleLog
+grammar/UI rendering and VFX/audio quality remain environment/runtime gates. Existing suites retain
+57/74/295 offline passes, 26 real progression passes, transpiler pass and 168 runtime-target passes;
+one target dependency failure plus two live Harmony suite aborts remain host limitations.
+
+Focused owner acceptance: [artifact feedback checklist](../Crafting21FeedbackTest.md). Test forced
+previews first, then natural procs with Dev Mode off. Do not call visual recognition verified until
+the owner can identify a proc during ordinary combat.

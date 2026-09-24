@@ -79,7 +79,7 @@ seed, attempt count and cooldown persist on the actual item.
 | Flame Wave | Controlled burn injuries within three cells; creates no fire |
 | Frost Nova | Within four cells, movement ×0.6 for 300 ticks; does not stack |
 | Gravity Crush | Extra blunt damage and a 90-tick stun if the target remains standing |
-| Vampiric Strike | Heals 35% of actual bonus stab damage; if the triggering hit already killed/downed the primary, uses that hit’s actual damage instead. Maximum eight severity total |
+| Vampiric Strike | Heals 35% of actual bonus stab damage; if the triggering hit already killed/downed the primary, uses that hit’s actual damage instead. Maximum eight immediate severity, plus 20% of the same actual damage (maximum six more) over a 60-tick Regenerating burst |
 | Spatial Slash | High-penetration cut plus at most one nearby secondary hostile; no teleportation |
 
 Targets must be standing, alive, hostile and on the wielder's map. Colony pawns and colony
@@ -103,6 +103,25 @@ the sum of later packets. Zero, negative and nonfinite damage provide no healing
 injuries and dead wielders cannot be healed. A still-valid primary retains the bonus-strike rule,
 even if that bonus strike itself downs/kills it.
 Apparel retains craftsmanship metadata but receives no offensive phenomenon in this version.
+
+Selected-item inspection shows craftsmanship, phenomenon, actual manifestation chance and
+cooldown. Tooltips and the info card add mechanical descriptions using shared gameplay values and
+effective tier-scaled damage. Owned unusual items retain their established labels and show their
+actual combat chance; this does not reveal their creation probabilities or origin.
+
+Every proc has short visual feedback, a local sound and a brief phenomenon-name callout. Health
+uses native wound names with a phenomenon qualifier, such as `bruise (Smite)`, and links to a named
+battle-log entry. Existing injury/armor behavior is retained. When injuries merge, the qualifier
+represents the latest artifact contribution; the battle log retains separate damage events.
+
+Regenerating is one local 60-tick status, normally healing in six pulses at ten-tick intervals.
+It uses 20% of the same actual damage as the immediate heal, capped at six additional severity
+TOTAL. Both heals prioritize highest-severity ordinary nonpermanent injuries. No scars, diseases,
+missing parts or other conditions are repaired. Unused pulse allowances expire. Reapplication
+refreshes the duration and keeps the larger remaining budget, capped at six; it does not add budgets.
+Remaining duration, pulse phase and budget are saved. For damage 20, the maxima are seven immediate
+plus four over time; for damage 100, eight immediate plus six over time. Actual healing is limited
+by available eligible wounds. Death cancels the regeneration state.
 
 ## Saves and compatibility
 
@@ -131,12 +150,16 @@ DEV workstation menus can force the next permitted tier/phenomenon, inspect comm
 finish work, or destroy a project without refund. Finish-work still requires a real Crafting
 Grandmaster to complete/deliver it. Test overrides are session-only and consumed on commitment.
 DEV artifact controls inspect state, set a compatible phenomenon and manually trigger it using an
-equipped weapon and a hostile target. None of these controls appear in normal gameplay.
+equipped weapon and a hostile target. `DEV: Phenomenon VFX only` previews the current effect at
+a selected cell without damage, healing or changes to counters/cooldown. None of these controls
+appear in normal gameplay.
 
 The owner runtime-tested the original Magical foundation in a heavily modded environment:
 1,600 scanned recipes / 217 supported; hauling, catalyst consumption, active crafting save → quit
 → reload → resume → completion; Legendary plasteel equipment with separate Magical metadata.
-That validates the base, not the new combat and progression additions.
+The owner subsequently confirmed all seven phenomena execute, Vampiric Strike works, forced
+results work and owned artifact identities display. The new presentation and regeneration pass
+has not yet been judged in game.
 
 The expanded headless suite uses real RimWorld/Unity/Harmony assemblies for probability, policy,
 schema, XML, API/IL and Scribe save-writing checks. Steamworks is absent from the supplied set,
@@ -144,19 +167,21 @@ blocking native implicit-work evaluation and Scribe readback initialization. Liv
 cannot execute on this host's .NET 8 runtime with the supplied MonoMod build. No replacement
 runtime stubs are used to claim feature correctness.
 
-The surgical repair suite now reports **384 passes, zero failures and two dependency-blocked
-probes**. This includes executable pre/post-hit gate, deterministic roll/cooldown, invalid damage,
-lethal/downing healing and direct finalizer checks, plus API/IL and recipe XML checks. Map combat,
-loaded Core Def resolution and full reload/delivery remain untested here. Follow the ordered
-[owner torture-test checklist](Crafting21TortureTest.md) before release. The direct DEV trigger
-still tests a standing hostile using real bonus damage; it does not simulate a lethal weapon hit.
+The current suite reports **587 passes, zero failures and two dependency-blocked probes**.
+It includes prior surgical checks, description formatting, regeneration budgeting/scheduling,
+injury eligibility/order, native label/merged-wound attribution, API/IL and XML checks. Scribe
+save-writing passes; a reconstructed-state scheduler test is not native load verification.
+Follow the short [artifact feedback checklist](Crafting21FeedbackTest.md) for this pass. The
+[full torture checklist](Crafting21TortureTest.md) remains available for broader regressions.
 
-Cosmetics, apparel powers, proof-item research gates, and custom combat adapters are deferred.
-Balance is provisional. Final art, sound and elaborate visuals are intentionally absent.
+Balance, apparel powers, proof-item research gates and custom combat adapters remain deferred.
+The seven effects use existing vanilla visual/audio assets; final custom art is not required.
+Visual quality and audio suitability require owner judgment at normal combat zoom/speed.
 
 ## Removal
 
-Remove all transcendent workstations and catalysts across maps and holders before preparing a
+Let active Regenerating effects expire on all affected pawns. Remove all transcendent workstations
+and catalysts across maps and holders before preparing a
 save for uninstall. Destroying active benches loses their projects. Skill cleanup does not remove
 crafting objects or artifact data. Finished equipment keeps its original Def when this mod is
 removed; its separate metadata disappears. Keep a backup for the untested full uninstall cycle.
