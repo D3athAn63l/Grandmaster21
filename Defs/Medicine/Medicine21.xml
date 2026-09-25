@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+  <!--
+    Medicine 21 adds NO research, items, buildings, implants or recipes. These three JobDefs are
+    the only Defs it ships: the Grandmaster's personal medical interventions, ordered from the
+    Grandmaster Medicine gizmo. There is deliberately no WorkGiver: ordinary doctors never
+    receive these jobs, and a Grandmaster only performs them when the player orders it.
+  -->
+
+  <JobDef>
+    <defName>GM21_MedicineCure</defName>
+    <driverClass>Grandmaster21.JobDriver_Gm21Cure</driverClass>
+    <reportString>performing a Grandmaster cure on TargetA.</reportString>
+    <casualInterruptible>false</casualInterruptible>
+    <suspendable>false</suspendable>
+    <allowOpportunisticPrefix>false</allowOpportunisticPrefix>
+  </JobDef>
+
+  <JobDef>
+    <defName>GM21_MedicineReconstruct</defName>
+    <driverClass>Grandmaster21.JobDriver_Gm21Reconstruct</driverClass>
+    <reportString>reconstructing anatomy on TargetA.</reportString>
+    <casualInterruptible>false</casualInterruptible>
+    <suspendable>false</suspendable>
+    <allowOpportunisticPrefix>false</allowOpportunisticPrefix>
+  </JobDef>
+
+  <JobDef>
+    <defName>GM21_MedicineResuscitate</defName>
+    <driverClass>Grandmaster21.JobDriver_Gm21Resuscitate</driverClass>
+    <reportString>resuscitating TargetA.</reportString>
+    <casualInterruptible>false</casualInterruptible>
+    <suspendable>false</suspendable>
+    <allowOpportunisticPrefix>false</allowOpportunisticPrefix>
+  </JobDef>
+</Defs>

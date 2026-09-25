@@ -2,7 +2,7 @@
 <ModMetaData>
   <packageId>ared.grandmaster21</packageId>
   <name>Grandmaster 21</name>
-  <modVersion>0.11.0 Beta</modVersion>
+  <modVersion>0.12.0 Beta</modVersion>
   <author>aRed</author>
   <supportedVersions>
     <li>1.6</li>
@@ -60,9 +60,17 @@ The result is always vanilla Legendary equipment in its selected material. Its s
 
 This is an experimental foundation: catalysts are obtained through Development mode's Spawn thing menu. The feature builds against real RimWorld 1.6 DLLs and has headless checks, but full save/reload and gameplay have not yet been verified in RimWorld.
 
+MEDICINE 21 - GRANDMASTER PHYSICIAN (EXPERIMENTAL)
+
+The miracle is the physician, not the medicine: no research, items, machines or implants are added. A Medicine Grandmaster tends with exact, deterministic quality instead of a random roll, and extracts a meaningfully higher tier from any medicine - discovered from the loaded game, so modded medicine works too (vanilla: herbal 100%, industrial 130%, glitterworld 160%). A condition they actually tend receives Grandmaster Treatment: that specific injury heals faster, or immunity to that specific disease develops faster, while the treatment lasts. Their surgery never takes a failure outcome, though every requirement of the operation still applies.
+
+A Grandmaster Medicine command (left-click to choose, right-click to act) adds three personal interventions, each performed as a medical job: Cure one pathological condition ordinary medicine cannot properly address (diseases, chronic illness, food poisoning - never wounds, missing parts, implants or unknown states), Reconstruct one missing natural body part that has not been replaced, and Resuscitate a medically viable pawn within four hours of death.
+
+Medicine 21 builds against the real RimWorld 1.6 assemblies and has headless checks, but has NOT yet been verified in a running game. Tuning numbers are provisional.
+
 Other skills do not have Level 21 abilities yet.
 
-Before removing this mod, remove all magical workstations and catalysts from your save, then use "Prepare Save for Uninstall" at the bottom of Mod Settings. That action reduces every level 21 skill to 20 and clears stored Grandmaster progression; it does not remove crafting objects or artifact metadata. Destroying active workstations loses their projects. Then save, exit, disable the mod and reload the cleaned save. Keep a backup: the full remove-and-reload sequence has not yet been verified in gameplay testing.
+Before removing this mod, remove all magical workstations and catalysts from your save, then use "Prepare Save for Uninstall" at the bottom of Mod Settings. That action reduces every level 21 skill to 20, clears stored Grandmaster progression, and removes Medicine 21 treatments, modes and interventions in progress; it does not remove crafting objects or artifact metadata. Destroying active workstations loses their projects. Then save, exit, disable the mod and reload the cleaned save. Keep a backup: the full remove-and-reload sequence has not yet been verified in gameplay testing.
 
 Incompatible with mods that also remove or replace the skill cap, such as unlimited-skill mods.</description>
 </ModMetaData>
