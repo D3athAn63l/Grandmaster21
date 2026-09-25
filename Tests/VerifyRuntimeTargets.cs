@@ -531,6 +531,21 @@ static class VerifyRuntimeTargets
            typeof(Dialog_MessageBox).GetMethods().Any(m => m.Name == "CreateConfirmation" && m.GetParameters().Length >= 3
                && m.GetParameters()[0].ParameterType == typeof(TaggedString) && m.GetParameters()[1].ParameterType == typeof(Action)
                && m.GetParameters()[2].ParameterType == typeof(bool)));
+        Console.WriteLine("\n=== Medicine 21: decay viability and resuscitation shock ===");
+        Ok("CompRottable.RotProgress (float) and Stage resolve",
+           AccessTools.PropertyGetter(typeof(CompRottable), "RotProgress") != null
+           && AccessTools.PropertyGetter(typeof(CompRottable), "RotProgress").ReturnType == typeof(float)
+           && AccessTools.PropertyGetter(typeof(CompRottable), "Stage") != null);
+        Ok("GenTemperature.RotRateAtTemperature(float) resolves",
+           AccessTools.Method(typeof(GenTemperature), "RotRateAtTemperature", new[] { typeof(float) }) != null);
+        Ok("HediffComp_Disappears.SetDuration(int) and ticksToDisappear resolve",
+           AccessTools.Method(typeof(HediffComp_Disappears), "SetDuration", new[] { typeof(int) }) != null
+           && typeof(HediffComp_Disappears).GetField("ticksToDisappear") != null);
+        foreach (string f in new[] { "disappearsAfterTicks", "showRemainingTime", "messageOnDisappear" })
+            Ok("  HediffCompProperties_Disappears." + f + " exists (shipped shock XML)", typeof(HediffCompProperties_Disappears).GetField(f) != null);
+        Ok("PawnCapacitiesHandler.CanBeAwake resolves", AccessTools.PropertyGetter(typeof(PawnCapacitiesHandler), "CanBeAwake") != null);
+        Ok("HediffSet.GetFirstHediffOfDef(HediffDef, bool) resolves",
+           AccessTools.Method(typeof(HediffSet), "GetFirstHediffOfDef") != null);
         Ok("Command.ProcessInput(Event) is virtual (right-click activation)",
            AccessTools.Method(typeof(Command), "ProcessInput") != null
            && AccessTools.Method(typeof(Command), "ProcessInput").IsVirtual);

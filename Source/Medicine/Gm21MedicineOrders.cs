@@ -214,7 +214,7 @@ namespace Grandmaster21
 
             // Hostility is not a refusal -- the Grandmaster may save an enemy -- but the player is
             // told plainly what they are about to do.
-            Gm21ResuscitationFacts facts = Gm21Resuscitation.Gather(corpse, Find.TickManager.TicksGame);
+            Gm21ResuscitationFacts facts = Gm21Resuscitation.Gather(corpse, false);
             if (facts.hostile)
             {
                 Find.WindowStack.Add(Dialog_MessageBox.CreateConfirmation(

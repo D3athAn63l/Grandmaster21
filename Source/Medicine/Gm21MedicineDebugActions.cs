@@ -56,7 +56,7 @@ namespace Grandmaster21
                         + "\n  base work ticks: cure=" + Gm21Medicine.CureWorkTicks
                         + " reconstruct=" + Gm21Medicine.ReconstructWorkTicks
                         + " resuscitate=" + Gm21Medicine.ResuscitateWorkTicks
-                        + " (divided by MedicalTendSpeed, clamped " + Gm21Medicine.MinWorkSpeed + ".." + Gm21Medicine.MaxWorkSpeed + ")"
+                        + " (divided by MedicalTendSpeed, at least " + Gm21Medicine.MinWorkSpeed + ", no upper clamp; floor " + Gm21Medicine.MinWorkTicks + " ticks)"
                         + "\n  flags: tend=" + Gm21Medicine.TendEnabled + " propagation=" + Gm21Medicine.TendPropagationEnabled
                         + " treatment=" + Gm21Medicine.TreatmentEnabled
                         + " recovery=" + Gm21Medicine.RecoveryEnabled + " immunity=" + Gm21Medicine.ImmunityEnabled
@@ -117,17 +117,25 @@ namespace Grandmaster21
             {
                 Corpse corpse = t as Corpse;
                 if (corpse == null) continue;
-                int now = Find.TickManager.TicksGame;
-                Gm21ResuscitationFacts f = Gm21Resuscitation.Gather(corpse, now);
+                Gm21ResuscitationFacts f = Gm21Resuscitation.Gather(corpse, false);
                 Gm21ResuscitationVerdict v = Gm21Resuscitation.Decide(f);
                 StringBuilder sb = new StringBuilder();
                 sb.AppendLine("[Grandmaster 21] Resuscitation " + corpse.LabelShortCap + ": " + v
                               + (v == Gm21ResuscitationVerdict.Viable ? "" : " (" + Gm21Resuscitation.ReasonFor(v) + ")"));
                 sb.AppendLine("  flesh=" + f.isFlesh + " supernatural=" + f.supernatural + " hostile=" + f.hostile
                               + " brainDestroyed=" + f.brainDestroyed + " vitalRebuilds=" + f.vitalRebuilds
-                              + " vitalUnrebuildable=" + f.vitalUnrebuildable
-                              + " rot=" + f.rotStage + " sinceDeath=" + f.ticksSinceDeath.ToStringTicksToPeriod()
-                              + " (" + f.ticksSinceDeath + " / window " + Gm21Medicine.ResuscitationWindowTicks + " ticks)");
+                              + " vitalUnrebuildable=" + f.vitalUnrebuildable);
+                float rate = GenTemperature.RotRateAtTemperature(corpse.AmbientTemperature);
+                sb.AppendLine("  rot stage=" + f.rotStage + "  RotProgress=" + f.rotProgress.ToString("0")
+                              + "  GM viability threshold=" + Gm21Medicine.MaxResuscitationRotProgress.ToString("0")
+                              + "  currently viable: " + (v == Gm21ResuscitationVerdict.Viable ? "yes" : "no")
+                              + "  (rot rate here " + rate.ToString("0.##") + "/tick at "
+                              + corpse.AmbientTemperature.ToStringTemperature()
+                              + (rate > 0f && Gm21Resuscitation.WithinDecayLimit(f.rotProgress)
+                                  ? "; recoverable for about "
+                                    + ((int)((Gm21Medicine.MaxResuscitationRotProgress - f.rotProgress) / rate)).ToStringTicksToPeriod()
+                                  : rate <= 0f ? "; not decaying" : "")
+                              + "; time since death " + corpse.Age.ToStringTicksToPeriod() + ", which does not decide)");
                 Pawn inner = corpse.InnerPawn;
                 if (inner != null && inner.health != null && f.available)
                 {
@@ -162,17 +170,19 @@ namespace Grandmaster21
             }
         }
 
-        [DebugAction(Category, "Age corpse past resuscitation window",
+        [DebugAction(Category, "Decay corpse past resuscitation threshold",
             actionType = DebugActionType.ToolMap, allowedGameStates = AllowedGameStates.PlayingOnMap)]
-        private static void AgeCorpse()
+        private static void DecayCorpse()
         {
             foreach (Thing t in Find.CurrentMap.thingGrid.ThingsAt(UI.MouseCell()))
             {
                 Corpse corpse = t as Corpse;
-                if (corpse == null) continue;
-                corpse.Age = Gm21Medicine.ResuscitationWindowTicks + 1;
-                Messages.Message(corpse.LabelShortCap + " aged to " + corpse.Age + " ticks", corpse,
-                    MessageTypeDefOf.NeutralEvent, false);
+                CompRottable rot = corpse == null ? null : corpse.GetComp<CompRottable>();
+                if (rot == null) continue;
+                rot.RotProgress = Gm21Medicine.MaxResuscitationRotProgress + 1f;
+                Messages.Message(corpse.LabelShortCap + " RotProgress set to " + rot.RotProgress.ToString("0")
+                                 + " (threshold " + Gm21Medicine.MaxResuscitationRotProgress.ToString("0") + ")",
+                    corpse, MessageTypeDefOf.NeutralEvent, false);
             }
         }
 

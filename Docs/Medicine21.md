@@ -1,7 +1,7 @@
 # Medicine 21 — Grandmaster Physician
 
-> **Experimental vertical slice, new in 0.12.0 Beta (second design pass). Not yet verified in a
-> running game.**
+> **Experimental vertical slice, new in 0.12.0 Beta (second design pass plus the final pre-runtime
+> pass). Not yet verified in a running game.**
 > It builds against the real RimWorld 1.6, Unity and Harmony assemblies. Its logic is checked
 > headlessly, including against every vanilla Def in all six content packs. No gameplay session has
 > exercised it. Every tuning number below is **provisional**.
@@ -10,7 +10,8 @@
 
 The extraordinary capability belongs to the **pawn**. Medicine 21 adds no research, items,
 buildings, implants, techprints or special consumables. The only Defs it ships are three JobDefs for
-the Grandmaster's personal interventions, which use ordinary medicine and the Grandmaster's time. A Medicine Grandmaster is a pawn with **stored** Medicine
+the Grandmaster's personal interventions, which use ordinary medicine and the Grandmaster's time, and
+one HediffDef, the shock a resuscitated pawn wakes from. A Medicine Grandmaster is a pawn with **stored** Medicine
 level 21, read through the same `Gm21.IsGrandmaster` rule as every other capstone. Positive aptitude
 cannot create one, and negative aptitude cannot remove one. A Grandmaster who cannot currently use
 their hands or is unconscious falls back to vanilla medicine, as Shooting 21 does.
@@ -201,9 +202,16 @@ stat vanilla already uses to rate medicine. All numbers are provisional and live
 meets 3.0 — and any modded medicine takes part by its own loaded potency. Potency decides **how much**
 medicine is used, never how well the intervention works.
 
-* **Selection** follows vanilla's `HealthAIUtility.FindBestMedicine` preference: best allowed
-  medicine first, the Grandmaster's inventory before the map at equal potency, nearer before
-  farther. Forbidden medicine is never touched; at most 8 map stacks are gathered for one order.
+* **Carried medicine first.** Potency changes only the quantity, so better medicine elsewhere is no
+  reason to leave the patient. If what the Grandmaster already carries meets the budget, the whole
+  plan comes from the inventory and the map is not even searched — three carried industrial
+  medicine resuscitate without a trip past the glitterworld in the next room. Only when the carried
+  medicine falls short is **all** of it used and the rest gathered from the map
+  (`Gm21MedicineSupplies.PlanInventoryFirst`).
+* **Within** the inventory, and within the map, vanilla's `HealthAIUtility.FindBestMedicine` order
+  applies: best allowed medicine first, nearer before farther, then by thing ID, so the plan is
+  deterministic. Forbidden medicine is never touched; at most 8 map stacks are gathered for one
+  order.
 * **Medical care is respected** for a living patient: their own setting, or — for a patient the
   colony has no setting for yet, such as a downed raider — vanilla's default for their group from the
   Medical Defaults dialog. Lower it to make the Grandmaster use cheaper medicine.
@@ -245,9 +253,11 @@ cataract operation 4,500 work):
 | Reconstruct | 6,000 | 2.4 h | 1.5 h |
 | Resuscitate | 7,500 | 3 h | ~1.9 h |
 
-`ticks = base ÷ MedicalTendSpeed`, exactly, for every speed from 0.1 to 10. Only absurd modded values
-are clamped into that band (0 or negative → ×0.1, 1000 → ×10); a non-finite speed counts as 1; and no
-intervention completes in under 60 ticks. The command's tooltip shows the cost for that Grandmaster.
+`ticks = base ÷ MedicalTendSpeed`, exactly, with **no upper clamp**: speed 10 is base ÷ 10, speed
+25 is base ÷ 25, and every point of tend speed the player invests keeps paying off until the work
+reaches the **60-tick floor** (`Gm21Medicine.MinWorkTicks`), the only effective limit. Safety only at
+the bottom: a zero, negative or tiny speed counts as 0.1 (work ×10, never stalled or inverted), and a
+non-finite speed counts as 1. The command's tooltip shows the cost for that Grandmaster.
 
 #### Self-intervention
 
@@ -334,13 +344,41 @@ when the work finishes, the job fails cleanly and changes nothing.
 | not a mechanoid, Anomaly entity, mutant or unnatural corpse | "This is not a medical death." |
 | consciousness-source anatomy not entirely destroyed | **"Brain destroyed."** — the hard boundary |
 | any other entirely destroyed vital anatomy can be rebuilt minimally and safely | "Vital anatomy destroyed beyond what a minimal reconstruction can safely rebuild." |
-| body still Fresh (CompRottable) | **"Body has deteriorated beyond recovery."** |
-| death no more than the window before the work began | **"Too much time has passed."** |
+| vanilla rot stage still Fresh | **"The body is rotting. Nothing recoverable is left."** |
+| decay no more than the Grandmaster threshold | **"The body has deteriorated beyond recoverable limits."** |
 
-Structural reasons are reported before rot and time. **Window: four in-game hours**
-(`Gm21Medicine.ResuscitationWindowTicks` = 10,000 ticks), measured to the moment the Grandmaster
-**begins** the work, so a resuscitation started in time is not failed by the clock while it is being
-performed.
+Structural reasons are reported before decay.
+
+### Biological decay, not a clock
+
+The Grandmaster does not beat a clock; they beat death while enough of the body remains. Viability
+is the corpse's own **`CompRottable.RotProgress`** — vanilla's decay counter — at most
+**`Gm21Medicine.MaxResuscitationRotProgress` = 10,000** (provisional). No GM21 timer exists, and time
+since death is not consulted.
+
+What vanilla does with that counter (verified in `GenTemperature.RotRateAtTemperature`): a corpse
+gains 1 RotProgress per tick at 10 °C and above — heat never makes it faster — a linear fraction
+between 0 and 10 °C, and nothing below 0 °C. Toxic fallout adds rot to unroofed corpses.
+
+| Where the body is | Recoverable for |
+|---|---|
+| Ordinary temperature (≥ 10 °C) | about **4 in-game hours** |
+| Refrigerated at 5 °C | about 8 hours |
+| Frozen (below 0 °C) | as long as it stays frozen — a chronologically old corpse can be medically fresh |
+
+Vanilla's own "Fresh" stage lasts to 150,000 (2.5 days); the Grandmaster threshold is far stricter,
+and a vanilla Rotting or Dessicated corpse is always refused. A corpse with no rot comp (a modded
+race) has decay that cannot be judged and is refused.
+
+**When decay is judged:** when the order is given, and again when the Grandmaster reaches the body
+and **begins the timed work** — after fetching medicine and walking there. A body that crosses the
+threshold on the way is refused at that moment, and nothing is consumed. Once the work has begun on a
+recoverable body the procedure is **committed** (the driver's saved `gm21WorkStartedTick`): decay
+during the work never fails it, and a reload mid-work stays committed.
+
+**Where:** the Grandmaster works on the corpse **wherever it lies** — on the battlefield, in the
+freezer, in a hospital. No hauling, no bed, no room requirement (asserted: no carry or bed calls in
+the Medicine jobs).
 
 ### The brain boundary
 
@@ -355,8 +393,9 @@ vanilla confirmation box: *"{pawn} will remain hostile after resuscitation … R
 The revival is vanilla's own `TryResurrect` — the path the resurrector mech serum takes on an enemy
 corpse — so the pawn keeps its faction, and on a map vanilla gives a revived hostile pawn a fresh
 assault lord. No recruitment, pacification or faction change happens (asserted on the IL: no
-`noLord`, no `SetFaction`, nothing recruiting). The restored wounds usually leave them downed;
-capturing them is ordinary RimWorld.
+`noLord`, no `SetFaction`, nothing recruiting). **Resuscitation Shock** (below) leaves them
+unconscious for six hours: capture, rescue or ignore them; when it passes, their faction's behaviour
+resumes.
 
 ### Minimum viable vital reconstruction
 
@@ -441,10 +480,31 @@ own pain-category roll):
    restoring it would be fatal is the one the Grandmaster had to close; it is counted in the dev log.
 5. Apply the scars.
 6. Close anything still open, fresh stumps included.
+7. Apply **Grandmaster Resuscitation Shock**.
 
 If vanilla refuses the revival, the rebuilt parts are put back as destroyed. If vanilla's own
 last-resort branch (delete every hediff when the body would still be dead) ever fires anyway, a
 warning is logged once rather than hidden.
+
+### Grandmaster Resuscitation Shock
+
+A revived pawn is alive and stabilised, but does not get up and walk away. Every successful
+Grandmaster Resuscitation ends with **`GM21_ResuscitationShock`**, a GM21 HediffDef:
+
+* **Mechanism — vanilla psychic coma's.** One stage with a Consciousness `setMax` of **0.1**, and a
+  `HediffComp_Disappears` timer. Vanilla's awake line is Consciousness ≥ 0.3, so the pawn is
+  **unconscious and downed**: cannot move, manipulate, work or fight; can be carried, rescued or
+  captured, and rests in bed. Lethal Consciousness means a level of 0 (vanilla sets no higher death
+  line), and vanilla applies capacity modifiers only to a level already above 0, with `setMax` as a
+  `min()` ceiling — so the shock lowers a living level to 0.1 and **can never be the cause of death**
+  (asserted on vanilla's IL). The code still asks vanilla's `WouldDieAfterAddingHediff` first.
+* **Duration: exactly six in-game hours** (`Gm21Medicine.ResuscitationShockTicks` = 15,000 ticks;
+  the code sets it exactly). Not scaled by medicine, scars, death, skill, temperature or faction. A
+  vanilla message says when the pawn recovers; the health tab shows the time left.
+* **Not** vanilla's resurrection sickness and not `TryResurrectWithSideEffects`: no psychosis,
+  dementia or blindness, no random range. Not curable by items.
+* Applied last: alive → scars → wounds closed → shock → downed → shock expires → normal behaviour.
+* Hostile pawns stay hostile throughout; the shock only keeps them down.
 
 ### Engine cleanup — accepted limitation
 
@@ -461,11 +521,13 @@ They are different tools; the serum is not nerfed or touched.
 | | Grandmaster Resuscitation | Resurrector mech serum |
 |---|---|---|
 | Needs | a practising Medicine 21 pawn, personally working on the body | the item |
-| Cost | 3.0 medicine potency and ~2–3 hours of the Grandmaster's work | the serum; no one's time |
-| Window | four hours from death to the start of the work | any unrotted corpse, vanilla rules |
+| Cost | 3.0 of ordinary medicine potency and ~2–3 hours of the Grandmaster's work | the serum; no one's time |
+| Freshness | biological decay under a strict threshold; refrigeration and freezing preserve it | any unrotted corpse, vanilla rules |
 | Brain destroyed | impossible | vanilla rules |
+| Vital organs | only what life requires is rebuilt | vanilla rules |
 | Missing limbs | stay missing | vanilla restores them |
-| Lasting cost | up to three permanent scars from the death trauma | vanilla's resurrection sickness and rot-scaled dementia / blindness / psychosis lottery |
+| Afterwards | six hours of deterministic Resuscitation Shock | vanilla's resurrection sickness |
+| Lasting cost | up to three permanent scars from the death trauma | vanilla's rot-scaled dementia / blindness / psychosis lottery |
 
 ## 9. Save and uninstall safety
 
@@ -476,6 +538,7 @@ They are different tools; the serum is not nerfed or touched.
 | Intervention in progress | the pawn's job: a `GM21_Medicine*` JobDef, `Job.source` → the Hediff; the medicine plan in vanilla's `targetQueueB`/`countQueue`; the driver's `gm21WorkStartedTick`, `gm21HeldPatient`, `pathEndMode` | only while the job runs |
 | Collected medicine | ordinary medicine in the Grandmaster's inventory | vanilla items |
 | Death-trauma scars | ordinary vanilla permanent injuries | vanilla state; GM21 adds nothing to them |
+| Resuscitation Shock | an ordinary hediff of the GM21 def `GM21_ResuscitationShock`, remaining time in vanilla's `ticksToDisappear` | while the pawn is in shock |
 
 Both stores are `ConditionalWeakTable`s keyed on the owning object, the same architecture as
 `GrandmasterStore`. State follows the condition through caravans, world pawns, map transitions and
@@ -486,6 +549,8 @@ included):
 
 * removes every Grandmaster Treatment;
 * removes the Medicine mode;
+* removes **Resuscitation Shock** — the pawn simply wakes — so no GM21 HediffDef is left for a
+  mod-less load to trip over;
 * ends any intervention in progress or queued, so no GM21 JobDef is left in the save. Medicine the
   Grandmaster had already collected stays in their inventory as ordinary items.
 
@@ -520,8 +585,14 @@ The brief's hard rules, and how they are met:
   bypass the corresponding feature.
 * A modded failure outcome that is neither flagged `failure` nor derived from the vanilla failure
   classes, listed *before* success, would still be evaluated for a Grandmaster.
-* A mod whose lethal capacity uses its own tags is not covered by the vital-rebuild plan.
-  Vanilla's revival safety net would then fire, and it is logged.
+* **Exotic custom lethal capacities.** Vanilla's `ShouldBeDeadFromRequiredCapacity` judges every
+  loaded `PawnCapacityDef` marked lethal. The vital-rebuild plan mirrors the five vanilla lethal
+  capacities only; a race mod that adds its own lethal capacity (or reads its own tags) is not
+  understood by it. Vanilla's last-resort revival branch would then restore the body wholesale, and
+  that is detected and logged as a warning. Universal modded-race support is **not** claimed; no
+  pre-revival guard for unknown capacities was added in this pass, because a dead pawn's capacities
+  cannot be evaluated reliably without mutating the corpse.
+* A modded flesh corpse without `CompRottable` has decay that cannot be judged and is refused.
 * A mod that also transpiles `DoTend`'s `Hediff.Tended` call may leave zero or two call sites; the
   propagation group then disables itself (tending stays exact, the override just sees the ceiling).
 * Medical overhauls that replace tending or revival are untested.
@@ -551,10 +622,12 @@ Category **"Grandmaster 21 - Medicine"**:
 * **Report pawn medicine state:** Grandmaster status, mode, tend speed and this pawn's intervention
   work times, self-Reconstruct eligibility, the medicine potency they could gather, every hediff
   with its regimen and its Cure/Reconstruct verdict, plus the candidate counts.
-* **Report corpse resuscitation viability:** verdict, reason and every fact behind it, including
-  time since death against the window, the planned vital rebuild, the battle log's death blow, and
-  the full trauma ranking with the scars it would produce.
-* **Age corpse past resuscitation window:** for the rejection test.
+* **Report corpse resuscitation viability:** verdict, reason and every fact behind it: rot stage,
+  RotProgress, the GM threshold, *currently viable yes/no*, the local rot rate and how long the body
+  stays recoverable at it (time since death is shown but does not decide), the planned vital
+  rebuild, the battle log's death blow, and the full trauma ranking with the scars it would produce.
+* **Decay corpse past resuscitation threshold:** sets RotProgress just over the threshold, for the
+  rejection test.
 * **Report surgery outcome defs:** per def, how many failure outcomes a Grandmaster skips.
 
 All reports are event-based; nothing logs per tick.
@@ -574,8 +647,8 @@ mod's actual patches with `Gm21MedicinePatches.Apply` and then executes the real
 shims (never shipped) cover what needs a live game: icon loading, live-pawn state re-evaluation, and
 Steamworks for `ParseHelper` (`tools/stubs/SteamworksShim.cs`).
 
-**Results in this branch: 279 PASS, 0 FAIL, 0 BLOCKED** with the vanilla `Data/` directory given
-(258 without it). Highlights:
+**Results in this branch: 325 PASS, 0 FAIL, 0 BLOCKED** with the vanilla `Data/` directory given
+(302 without it). Highlights:
 
 * 5,000 real tends per target at 100/130/160/70%: every one exact. Ordinary tends keep vanilla's
   ±25% spread.
@@ -594,8 +667,25 @@ Steamworks for `ParseHelper` (`tools/stubs/SteamworksShim.cs`).
   `ThingOwner` consumed exactly as planned (a stack emptied is removed, nothing else touched); a
   refused plan consumes nothing; `Consume` has one call site, after the apply's result; acquisition
   uses the vanilla queue, `TakeToInventory` and stack-reservation toils.
-* **Work time:** exact scaling for every speed 0.1–10, the absurd-value clamp, the tick floor, and
-  no cooldown/charge/per-day field on any Medicine type.
+* **Carried medicine first:** carried industrial alone covers Resuscitate — no glitterworld trip;
+  mixed carried medicine covers it — no trip; two carried herbal beat a glitterworld next door for
+  Cure; a short inventory is used whole and the map completes it; equal map candidates give the same
+  plan in any input order; the order plan searches the map only when the inventory falls short.
+* **Work time:** exact scaling for every speed 0.1–200 with no 10× ceiling (10, 25, 50 keep
+  dividing), bottoming out at the 60-tick floor (speed 100, 1000, 1e30); zero, negative, tiny and
+  non-finite speeds are safe; no cooldown/charge/per-day field on any Medicine type.
+* **Decay viability:** 0 / at / over the 10,000 threshold; vanilla-Fresh-but-over rejected;
+  Rotting/Dessicated rejected; no rot comp and NaN rejected; committed work is not failed by decay
+  or a stage change but still by the brain; the facts carry no time field and viability reads
+  `RotProgress`, never time of death; a real `CompRottable` read; vanilla's rot-rate curve (4 h
+  unpreserved, 8 h at 5 °C, frozen never); the job judges decay at work start then commits, the order
+  judges it now; no hauling or bed logic.
+* **Resuscitation Shock:** the shipped def (fixed 15,000-tick timer, one Consciousness `setMax 0.1`,
+  nothing else); vanilla's 0.3 awake line and 0 death line; vanilla's capacity rule applies modifiers
+  only above 0 with `setMax` as a ceiling (IL); expiry at exactly six hours; `ApplyShock` sets the
+  duration, asks vanilla whether it would kill, then adds; revival order ends with the shock; save
+  and reload keep the remaining time; Prepare Save for Uninstall removes it and nothing else; the
+  vanilla data audit confirms psychic coma's identical mechanism.
 * **Self and hostile:** self-Reconstruct at 100% / 50% / 30% manipulation; the self ban and the
   hostile refusal are gone; the hostile confirmation exists; no faction change or recruitment.
 * **Vital anatomy:** heart lost + limb lost → heart only; both kidneys → one; one lung → nothing;
@@ -611,38 +701,47 @@ Steamworks for `ParseHelper` (`tools/stubs/SteamworksShim.cs`).
   consciousness anatomy, every flesh body's vital-organ layout, and the unit cost of each budget.
 
 `verify-real.sh` checks every Medicine target, Harmony parameter name and vanilla member the
-second pass relies on (244 PASS, 0 FAIL, 1 SKIP), and binds each Medicine patch live, the DoTend
+Medicine passes rely on, decay and shock members included (252 PASS, 0 FAIL, 1 SKIP), and binds each Medicine patch live, the DoTend
 transpiler included. The two `CompTended` targets are BLOCKED there because their static constructor
 needs the Unity player; `verify-medicine.sh` binds and executes them. The finalizer audit (14 PASS)
 and the progression suite (26 PASS) are unchanged.
 
 ## 14. Runtime checklist (NOT RUN — needs a real game)
 
-Use the dev tools above; *Report pawn medicine state* and *Report corpse resuscitation viability*
-show every number the code decides by.
+The first real-game session. Use the dev tools above: *Report pawn medicine state* and *Report corpse
+resuscitation viability* show every number the code decides by. Check the player log throughout.
 
 | # | Case | Expected |
 |---|---|---|
-| 1 | GM tends a **heart attack** with herbal, then industrial, then glitterworld (several times each) | mote reads exactly 100 / 130 / 160%; treatment succeeds ~65% / ~85% / always |
-| 2 | Cure food poisoning with too little permitted medicine (e.g. 1 herbal, or medical care "no meds"), then with enough | refused with "needs 1 medicine potency, 0.6 available"; then the GM fetches it, works, cures, and exactly 1 industrial (or 2 herbal) is gone |
-| 3 | The same Cure by a GM at normal tend speed vs one boosted heavily (drugs, bionics, dev stat) | duration shrinks in proportion; tooltip cost matches |
-| 4 | Reconstruct a missing natural leg | 2 potency of medicine collected and consumed only on completion; leg restored |
-| 5 | Kill a colonist with gunfire; resuscitate at once | revived, wounds restored and bandaged, no resurrection sickness roll, no duplicate pawn |
-| 6 | Inspect the revived pawn's health tab | up to three of the worst wound locations are now permanent scars of their own wound type; the result message lists them |
-| 7 | Victim was missing an arm before death, or lost one in the fight | arm still missing after revival; the stump is closed, not bleeding |
-| 8 | Corpse with a destroyed heart (dev: destroy the part), resuscitate | viable; the heart comes back; message says it was rebuilt |
-| 9 | Same corpse also missing a leg and a kidney | only the heart is rebuilt; leg and kidney stay missing; the heart carries a scar |
-| 10 | Corpse with destroyed brain / head | "Brain destroyed"; cannot be ordered |
-| 11 | Resuscitate a hostile raider's corpse | confirmation box first; revived raider keeps its faction and fights (or lies downed); nothing recruits it |
-| 12 | Save and reload after each of the above, and once mid-intervention (medicine half-collected) | everything restored; the job continues or fails cleanly; no medicine lost or duplicated |
-| 13 | Resuscitate a pawn whose death is no longer in the battle log (old battle, or a non-combat death) | works; scars ranked from the body alone |
-| 14 | Modded medicine (any potency) as the only medicine | planned and consumed by its potency |
-| 15 | Modded race/anatomy, if available | vital rebuild and scars work by tags; unsupported layouts are refused with a log line, never broken |
-| 16 | Throughout | no red errors |
-| 17 | A Medicine ≤ 20 doctor tending, operating and treating throughout | vanilla behaviour, unchanged |
-| 18 | Interrupt each intervention mid-work (draft, damage, move the patient) | nothing applied or consumed; collected medicine stays in the GM's inventory; re-order works |
-| 19 | Self-Cure; self-Reconstruct with one arm missing; then with both hands disabled | allowed / allowed / refused with the manipulation reason |
-| 20 | Prepare Save for Uninstall, save, remove the mod, reload | loads cleanly; no GM21 elements or JobDefs remain; scars remain as vanilla scars |
+| 1 | GM tends a **heart attack** with herbal, industrial, glitterworld (several times each) | mote exactly 100 / 130 / 160%; treatment succeeds ~65% / ~85% / always |
+| 2 | Cure food poisoning with enough medicine **already in the GM's inventory** | no trip; cures in place; exactly one budget consumed from the inventory |
+| 3 | Cure when extra medicine must be gathered (inventory short or empty) | GM fetches the missing medicine, then cures; "needs X, Y available" if there is not enough anywhere |
+| 4 | GM carries 3 industrial, glitterworld sits elsewhere on the map; order Resuscitate | GM does **not** leave for the glitterworld |
+| 5 | Cure / Reconstruct with very high MedicalTendSpeed (drugs, bionics, dev stat; try >10) | duration keeps shrinking past 10×, down to about a second of real time; tooltip cost matches |
+| 6 | Kill a pawn; leave the corpse at normal temperature | viable at first |
+| 7 | Watch *Report corpse resuscitation viability* over time | RotProgress climbs ~1/tick; "currently viable: no" after ~4 in-game hours |
+| 8 | Put a newly dead pawn into a refrigerated room (0–10 °C) | RotProgress climbs slower |
+| 9 | …and check how long it stays viable | longer than 4 hours, in proportion to the temperature |
+| 10 | Freeze a corpse (below 0 °C) | RotProgress stops |
+| 11 | Advance significant time (days) with it frozen | still viable while RotProgress stays under 10,000 |
+| 12 | Resuscitate it **inside the freezer** | the GM walks in and works there |
+| 13 | Throughout Resuscitation | no corpse hauling, no bed requirement |
+| 14 | On success | Resuscitation Shock appears immediately (health tab, ~6 h remaining) |
+| 15 | The revived pawn | downed and unconscious; can be carried to bed; does not fight, work or walk off |
+| 16 | Wait ~6 in-game hours | "has recovered from resuscitation shock" message; normal behaviour returns |
+| 17 | Resuscitate a hostile raider's corpse | confirmation box first; revived still hostile, but down in shock |
+| 18 | …capture, rescue or leave them; if left, wait for the shock to end | they stay hostile the whole time; once awake they act with their faction again |
+| 19 | Gunshot death, then resuscitate | up to three of the worst wound locations become permanent scars of their own type; the message lists them |
+| 20 | Destroy a heart **and** a limb (dev tools), then resuscitate | only the heart returns (with a scar); the limb stays missing |
+| 21 | Destroy the brain / head | "Brain destroyed"; cannot be ordered |
+| 22 | Interrupt medicine collection (draft the GM mid-fetch) | nothing applied or consumed; carried medicine stays in the inventory; re-order uses it first |
+| 23 | Save and reload during collection, and during the work | the job continues or fails cleanly; no medicine lost or duplicated; a committed resuscitation is not failed by decay |
+| 24 | Save and reload while Resuscitation Shock is active | shock still there with the same remaining time |
+| 25 | Prepare Save for Uninstall, save, remove the mod, reload | loads cleanly; no GM21 elements, JobDefs or shock hediff remain; scars remain as vanilla scars |
+| 26 | Throughout | no red errors in the player log |
+
+Also worth a look when convenient: an ordinary Medicine ≤ 20 doctor (vanilla, unchanged); modded
+medicine and a modded race if available; self-Cure and self-Reconstruct with one arm missing.
 
 ## 15. Known limitations
 
@@ -650,7 +749,10 @@ show every number the code decides by.
 * Resuscitation inherits the engine's cleanup of immunizable and life-threatening conditions
   (see §8).
 * Resuscitation ignores the dead pawn's medical-care setting (see §5).
+* Exotic race mods with custom lethal capacities are not understood by the vital-rebuild plan (see
+  §10); a modded corpse without a rot comp is refused.
 * A scarred brain (when the brain itself was badly hurt in the death) costs consciousness, as any
   vanilla brain scar does.
 * Custom Hediff classes are never offered for Cure; see §6 for the audited omissions.
-* Budgets, work times, the window, the curve and the trauma scoring are first-pass tuning.
+* Budgets, work times, the decay threshold, the shock duration, the curve and the trauma scoring are
+  first-pass tuning.

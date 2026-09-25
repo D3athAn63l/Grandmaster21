@@ -1086,10 +1086,11 @@ a Grandmaster who cannot use their hands or is unconscious falls back to vanilla
   right-click performs it through vanilla targeting and a medical job the Grandmaster carries out
   personally. **The price is time and ordinary medicine — no cooldowns, no charges.** Each
   intervention needs a medicine-potency budget (Cure 1.0, Reconstruct 2.0, Resuscitate 3.0: one,
-  two, three industrial medicine, or herbal/glitterworld/modded medicine by potency), fetched with
-  vanilla hauling under the patient's medical-care setting and consumed only when the intervention
-  succeeds; and hours of work (Cure 1 h, Reconstruct 2.4 h, Resuscitate 3 h at tend speed 1,
-  scaled by the Grandmaster's tend speed). Interruption applies and consumes nothing. Self-Cure is
+  two, three industrial medicine, or herbal/glitterworld/modded medicine by potency) — taken from
+  what the Grandmaster already carries whenever that is enough, otherwise completed from the map
+  with vanilla hauling, under the patient's medical-care setting, and consumed only when the
+  intervention succeeds; and hours of work (Cure 1 h, Reconstruct 2.4 h, Resuscitate 3 h at tend
+  speed 1, divided by the Grandmaster's tend speed with no upper limit, down to a 60-tick floor). Interruption applies and consumes nothing. Self-Cure is
   allowed; self-Reconstruct needs at least 50% manipulation.
   * **Cure** one pathological condition ordinary medicine cannot properly address — immunizable
     diseases, chronic illness, tendable sicknesses and food poisoning. Wounds, missing parts,
@@ -1097,15 +1098,18 @@ a Grandmaster who cannot use their hands or is unconscious falls back to vanilla
     Against the full vanilla data set that is exactly 28 conditions.
   * **Reconstruct** one missing natural body part, found structurally; a location already
     replaced by a bionic or prosthetic is never offered.
-  * **Resuscitate** a fresh corpse whose brain is intact, within **four in-game hours** of death.
-    Destroyed vital organs are rebuilt only as far as life requires; lost limbs stay lost. Wounds
-    are preserved and bandaged, not erased, and up to **three** of the worst traumatic locations
-    become permanent scars. No resurrection-sickness lottery. A hostile pawn can be saved — after a
+  * **Resuscitate** a corpse whose brain is intact while the body is still **biologically
+    recoverable**: judged by the corpse's own rot progress, not a clock — about four in-game hours
+    unpreserved, longer refrigerated, indefinitely frozen. The Grandmaster works wherever the body
+    lies. Destroyed vital organs are rebuilt only as far as life requires; lost limbs stay lost.
+    Wounds are preserved and bandaged, not erased, and up to **three** of the worst traumatic
+    locations become permanent scars. The revived pawn then lies unconscious in **Resuscitation
+    Shock** for six hours. No resurrection-sickness lottery. A hostile pawn can be saved — after a
     confirmation — and stays hostile. The resurrector mech serum is untouched and remains a
     different tool.
 
-Before uninstalling, run **Prepare Save for Uninstall** — it now also removes Medicine treatments
-and modes and stops interventions in progress.
+Before uninstalling, run **Prepare Save for Uninstall** — it now also removes Medicine treatments,
+modes and Resuscitation Shock and stops interventions in progress.
 
 ---
 
@@ -1566,7 +1570,9 @@ hand-written approximations. Only a real build does that. See `tools/stubs/READM
 **0.12.0 Beta.** Medicine 21 builds against the real RimWorld 1.6/Unity/Harmony assemblies with
 zero warnings/errors. After the second design pass (tend-quality propagation, medicine cost, work
 time, self-intervention, hostile resuscitation, minimum vital reconstruction, death-trauma scars)
-`tools/verify-medicine.sh` reports **279 PASS, 0 FAIL, 0 BLOCKED** with the vanilla `Data/`
+and the final pre-runtime pass (carried medicine first, no tend-speed ceiling, decay-based
+resuscitation viability, Resuscitation Shock), `tools/verify-medicine.sh` reports **325 PASS, 0 FAIL,
+0 BLOCKED** with the vanilla `Data/`
 folder, including real Scribe save **and load** round trips, real medicine Things consumed in a real
 inventory, and an audit of every vanilla Def. **Medicine 21 has had
 NO runtime gameplay testing** — see the runtime checklist in

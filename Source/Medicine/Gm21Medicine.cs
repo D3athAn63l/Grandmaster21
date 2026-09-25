@@ -1,3 +1,4 @@
+using System;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -124,14 +125,16 @@ namespace Grandmaster21
         public const int ResuscitateWorkTicks = 7500;
 
         /// <summary>
-        /// MedicalTendSpeed is clamped into this band before it divides the base work, so only an
-        /// absurd modded value (a zero, a negative, a thousand) is corrected. Every ordinary speed,
-        /// fast or slow, scales the work exactly.
+        /// MedicalTendSpeed below this counts as this, so a zero or negative modded value can never
+        /// stall or invert the job. There is deliberately NO upper clamp: every point of tend speed
+        /// the player invests keeps shortening the work, all the way down to MinWorkTicks.
         /// </summary>
         public const float MinWorkSpeed = 0.1f;
-        public const float MaxWorkSpeed = 10f;
 
-        /// <summary>Tick safety floor: no intervention completes in under a second of real time.</summary>
+        /// <summary>
+        /// Tick safety floor, and the only effective limit on speed: no intervention completes in
+        /// under 60 ticks (one second of real time at speed 1).
+        /// </summary>
         public const int MinWorkTicks = 60;
 
         /// <summary>
@@ -151,15 +154,28 @@ namespace Grandmaster21
         public const float SelfReconstructMinManipulation = 0.5f;
 
         /// <summary>
-        /// Resuscitation viability window: how long after death the intervention may BEGIN.
+        /// Resuscitation viability: how far the corpse may have DECAYED, measured in vanilla's own
+        /// CompRottable.RotProgress -- not how long ago the pawn died.
         ///
-        /// PROVISIONAL, deliberately conservative: four in-game hours (10,000 ticks, about 2m47s of
-        /// real time at speed 1). Long enough to finish a fight and walk across a map, short
-        /// enough that a corpse from yesterday -- or one kept fresh in a freezer -- stays dead.
-        /// The clock stops once the Grandmaster actually begins the work, so a resuscitation
-        /// started inside the window is not failed by the window while it is being performed.
+        /// PROVISIONAL: 10,000. Vanilla adds GenTemperature.RotRateAtTemperature x ticks to a
+        /// corpse's RotProgress: 1 per tick at 10 C and above (it never goes faster than that), a
+        /// linear fraction between 0 and 10 C, and nothing below 0 C. So at ordinary temperature
+        /// 10,000 is four in-game hours of decay; refrigerated at 5 C it takes eight; frozen, the body
+        /// stays recoverable for as long as it stays frozen. Vanilla's "Fresh" stage lasts to 150,000
+        /// (2.5 days), so this threshold is far stricter than Fresh. Toxic fallout also adds rot to
+        /// unroofed corpses, as vanilla does.
+        ///
+        /// Checked when the order is given and again when the Grandmaster begins the timed work.
+        /// Once the work has begun on a recoverable body the procedure is committed: decay during
+        /// the work never fails it.
         /// </summary>
-        public const int ResuscitationWindowTicks = 4 * GenDate.TicksPerHour;
+        public const float MaxResuscitationRotProgress = 10000f;
+
+        /// <summary>
+        /// Grandmaster Resuscitation Shock: how long a revived pawn stays unconscious. PROVISIONAL,
+        /// deterministic: six in-game hours, never scaled by anything.
+        /// </summary>
+        public const int ResuscitationShockTicks = 6 * GenDate.TicksPerHour;
 
         // ---------------------------------------------------------------- resuscitation trauma (PROVISIONAL)
         //
@@ -228,14 +244,17 @@ namespace Grandmaster21
         }
 
         /// <summary>
-        /// Pure: base work divided by speed, with only absurd speeds clamped and a small tick floor.
-        /// A non-finite speed counts as 1.
+        /// Pure: base work divided by speed. A non-finite speed counts as 1, a speed below
+        /// MinWorkSpeed counts as MinWorkSpeed, and nothing finishes in under MinWorkTicks. No upper
+        /// clamp: speed 25 is base / 25, and a high enough speed simply reaches the tick floor.
         /// </summary>
         public static int WorkTicksForSpeed(int baseTicks, float speed)
         {
             if (float.IsNaN(speed) || float.IsInfinity(speed)) speed = 1f;
-            speed = Mathf.Clamp(speed, MinWorkSpeed, MaxWorkSpeed);
-            return Mathf.Max(MinWorkTicks, Mathf.RoundToInt(baseTicks / speed));
+            if (speed < MinWorkSpeed) speed = MinWorkSpeed;
+            double ticks = Math.Round(baseTicks / (double)speed, MidpointRounding.ToEven);
+            if (ticks < MinWorkTicks) return MinWorkTicks;
+            return ticks > int.MaxValue ? int.MaxValue : (int)ticks;
         }
 
         /// <summary>

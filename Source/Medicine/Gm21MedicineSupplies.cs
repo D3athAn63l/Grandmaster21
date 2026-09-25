@@ -19,6 +19,8 @@ namespace Grandmaster21
         public bool inInventory;
         /// <summary>Path distance proxy for tie-breaking (squared straight-line).</summary>
         public float distanceSquared;
+        /// <summary>Final tie-break (the Thing's ID), so equal candidates always sort the same way.</summary>
+        public int id;
     }
 
     /// <summary>
@@ -30,8 +32,13 @@ namespace Grandmaster21
     /// (1.00), glitterworld (1.60) and modded medicine combine naturally: several weak units, or fewer
     /// strong ones. No DefName is named anywhere.
     ///
-    /// SELECTION follows vanilla's own preference (HealthAIUtility.FindBestMedicine): best allowed
-    /// medicine first, the doctor's inventory before the map at equal potency, nearer before farther.
+    /// SELECTION: CARRIED MEDICINE FIRST. Potency decides only how much medicine an intervention
+    /// needs, never how well it works, so a better medicine elsewhere is no reason to leave the
+    /// patient. If what the Grandmaster already carries meets the budget, the plan is made from the
+    /// inventory alone and nothing on the map is touched. Only when it falls short is all of the
+    /// carried medicine used and the rest gathered from the map. Within the inventory, and within the
+    /// map, vanilla's own preference (HealthAIUtility.FindBestMedicine) orders the candidates: best
+    /// allowed medicine first, nearer before farther, then by ID so the plan is deterministic.
     /// Forbidden medicine is never touched.
     ///
     /// MEDICAL CARE is respected for a living patient: their own medical-care setting, or -- for a
@@ -122,7 +129,10 @@ namespace Grandmaster21
             return true;
         }
 
-        /// <summary>Sorts candidates into vanilla's preference order (see the class summary).</summary>
+        /// <summary>
+        /// Sorts candidates into vanilla's preference order: potency, then (in a mixed list)
+        /// inventory before map, then distance, then ID. Deterministic.
+        /// </summary>
         public static void SortByPreference(List<Gm21SupplyStack> stacks)
         {
             stacks.Sort(delegate(Gm21SupplyStack a, Gm21SupplyStack b)
@@ -130,8 +140,35 @@ namespace Grandmaster21
                 int byPotency = b.potency.CompareTo(a.potency);
                 if (byPotency != 0) return byPotency;
                 if (a.inInventory != b.inInventory) return a.inInventory ? -1 : 1;
-                return a.distanceSquared.CompareTo(b.distanceSquared);
+                int byDistance = a.distanceSquared.CompareTo(b.distanceSquared);
+                return byDistance != 0 ? byDistance : a.id.CompareTo(b.id);
             });
+        }
+
+        /// <summary>
+        /// The order-time plan, pure: carried medicine alone if it meets the budget; otherwise all of
+        /// the carried medicine, then map stacks in preference order until the budget is met.
+        /// <paramref name="availablePotency"/> is everything that could have been used.
+        /// </summary>
+        public static bool PlanInventoryFirst(List<Gm21SupplyStack> inventory, List<Gm21SupplyStack> map, float budget,
+            List<KeyValuePair<Gm21SupplyStack, int>> plan, out float availablePotency)
+        {
+            SortByPreference(inventory);
+            SortByPreference(map);
+            float carried;
+            float onMap = 0f;
+            for (int i = 0; i < map.Count; i++) onMap += map[i].potency * map[i].available;
+            if (TryPlan(inventory, budget, plan, out carried))
+            {
+                availablePotency = carried + onMap;
+                return true;
+            }
+            // The carried medicine cannot do it alone: it is all used first (the greedy plan takes
+            // every carried unit when their total is short), and the map completes the budget.
+            List<Gm21SupplyStack> combined = new List<Gm21SupplyStack>(inventory.Count + map.Count);
+            combined.AddRange(inventory);
+            combined.AddRange(map);
+            return TryPlan(combined, budget, plan, out availablePotency);
         }
 
         /// <summary>Plans over typed stacks; <paramref name="plan"/> receives (stack, count) pairs.</summary>
@@ -209,54 +246,69 @@ namespace Grandmaster21
                 Thing t = inventory[i];
                 float potency = t == null ? 0f : PotencyOf(t.def);
                 if (potency <= 0f || !Allowed(carePatient, t.def)) continue;
-                result.Add(new Gm21SupplyStack { thing = t, potency = potency, available = t.stackCount, inInventory = true });
+                result.Add(new Gm21SupplyStack
+                {
+                    thing = t, potency = potency, available = t.stackCount, inInventory = true, id = t.thingIDNumber
+                });
             }
             return result;
         }
 
         /// <summary>
-        /// Everything this doctor could use: allowed inventory medicine, plus allowed, unforbidden,
-        /// reservable, reachable medicine on the doctor's map. Called when an order is given or
-        /// re-validated -- never per tick.
+        /// Allowed, unforbidden, reservable, reachable medicine on the doctor's map. Called when an
+        /// order is given -- never per tick.
         /// </summary>
+        public static List<Gm21SupplyStack> MapStacks(Pawn doctor, Pawn carePatient)
+        {
+            List<Gm21SupplyStack> result = new List<Gm21SupplyStack>();
+            Map map = doctor == null ? null : doctor.MapHeld;
+            if (map == null || !doctor.Spawned) return result;
+            List<Thing> medicine = map.listerThings.ThingsInGroup(ThingRequestGroup.Medicine);
+            for (int i = 0; i < medicine.Count; i++)
+            {
+                Thing t = medicine[i];
+                if (t == null || !t.Spawned) continue;
+                float potency = PotencyOf(t.def);
+                if (potency <= 0f || !Allowed(carePatient, t.def) || t.IsForbidden(doctor)) continue;
+                int reservable = map.reservationManager.CanReserveStack(doctor, t, JobDriver_Gm21Intervention.MedicineReservationMaxPawns);
+                if (reservable <= 0) continue;
+                if (!doctor.CanReach(t, PathEndMode.ClosestTouch, Danger.Deadly)) continue;
+                result.Add(new Gm21SupplyStack
+                {
+                    thing = t, potency = potency, available = Math.Min(reservable, t.stackCount),
+                    distanceSquared = (t.Position - doctor.Position).LengthHorizontalSquared, id = t.thingIDNumber
+                });
+            }
+            return result;
+        }
+
+        /// <summary>Everything this doctor could use, carried and on the map (dev reports).</summary>
         public static List<Gm21SupplyStack> Gather(Pawn doctor, Pawn carePatient)
         {
             List<Gm21SupplyStack> result = InventoryStacks(doctor, carePatient);
-            Map map = doctor == null ? null : doctor.MapHeld;
-            if (map != null && doctor.Spawned)
-            {
-                List<Thing> medicine = map.listerThings.ThingsInGroup(ThingRequestGroup.Medicine);
-                for (int i = 0; i < medicine.Count; i++)
-                {
-                    Thing t = medicine[i];
-                    if (t == null || !t.Spawned) continue;
-                    float potency = PotencyOf(t.def);
-                    if (potency <= 0f || !Allowed(carePatient, t.def) || t.IsForbidden(doctor)) continue;
-                    int reservable = map.reservationManager.CanReserveStack(doctor, t, 10);
-                    if (reservable <= 0) continue;
-                    if (!doctor.CanReach(t, PathEndMode.ClosestTouch, Danger.Deadly)) continue;
-                    result.Add(new Gm21SupplyStack
-                    {
-                        thing = t, potency = potency, available = Math.Min(reservable, t.stackCount),
-                        distanceSquared = (t.Position - doctor.Position).LengthHorizontalSquared
-                    });
-                }
-            }
+            result.AddRange(MapStacks(doctor, carePatient));
             SortByPreference(result);
             return result;
         }
 
         /// <summary>
-        /// The order-time plan: can this doctor gather a budget's worth? Map stacks go into the job's
-        /// target queue; inventory stacks need no trip. <paramref name="reason"/> explains a refusal.
+        /// The order-time plan (PlanInventoryFirst over the real inventory and map): can this doctor
+        /// gather a budget's worth? Map stacks go into the job's target queue; carried medicine needs
+        /// no trip. <paramref name="reason"/> explains a refusal.
         /// </summary>
         public static bool TryPlanOrder(Pawn doctor, Pawn carePatient, float budget,
             List<KeyValuePair<Gm21SupplyStack, int>> plan, out string reason)
         {
             reason = null;
-            List<Gm21SupplyStack> stacks = Gather(doctor, carePatient);
+            List<Gm21SupplyStack> carried = InventoryStacks(doctor, carePatient);
+            // The map is searched only when the carried medicine cannot meet the budget by itself.
+            float carriedPotency = 0f;
+            for (int i = 0; i < carried.Count; i++) carriedPotency += carried[i].potency * carried[i].available;
+            List<Gm21SupplyStack> map = carriedPotency + BudgetTolerance >= budget
+                ? new List<Gm21SupplyStack>()
+                : MapStacks(doctor, carePatient);
             float availablePotency;
-            if (!TryPlan(stacks, budget, plan, out availablePotency))
+            if (!PlanInventoryFirst(carried, map, budget, plan, out availablePotency))
             {
                 reason = "GM21_Med_NotEnoughMedicine".Translate(budget.ToString("0.##"), availablePotency.ToString("0.##"));
                 return false;

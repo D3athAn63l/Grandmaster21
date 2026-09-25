@@ -11,6 +11,7 @@ namespace Grandmaster21
         public static JobDef GM21_MedicineCure;
         public static JobDef GM21_MedicineReconstruct;
         public static JobDef GM21_MedicineResuscitate;
+        public static HediffDef GM21_ResuscitationShock;
 
         static Gm21MedicineDefOf() { DefOfHelper.EnsureInitializedInCtor(typeof(Gm21MedicineDefOf)); }
 
@@ -86,7 +87,10 @@ namespace Grandmaster21
 
         private PathEndMode pathEndMode = PathEndMode.ClosestTouch;
 
-        /// <summary>Tick the timed work began, or -1. Saved, so a reload mid-work keeps its clock.</summary>
+        /// <summary>
+        /// Tick the timed work began, or -1. Saved. It is also the commitment marker: Resuscitate
+        /// judges decay only until the work has begun, so a reload mid-work stays committed.
+        /// </summary>
         protected int workStartedTick = -1;
 
         /// <summary>This driver asked a standing patient to hold still, and must release them.</summary>
@@ -411,9 +415,11 @@ namespace Grandmaster21
     }
 
     /// <summary>
-    /// Resuscitate: brings a viable corpse back to life. The viability window is measured to the
-    /// moment the work begins (workStartedTick), so a resuscitation started in time is not failed
-    /// by the clock while the Grandmaster is performing it.
+    /// Resuscitate: brings a biologically recoverable corpse back to life, wherever it lies. Decay is
+    /// judged when the order is given and again when the Grandmaster begins the timed work (after
+    /// fetching medicine and walking there -- a body that decays past the limit on the way is
+    /// refused). Once the work has begun (workStartedTick set) the procedure is committed: decay
+    /// during the work never fails it.
     /// </summary>
     public sealed class JobDriver_Gm21Resuscitate : JobDriver_Gm21Intervention
     {
@@ -446,9 +452,7 @@ namespace Grandmaster21
 
         protected override bool Validate(out string reason)
         {
-            Corpse corpse = Corpse;
-            int reference = workStartedTick >= 0 ? workStartedTick : Find.TickManager.TicksGame;
-            return Gm21Resuscitation.CanResuscitate(corpse, reference, out reason);
+            return Gm21Resuscitation.CanResuscitate(Corpse, workStartedTick >= 0, out reason);
         }
 
         protected override bool Complete(out string message, out LookTargets look)
@@ -478,6 +482,11 @@ namespace Grandmaster21
                     scars.Add(scar.Part != null ? scar.Label + " (" + scar.Part.Label + ")" : scar.Label);
                 message += " " + "GM21_Med_ResScars".Translate(string.Join(", ", scars.ToArray()));
             }
+            if (outcome.shock != null)
+            {
+                message += " " + "GM21_Med_ResShock".Translate(patient.LabelShortCap,
+                    Gm21Medicine.ResuscitationShockTicks.ToStringTicksToPeriod());
+            }
             look = new LookTargets(patient);
 
             if (Prefs.DevMode)
@@ -486,7 +495,7 @@ namespace Grandmaster21
                             + outcome.woundsRestored + " fresh wound(s) preserved and stabilised, "
                             + outcome.woundsClosed + " closed because restoring them would have been fatal, "
                             + outcome.rebuilt.Count + " vital part(s) rebuilt, " + outcome.scars.Count
-                            + " permanent scar(s).");
+                            + " permanent scar(s), shock " + (outcome.shock != null ? "applied" : "NOT applied") + ".");
             }
             return true;
         }

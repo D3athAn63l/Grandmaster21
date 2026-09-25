@@ -697,7 +697,7 @@ internal static class MedicineChecks
     static void Resuscitation()
     {
         Console.WriteLine("\n=== 10. Resuscitation viability policy ===");
-        Gm21ResuscitationFacts ok = new Gm21ResuscitationFacts { isCorpse = true, available = true, isFlesh = true, rotStage = RotStage.Fresh, ticksSinceDeath = 100 };
+        Gm21ResuscitationFacts ok = new Gm21ResuscitationFacts { isCorpse = true, available = true, isFlesh = true, rotStage = RotStage.Fresh, rotProgress = 100f };
         Func<Gm21ResuscitationFacts, Gm21ResuscitationVerdict> D = Gm21Resuscitation.Decide;
         Check("fresh, intact, recent, non-hostile flesh corpse -> viable", D(ok) == Gm21ResuscitationVerdict.Viable);
         Gm21ResuscitationFacts f;
@@ -714,12 +714,71 @@ internal static class MedicineChecks
         f = ok; f.brainDestroyed = true; f.vitalUnrebuildable = true; Check("brain destruction is reported before vital anatomy", D(f) == Gm21ResuscitationVerdict.BrainDestroyed);
         f = ok; f.rotStage = RotStage.Rotting; Check("rotting -> 'deteriorated beyond recovery'", D(f) == Gm21ResuscitationVerdict.Deteriorated);
         f = ok; f.rotStage = RotStage.Dessicated; Check("dessicated -> 'deteriorated beyond recovery'", D(f) == Gm21ResuscitationVerdict.Deteriorated);
-        f = ok; f.ticksSinceDeath = Gm21Medicine.ResuscitationWindowTicks; Check("exactly at the window edge -> viable", D(f) == Gm21ResuscitationVerdict.Viable);
-        f = ok; f.ticksSinceDeath = Gm21Medicine.ResuscitationWindowTicks + 1; Check("one tick past the window -> 'Too much time has passed'", D(f) == Gm21ResuscitationVerdict.TooLate);
-        f = ok; f.ticksSinceDeath = -5; Check("a death in the future is invalid -> rejected", D(f) == Gm21ResuscitationVerdict.TooLate);
-        Check("window is four in-game hours (10,000 ticks)", Gm21Medicine.ResuscitationWindowTicks == 10000);
-        f = ok; f.brainDestroyed = true; f.rotStage = RotStage.Dessicated; f.ticksSinceDeath = 999999;
-        Check("structural rejection is reported before time/rot", D(f) == Gm21ResuscitationVerdict.BrainDestroyed);
+        float max = Gm21Medicine.MaxResuscitationRotProgress;
+        Check("GM decay threshold is RotProgress 10,000 (provisional)", max == 10000f);
+        f = ok; f.rotProgress = 0f; Check("no decay yet -> viable", D(f) == Gm21ResuscitationVerdict.Viable);
+        f = ok; f.rotProgress = max; Check("decay exactly at the threshold -> viable", D(f) == Gm21ResuscitationVerdict.Viable);
+        f = ok; f.rotProgress = max + 1f; Check("decay past the threshold -> 'deteriorated beyond recoverable limits'", D(f) == Gm21ResuscitationVerdict.TooDecayed);
+        f = ok; f.rotProgress = 60000f; Check("vanilla still calls it Fresh (to 150,000) but the stricter GM threshold rejects it",
+                                              f.rotStage == RotStage.Fresh && D(f) == Gm21ResuscitationVerdict.TooDecayed);
+        f = ok; f.rotProgress = float.PositiveInfinity; Check("decay that cannot be judged (no rot comp) -> rejected", D(f) == Gm21ResuscitationVerdict.TooDecayed);
+        f = ok; f.rotProgress = float.NaN; Check("not-a-number decay -> rejected", D(f) == Gm21ResuscitationVerdict.TooDecayed);
+        f = ok; f.rotProgress = max + 5000f; f.decayCommitted = true;
+        Check("COMMITTED (work begun while recoverable): decay past the threshold no longer fails it", D(f) == Gm21ResuscitationVerdict.Viable);
+        f = ok; f.rotStage = RotStage.Rotting; f.decayCommitted = true;
+        Check("COMMITTED: even a stage change during the work does not fail it", D(f) == Gm21ResuscitationVerdict.Viable);
+        f = ok; f.decayCommitted = true; f.brainDestroyed = true;
+        Check("COMMITTED: structural checks still apply", D(f) == Gm21ResuscitationVerdict.BrainDestroyed);
+        f = ok; f.brainDestroyed = true; f.rotStage = RotStage.Dessicated; f.rotProgress = 999999f;
+        Check("structural rejection is reported before decay", D(f) == Gm21ResuscitationVerdict.BrainDestroyed);
+        f = ok; f.rotStage = RotStage.Rotting; f.rotProgress = 200000f;
+        Check("rotting is reported as rotting, not merely over the threshold", D(f) == Gm21ResuscitationVerdict.Deteriorated);
+
+        // Time is not a criterion any more.
+        Check("the viability facts carry no time-since-death field",
+              !typeof(Gm21ResuscitationFacts).GetFields().Any(fi => Regex.IsMatch(fi.Name, "tick|death|since|window|timeOf|^age", RegexOptions.IgnoreCase)));
+        Check("the old four-hour window constant is gone", typeof(Gm21Medicine).GetField("ResuscitationWindowTicks") == null);
+        using (AssemblyDefinition mod = AssemblyDefinition.ReadAssembly(Mod.Location))
+        {
+            MethodDefinition gather = mod.MainModule.GetType("Grandmaster21.Gm21Resuscitation").Methods.First(m => m.Name == "Gather");
+            string[] reads = gather.Body.Instructions.Select(i => i.Operand as MemberReference).Where(r => r != null).Select(r => r.Name).ToArray();
+            Check("viability reads the corpse's RotProgress, never its time of death or age",
+                  mod.MainModule.GetType("Grandmaster21.Gm21Resuscitation").Methods.First(m => m.Name == "ReadDecay")
+                     .Body.Instructions.Any(i => i.Operand is MethodReference && ((MethodReference)i.Operand).Name == "get_RotProgress")
+                  && !reads.Contains("timeOfDeath") && !reads.Contains("get_Age"));
+        }
+
+        // The real CompRottable: what ReadDecay sees.
+        try
+        {
+            Corpse corpse = Uninit<Corpse>();
+            CompRottable rot = new CompRottable();
+            rot.parent = corpse;
+            rot.props = new CompProperties_Rottable { daysToRotStart = 2.5f, daysToDessicated = 5f };
+            AccessTools.Field(typeof(ThingWithComps), "comps").SetValue(corpse, new List<ThingComp> { rot });
+            float progress; RotStage stage;
+            Set(rot, "rotProgressInt", 4000f);
+            Gm21Resuscitation.ReadDecay(corpse, out progress, out stage);
+            Check("real CompRottable: 4,000 decay reads as 4,000, Fresh -> recoverable",
+                  progress == 4000f && stage == RotStage.Fresh && Gm21Resuscitation.WithinDecayLimit(progress));
+            Set(rot, "rotProgressInt", 200000f);
+            Gm21Resuscitation.ReadDecay(corpse, out progress, out stage);
+            Check("real CompRottable: 200,000 decay reads as Rotting", stage == RotStage.Rotting);
+            Corpse bare = Uninit<Corpse>();
+            AccessTools.Field(typeof(ThingWithComps), "comps").SetValue(bare, null); // vanilla: no comps = null list
+            Gm21Resuscitation.ReadDecay(bare, out progress, out stage);
+            Check("a corpse with no rot comp reads as unjudgeable decay (not recoverable)", float.IsPositiveInfinity(progress));
+        }
+        catch (Exception e) { Blocked("real CompRottable decay read", e); }
+
+        // Vanilla's rot rate: what the threshold means in the world.
+        Func<float, float> rate = GenTemperature.RotRateAtTemperature;
+        Check("vanilla rot rate: 1/tick from 10 C up (heat never speeds it further), 0.5 at 5 C, 0 at or below 0 C",
+              rate(10f) == 1f && rate(21f) == 1f && rate(45f) == 1f && rate(5f) == 0.5f && rate(0f) == 0f && rate(-8f) == 0f);
+        Check("so: unpreserved, the threshold is four in-game hours of decay (10,000 ticks)",
+              Math.Abs(max / rate(21f) - 4 * GenDate.TicksPerHour) < 0.5f);
+        Check("refrigerated at 5 C it is eight hours; frozen, decay never reaches it",
+              Math.Abs(max / rate(5f) - 8 * GenDate.TicksPerHour) < 0.5f && rate(-5f) == 0f);
 
         Body b = MakeBody();
         Pawn p = MakePawn(0, b);
@@ -912,6 +971,54 @@ internal static class MedicineChecks
               !Gm21MedicineSupplies.TryPlan(new List<Gm21SupplyStack> { S(0.6f, 3) }, 2f, plan, out avail) && Near(avail, 1.8f) && plan.Count == 0,
               avail.ToString());
 
+        // Inventory first: potency sets only the quantity, so carried medicine that meets the budget
+        // is never left behind for "better" medicine on the map.
+        Func<float, int, float, int, Gm21SupplyStack> M = (pot, n, dist, id) =>
+            new Gm21SupplyStack { potency = pot, available = n, distanceSquared = dist, id = id };
+        Func<float, int, int, Gm21SupplyStack> I = (pot, n, id) =>
+            new Gm21SupplyStack { potency = pot, available = n, inInventory = true, id = id };
+        Func<List<KeyValuePair<Gm21SupplyStack, int>>, string> P = pl =>
+            string.Join(" ", pl.Select(kv => (kv.Key.inInventory ? "inv" : "map") + kv.Key.potency + "x" + kv.Value).ToArray());
+        List<KeyValuePair<Gm21SupplyStack, int>> ip = new List<KeyValuePair<Gm21SupplyStack, int>>();
+        float ia;
+        bool okPlan = Gm21MedicineSupplies.PlanInventoryFirst(new List<Gm21SupplyStack> { I(1f, 3, 1) },
+            new List<Gm21SupplyStack> { M(1.6f, 5, 1f, 2), M(1.6f, 5, 900f, 3) }, 3f, ip, out ia);
+        Check("Resuscitate, 3 industrial carried, glitterworld on the map: all from the inventory, no map trip",
+              okPlan && P(ip) == "inv1x3", P(ip));
+        okPlan = Gm21MedicineSupplies.PlanInventoryFirst(new List<Gm21SupplyStack> { I(0.6f, 2, 1), I(1f, 2, 2) },
+            new List<Gm21SupplyStack> { M(1.6f, 9, 1f, 3) }, 3f, ip, out ia);
+        Check("mixed carried medicine (industrial 2 + herbal 2 = 3.2) meets Resuscitate: no map trip",
+              okPlan && P(ip) == "inv1x2 inv0.6x2", P(ip));
+        okPlan = Gm21MedicineSupplies.PlanInventoryFirst(new List<Gm21SupplyStack> { I(0.6f, 2, 1) },
+            new List<Gm21SupplyStack> { M(1.6f, 9, 2f, 3) }, 1f, ip, out ia);
+        Check("Cure: two carried herbal beat a glitterworld next door (lower potency, already in hand)",
+              okPlan && P(ip) == "inv0.6x2", P(ip));
+        okPlan = Gm21MedicineSupplies.PlanInventoryFirst(new List<Gm21SupplyStack> { I(0.6f, 1, 1) },
+            new List<Gm21SupplyStack> { M(1f, 5, 1f, 4), M(1.6f, 2, 100f, 5) }, 3f, ip, out ia);
+        Check("carried medicine short of the budget: all of it is used first, the map completes the budget (best first)",
+              okPlan && P(ip) == "inv0.6x1 map1.6x2", P(ip));
+        List<Gm21SupplyStack> mapA = new List<Gm21SupplyStack> { M(1f, 1, 4f, 30), M(1f, 1, 4f, 10), M(1f, 1, 4f, 20), M(1f, 1, 1f, 40) };
+        List<Gm21SupplyStack> mapB = new List<Gm21SupplyStack>(mapA); mapB.Reverse();
+        List<KeyValuePair<Gm21SupplyStack, int>> pa = new List<KeyValuePair<Gm21SupplyStack, int>>(), pb = new List<KeyValuePair<Gm21SupplyStack, int>>();
+        Gm21MedicineSupplies.PlanInventoryFirst(new List<Gm21SupplyStack>(), mapA, 3f, pa, out ia);
+        Gm21MedicineSupplies.PlanInventoryFirst(new List<Gm21SupplyStack>(), mapB, 3f, pb, out ia);
+        Check("equal map candidates: nearest first, then by ID -- the same plan whatever order they were found in",
+              string.Join(",", pa.Select(kv => kv.Key.id.ToString()).ToArray()) == "40,10,20"
+              && pa.Select(kv => kv.Key.id).SequenceEqual(pb.Select(kv => kv.Key.id)),
+              string.Join(",", pa.Select(kv => kv.Key.id.ToString()).ToArray()));
+        okPlan = Gm21MedicineSupplies.PlanInventoryFirst(new List<Gm21SupplyStack> { I(0.6f, 1, 1) },
+            new List<Gm21SupplyStack>(), 2f, ip, out ia);
+        Check("carried and map medicine together still short: refused, reporting what exists",
+              !okPlan && ip.Count == 0 && Near(ia, 0.6f));
+        using (AssemblyDefinition mod = AssemblyDefinition.ReadAssembly(Mod.Location))
+        {
+            MethodDefinition orderPlan = mod.MainModule.GetType("Grandmaster21.Gm21MedicineSupplies").Methods.First(m => m.Name == "TryPlanOrder");
+            string[] calls = orderPlan.Body.Instructions.Select(x => x.Operand as MethodReference).Where(r => r != null).Select(r => r.Name).ToArray();
+            Check("the order plan uses PlanInventoryFirst, and the map is searched only when the carried medicine falls short",
+                  calls.Contains("PlanInventoryFirst") && calls.Contains("MapStacks") && calls.Contains("InventoryStacks")
+                  && !calls.Contains("Gather"));
+        }
+
         // Medical care.
         Pawn noSettings = MakePawn(0);
         Check("no patient (Resuscitate) -> no medical-care restriction", !Gm21MedicineSupplies.CareFor(null).HasValue);
@@ -1041,11 +1148,17 @@ internal static class MedicineChecks
         Check("speed 1 -> base work", W(2500, 1f) == 2500 && W(7500, 1f) == 7500);
         Check("speed scales work exactly (x2 -> half, x0.5 -> double, x1.6 -> /1.6)",
               W(2500, 2f) == 1250 && W(2500, 0.5f) == 5000 && W(6000, 1.6f) == 3750);
-        Check("every ordinary speed 0.1..10 is unclamped", Enumerable.Range(1, 100).All(k => W(10000, k / 10f) == (int)Math.Round(10000 / (k / 10f))));
-        Check("absurd speeds are clamped: 0 / negative -> x0.1, 1000 -> x10",
-              W(2500, 0f) == 25000 && W(2500, -3f) == 25000 && W(2500, 1000f) == 250);
-        Check("non-finite speed counts as 1", W(2500, float.NaN) == 2500 && W(2500, float.PositiveInfinity) == 2500);
-        Check("tick safety floor: never under 60 ticks", W(100, 10f) == 60 && W(1, 1f) == 60);
+        Check("every speed from 0.1 to 200 divides the work exactly, down to the 60-tick floor",
+              Enumerable.Range(1, 2000).All(k => W(10000, k / 10f) == Math.Max(60, (int)Math.Round(10000 / (double)(k / 10f), MidpointRounding.ToEven))));
+        Check("NO 10x ceiling: speed 10 -> base/10, 25 -> base/25, 50 -> base/50",
+              W(7500, 10f) == 750 && W(7500, 25f) == 300 && W(7500, 50f) == 150);
+        Check("a high enough speed bottoms out at MinWorkTicks (60): 100 on Cure, 1000, 1e30",
+              W(2500, 100f) == 60 && W(7500, 1000f) == 60 && W(7500, 1e30f) == 60);
+        Check("zero / negative / tiny speeds count as the 0.1 minimum (work x10, never stalls or inverts)",
+              W(2500, 0f) == 25000 && W(2500, -3f) == 25000 && W(2500, 1e-9f) == 25000);
+        Check("non-finite speeds count as 1", W(2500, float.NaN) == 2500 && W(2500, float.PositiveInfinity) == 2500
+                                               && W(2500, float.NegativeInfinity) == 2500);
+        Check("the old upper clamp constant is gone", typeof(Gm21Medicine).GetField("MaxWorkSpeed") == null);
 
         // Self-intervention.
         Pawn gm = MakePawn(21);
@@ -1402,6 +1515,189 @@ internal static class MedicineChecks
               typeof(Verse.AI.Job).GetField("targetQueueB") != null && typeof(Verse.AI.Job).GetField("countQueue") != null);
     }
 
+    // ------------------------------------------------------------------ 20. decay commitment and resuscitation shock
+
+    static HediffDef ShockDef(float setMax)
+    {
+        HediffDef d = new HediffDef { defName = "GM21_ResuscitationShock", label = "resuscitation shock",
+                                      hediffClass = typeof(HediffWithComps), everCurableByItem = false };
+        d.comps = new List<HediffCompProperties>
+        {
+            new HediffCompProperties_Disappears
+            {
+                disappearsAfterTicks = new IntRange(Gm21Medicine.ResuscitationShockTicks, Gm21Medicine.ResuscitationShockTicks),
+                showRemainingTime = true
+            }
+        };
+        d.stages = new List<HediffStage>
+        {
+            new HediffStage { capMods = new List<PawnCapacityModifier> { new PawnCapacityModifier { capacity = PawnCapacityDefOf.Consciousness, setMax = setMax } } }
+        };
+        return d;
+    }
+
+    static void CommitAndShock(string root, string path)
+    {
+        Console.WriteLine("\n=== 20. Decay commitment, and Grandmaster Resuscitation Shock ===");
+        using (AssemblyDefinition mod = AssemblyDefinition.ReadAssembly(Mod.Location))
+        {
+            // When decay is judged, and when the procedure commits.
+            TypeDefinition driver = mod.MainModule.GetType("Grandmaster21.JobDriver_Gm21Intervention");
+            Func<TypeDefinition, IEnumerable<TypeDefinition>> nested = null;
+            nested = t => new[] { t }.Concat(t.NestedTypes.SelectMany(n => nested(n)));
+            MethodDefinition preInit = nested(driver).SelectMany(t => t.Methods).Where(m => m.HasBody)
+                .FirstOrDefault(m => m.Name != ".ctor"
+                                     && m.Body.Instructions.Any(i => i.OpCode == OpCodes.Stfld && ((FieldReference)i.Operand).Name == "workStartedTick"));
+            List<Instruction> pi = preInit == null ? new List<Instruction>() : preInit.Body.Instructions.ToList();
+            int validate = pi.FindIndex(i => i.Operand is MethodReference && ((MethodReference)i.Operand).Name == "Validate");
+            int commit = pi.FindIndex(i => i.OpCode == OpCodes.Stfld && ((FieldReference)i.Operand).Name == "workStartedTick");
+            Check("work start: the full validation (decay included) runs at the corpse, THEN the work is committed",
+                  validate >= 0 && commit > validate, "validate=" + validate + " commit=" + commit);
+            MethodDefinition resValidate = mod.MainModule.GetType("Grandmaster21.JobDriver_Gm21Resuscitate").Methods.First(m => m.Name == "Validate");
+            MethodReference call = resValidate.Body.Instructions.Select(i => i.Operand as MethodReference)
+                .First(r => r != null && r.Name == "CanResuscitate");
+            Check("the job judges decay until the work has begun (committed = workStartedTick >= 0)",
+                  call.Parameters.Count == 3 && call.Parameters[1].ParameterType.Name == "Boolean"
+                  && resValidate.Body.Instructions.Any(i => i.OpCode == OpCodes.Ldfld && ((FieldReference)i.Operand).Name == "workStartedTick"));
+            MethodReference orderCall = mod.MainModule.GetType("Grandmaster21.Gm21MedicineOrders").Methods.Where(m => m.HasBody)
+                .SelectMany(m => m.Body.Instructions).Select(i => i.Operand as MethodReference)
+                .First(r => r != null && r.Name == "CanResuscitate");
+            Check("the order judges decay now (uncommitted)", orderCall.Parameters.Count == 2);
+            string[] strings = mod.MainModule.Types.SelectMany(t => t.Methods.Concat(t.NestedTypes.SelectMany(n => n.Methods)))
+                .Where(m => m.HasBody && m.DeclaringType.FullName.Contains("Gm21")).SelectMany(m => m.Body.Instructions)
+                .Where(i => i.OpCode == OpCodes.Ldstr).Select(i => (string)i.Operand).ToArray();
+            Check("the Grandmaster works on the corpse where it lies: no hauling, carrying or bed logic in the Medicine code",
+                  !mod.MainModule.GetType("Grandmaster21.JobDriver_Gm21Resuscitate").Methods.Concat(driver.Methods)
+                      .Concat(driver.NestedTypes.SelectMany(n => n.Methods)).Where(m => m.HasBody).SelectMany(m => m.Body.Instructions)
+                      .Select(i => i.Operand as MethodReference).Where(r => r != null)
+                      .Any(r => r.Name == "StartCarryThing" || r.Name == "CarryToCell" || r.Name.Contains("FindBedFor") || r.Name == "PlaceHauledThingInCell"));
+
+            // The shock, as shipped.
+            XElement def = XDocument.Load(Path.Combine(root, "Defs/Medicine/Medicine21.xml")).Root.Elements("HediffDef").Single();
+            XElement disappears = def.Element("comps").Elements("li").Single(li => (string)li.Attribute("Class") == "HediffCompProperties_Disappears");
+            string ticks = Gm21Medicine.ResuscitationShockTicks.ToString();
+            Check("shipped shock: a fixed six-hour timer (15000~15000 = Gm21Medicine.ResuscitationShockTicks), shown to the player",
+                  Gm21Medicine.ResuscitationShockTicks == 6 * GenDate.TicksPerHour && Gm21Medicine.ResuscitationShockTicks == 15000
+                  && disappears.Element("disappearsAfterTicks").Value == ticks + "~" + ticks
+                  && disappears.Element("showRemainingTime").Value == "true" && disappears.Element("messageOnDisappear") != null);
+            XElement[] caps = def.Element("stages").Elements("li").SelectMany(st => st.Element("capMods").Elements("li")).ToArray();
+            float setMax = float.Parse(caps.Length == 1 ? caps[0].Element("setMax").Value : "-1", System.Globalization.CultureInfo.InvariantCulture);
+            Check("shipped shock: one stage, one capacity modifier -- Consciousness setMax 0.1 (vanilla psychic coma's mechanism)",
+                  def.Element("stages").Elements("li").Count() == 1 && caps.Length == 1
+                  && caps[0].Element("capacity").Value == "Consciousness" && setMax == 0.1f);
+            Check("shipped shock: not curable by items, not a scenario start, no severity drift, no other effects",
+                  def.Element("everCurableByItem").Value == "false" && def.Element("scenarioCanAdd").Value == "false"
+                  && def.Element("comps").Elements("li").Count() == 1 && def.Descendants("hediffGivers").Count() == 0);
+            Check("shipped shock: no vanilla resurrection sickness, dementia, blindness or psychosis anywhere in Medicine",
+                  !File.ReadAllText(Path.Combine(root, "Defs/Medicine/Medicine21.xml")).Contains("ResurrectionSickness")
+                  && !strings.Any(x => x.Contains("ResurrectionSickness") || x == "Dementia" || x == "Blindness" || x.Contains("ResurrectionPsychosis")));
+
+            // Why 0.1 incapacitates but cannot kill.
+            TypeDefinition caps2 = mod.MainModule.AssemblyResolver.Resolve(new AssemblyNameReference("Assembly-CSharp", null)).MainModule.GetType("Verse.PawnCapacitiesHandler");
+            MethodDefinition awake = caps2.Methods.First(m => m.Name == "get_CanBeAwake");
+            Check("IL premise: vanilla's awake line is Consciousness >= 0.3, and 0.1 is below it (downed, unconscious)",
+                  awake.Body.Instructions.Any(i => i.OpCode == OpCodes.Ldc_R4 && (float)i.Operand == 0.3f) && setMax < 0.3f);
+            Check("lethal Consciousness is 'not capable' = level <= minForCapable (0 in vanilla), and 0.1 is above it",
+                  new PawnCapacityDef().minForCapable == 0f && setMax > 0f);
+        }
+
+        // Vanilla's capacity rule (PawnCapacityUtility.CalculateCapacityLevel), checked on its IL:
+        //   level = worker level; if level > 0: level = min(level x factors, lowest setMax); then
+        //   max(level, capacity.minValue), rounded to hundredths.
+        // So a setMax ceiling only ever LOWERS a living level to the ceiling (0.1), never to 0: it
+        // cannot be the cause of death. (Running it live needs ModsConfig, which needs the player.)
+        HediffDef shockDef = ShockDef(0.1f);
+        using (AssemblyDefinition acs = AssemblyDefinition.ReadAssembly(Path.Combine(Path.GetDirectoryName(Mod.Location), "Assembly-CSharp.dll")))
+        {
+            MethodDefinition calc = acs.MainModule.GetType("Verse.PawnCapacityUtility").Methods
+                .First(m => m.Name == "CalculateCapacityLevel");
+            List<Instruction> ci = calc.Body.Instructions.ToList();
+            int guard = Enumerable.Range(0, ci.Count - 1).FirstOrDefault(k => ci[k].OpCode == OpCodes.Ldc_R4
+                && (float)ci[k].Operand == 0f && ci[k + 1].OpCode.FlowControl == FlowControl.Cond_Branch);
+            int setMaxCall = ci.FindIndex(i => i.Operand is MethodReference && ((MethodReference)i.Operand).Name == "EvaluateSetMax");
+            int min = ci.FindIndex(i => i.Operand is MethodReference && ((MethodReference)i.Operand).Name == "Min"
+                                        && ((MethodReference)i.Operand).DeclaringType.Name == "Mathf");
+            bool branch = guard >= 0 && guard + 1 < ci.Count && ci[guard + 1].OpCode.FlowControl == FlowControl.Cond_Branch;
+            Check("IL premise: capacity modifiers apply only to a level already above 0, and setMax is a min() ceiling",
+                  branch && guard < setMaxCall && setMaxCall < min, "guard=" + guard + " setMax=" + setMaxCall + " min=" + min);
+        }
+        Pawn cap = MakePawn(0);
+        Check("real PawnCapacityModifier.EvaluateSetMax of the shock's modifier is exactly 0.1",
+              shockDef.stages[0].capMods[0].EvaluateSetMax(cap) == 0.1f);
+
+        // Expiry, deterministic.
+        Pawn q = MakePawn(0);
+        HediffWithComps shock = Attach<HediffWithComps>(q, shockDef);
+        HediffComp_Disappears timer = shock.TryGetComp<HediffComp_Disappears>();
+        timer.SetDuration(Gm21Medicine.ResuscitationShockTicks);
+        float adj = 0f;
+        for (int i = 0; i < Gm21Medicine.ResuscitationShockTicks - 1; i++) timer.CompPostTick(ref adj);
+        bool stillIn = !timer.CompShouldRemove;
+        timer.CompPostTick(ref adj);
+        Check("the shock lasts exactly six hours, then vanilla's Disappears comp ends it", stillIn && timer.CompShouldRemove);
+
+        using (AssemblyDefinition mod = AssemblyDefinition.ReadAssembly(Mod.Location))
+        {
+            TypeDefinition res = mod.MainModule.GetType("Grandmaster21.Gm21Resuscitation");
+            List<Instruction> apply = res.Methods.First(m => m.Name == "ApplyShock").Body.Instructions.ToList();
+            int setDuration = apply.FindIndex(i => i.Operand is MethodReference && ((MethodReference)i.Operand).Name == "SetDuration");
+            int wouldDie = apply.FindIndex(i => i.Operand is MethodReference && ((MethodReference)i.Operand).Name == "WouldDieAfterAddingHediff");
+            int add = apply.FindIndex(i => i.Operand is MethodReference && ((MethodReference)i.Operand).Name == "AddHediff");
+            Check("ApplyShock: exact duration set, vanilla's would-it-kill check, THEN added",
+                  setDuration >= 0 && setDuration < wouldDie && wouldDie < add
+                  && apply.Any(i => i.OpCode == OpCodes.Ldc_I4 && (int)i.Operand == Gm21Medicine.ResuscitationShockTicks));
+            List<Instruction> revive = res.Methods.First(m => m.Name == "TryResuscitate").Body.Instructions.ToList();
+            Func<string, int> at = n => revive.FindIndex(i => i.Operand is MethodReference && ((MethodReference)i.Operand).Name == n);
+            Check("revival order: TryResurrect -> restore wounds -> scars -> close wounds -> shock",
+                  at("TryResurrect") < at("RestoreInjuries") && at("RestoreInjuries") < at("ApplyScar")
+                  && at("ApplyScar") < at("TendRemaining") && at("TendRemaining") < at("ApplyShock"));
+        }
+
+        // Save / load with the shock active.
+        try
+        {
+            DefDatabase<HediffDef>.Add(shockDef);
+            Pawn r = MakePawn(0);
+            HediffWithComps active = Attach<HediffWithComps>(r, shockDef);
+            HediffComp_Disappears t = active.TryGetComp<HediffComp_Disappears>();
+            t.SetDuration(Gm21Medicine.ResuscitationShockTicks);
+            float a2 = 0f;
+            for (int i = 0; i < 2655; i++) t.CompPostTick(ref a2);
+            Hediff h = active;
+            Scribe.saver.InitSaving(path, "root"); Scribe_Deep.Look(ref h, "hediff"); Scribe.saver.FinalizeSaving();
+            XElement node = XDocument.Load(path).Root.Element("hediff");
+            Check("a shock saves as a plain hediff of the GM21 def with its remaining time (12,345 ticks)",
+                  node.Element("def").Value == "GM21_ResuscitationShock" && node.Descendants("ticksToDisappear").Single().Value == "12345",
+                  node.ToString());
+            logged.Clear();
+            try
+            {
+                Hediff back = null;
+                Scribe.loader.InitLoading(path); Scribe_Deep.Look(ref back, "hediff"); Scribe.loader.FinalizeLoading();
+                if (LoadBlocked()) throw new InvalidOperationException("ParseHelper unavailable");
+                HediffComp_Disappears bt = back.TryGetComp<HediffComp_Disappears>();
+                Check("...and reloads with the same remaining time and its consciousness ceiling",
+                      back != active && bt != null && bt.ticksToDisappear == 12345 && bt.disappearsAfterTicks == Gm21Medicine.ResuscitationShockTicks
+                      && back.CapMods != null && back.CapMods.Single().setMax == 0.1f);
+            }
+            catch (Exception e) { Scribe.ForceStop(); Blocked("shock load", e); }
+        }
+        catch (Exception e) { Scribe.ForceStop(); Blocked("shock save", e); }
+
+        // Prepare Save for Uninstall removes it.
+        Gm21MedicineDefOf.GM21_ResuscitationShock = shockDef;
+        Pawn u = MakePawn(0);
+        HediffWithComps uShock = Attach<HediffWithComps>(u, shockDef);
+        HediffWithComps other = Attach<HediffWithComps>(u, Disease("TestUnrelated"));
+        removedLog.Clear();
+        int cleared = (int)Mod.GetType("Grandmaster21.Gm21MedicineUninstall").GetMethod("CleanPawn", Any).Invoke(null, new object[] { u });
+        Check("Prepare Save for Uninstall removes the shock (the pawn simply wakes) and nothing else",
+              cleared == 1 && removedLog.Count == 1 && removedLog[0] == uShock && !u.health.hediffSet.hediffs.Contains(uShock)
+              && u.health.hediffSet.hediffs.Contains(other), "cleared=" + cleared);
+        Hediff[] leftover = u.health.hediffSet.hediffs.Where(x => x.def.defName.StartsWith("GM21")).ToArray();
+        Check("...so no GM21 HediffDef is left for a mod-less load to trip over", leftover.Length == 0);
+    }
+
     // ------------------------------------------------------------------ 11. persistence
 
     static void Persistence(string path)
@@ -1521,8 +1817,10 @@ internal static class MedicineChecks
 
         XDocument defs = XDocument.Load(Path.Combine(root, "Defs/Medicine/Medicine21.xml"));
         string[] kinds = defs.Root.Elements().Select(e => e.Name.LocalName).Distinct().ToArray();
-        Check("Medicine ships JobDefs only (no research, items, buildings, recipes, WorkGivers)",
-              kinds.Length == 1 && kinds[0] == "JobDef", string.Join(",", kinds));
+        Check("Medicine ships three JobDefs and one HediffDef (the shock) -- no research, items, buildings, recipes, WorkGivers",
+              kinds.OrderBy(k => k).SequenceEqual(new[] { "HediffDef", "JobDef" })
+              && defs.Root.Elements("JobDef").Count() == 3 && defs.Root.Elements("HediffDef").Count() == 1
+              && defs.Root.Element("HediffDef").Element("defName").Value == "GM21_ResuscitationShock", string.Join(",", kinds));
         foreach (XElement job in defs.Root.Elements("JobDef"))
         {
             Type driver = Mod.GetType(job.Element("driverClass").Value);
@@ -1530,8 +1828,8 @@ internal static class MedicineChecks
                   driver != null && typeof(Verse.AI.JobDriver).IsAssignableFrom(driver) && !driver.IsAbstract);
         }
         FieldInfo[] defOf = typeof(Gm21MedicineDefOf).GetFields(BindingFlags.Public | BindingFlags.Static);
-        Check("every Gm21MedicineDefOf field has a shipped JobDef",
-              defOf.All(fi => defs.Root.Elements("JobDef").Any(j => j.Element("defName").Value == fi.Name)));
+        Check("every Gm21MedicineDefOf field has a shipped Def of its own type",
+              defOf.All(fi => defs.Root.Elements(fi.FieldType.Name).Any(j => j.Element("defName").Value == fi.Name)));
 
         HashSet<string> keys = new HashSet<string>();
         foreach (string file in Directory.GetFiles(Path.Combine(root, "Languages/English/Keyed"), "*.xml"))
@@ -1826,6 +2124,18 @@ internal static class MedicineChecks
               + vitalParts + " vital parts, " + fleshBodies.Count + " flesh bodies)",
               vitalParts > 0 && unsafeParts.Count == 0, string.Join(",", unsafeParts.ToArray()));
 
+        // Resuscitation Shock copies a vanilla mechanism, and vanilla's Consciousness has no raised
+        // death line: psychic coma is setMax 0.1 on a fixed Disappears timer, and it does not kill.
+        XElement coma = LoadDefs(data, "HediffDef").Select(kv => kv.Value).FirstOrDefault(d => (string)d.Element("defName") == "PsychicComa");
+        XElement consciousness = LoadDefs(data, "PawnCapacityDef").Select(kv => kv.Value)
+            .FirstOrDefault(d => (string)d.Element("defName") == "Consciousness");
+        Check("vanilla psychic coma: Consciousness setMax 0.1 on a fixed Disappears timer (the shock's pattern)",
+              coma != null && coma.Descendants("capacity").Any(c => c.Value == "Consciousness")
+              && coma.Descendants("setMax").Any(m => m.Value == "0.1")
+              && coma.Descendants("li").Any(li => (string)li.Attribute("Class") == "HediffCompProperties_Disappears"));
+        Check("vanilla Consciousness is lethal but sets no minForCapable (death only at 0)",
+              consciousness != null && consciousness.Element("lethalFlesh").Value == "true" && consciousness.Element("minForCapable") == null);
+
         // What the potency budgets cost in vanilla medicine, one kind at a time.
         Dictionary<string, float> potency = new Dictionary<string, float>();
         foreach (KeyValuePair<string, XElement> kv in LoadDefs(data, "ThingDef"))
@@ -1883,6 +2193,7 @@ internal static class MedicineChecks
             VitalAnatomy();
             Trauma();
             DriverSave(xml);
+            CommitAndShock(root, xml);
             VanillaData(args.Length > 4 ? args[4] : null);
         }
         catch (Exception e) { Console.WriteLine("FAIL  unhandled: " + e); fail++; }

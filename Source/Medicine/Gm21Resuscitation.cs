@@ -16,7 +16,7 @@ namespace Grandmaster21
         BrainDestroyed,
         VitalAnatomyUnrebuildable,
         Deteriorated,
-        TooLate
+        TooDecayed
     }
 
     /// <summary>Everything the viability policy needs, gathered from a corpse once.</summary>
@@ -39,9 +39,18 @@ namespace Grandmaster21
         public int vitalRebuilds;
         /// <summary>Some vital anatomy is entirely gone and cannot be rebuilt minimally and safely.</summary>
         public bool vitalUnrebuildable;
+        /// <summary>Vanilla rot stage of the corpse (Fresh / Rotting / Dessicated).</summary>
         public RotStage rotStage;
-        /// <summary>Ticks between death and the reference tick (now, or when the work began).</summary>
-        public int ticksSinceDeath;
+        /// <summary>
+        /// The corpse's CompRottable.RotProgress: biological decay, not time. Positive infinity when
+        /// the corpse has no rot comp at all -- decay that cannot be judged is not recoverable.
+        /// </summary>
+        public float rotProgress;
+        /// <summary>
+        /// The Grandmaster has begun the timed work on a body that was recoverable at that moment.
+        /// The procedure is committed: decay no longer fails it.
+        /// </summary>
+        public bool decayCommitted;
     }
 
     /// <summary>
@@ -55,9 +64,12 @@ namespace Grandmaster21
     ///     gone, and it is never rebuilt;
     ///   * any other vital anatomy that is entirely gone can be rebuilt minimally and safely (see
     ///     PlanVitalRebuild); a body where it cannot is refused;
-    ///   * the body is still fresh (CompRottable stage), and
-    ///   * death was no more than Gm21Medicine.ResuscitationWindowTicks (four hours) ago, measured to
-    ///     the moment the Grandmaster begins the work.
+    ///   * the body is biologically recoverable: vanilla rot stage Fresh AND its RotProgress no more
+    ///     than Gm21Medicine.MaxResuscitationRotProgress. Decay, not time: refrigeration slows it,
+    ///     freezing stops it, so a chronologically old corpse can be medically fresh. Checked when
+    ///     the order is given and again when the work begins; once the work has begun on a
+    ///     recoverable body the procedure is committed and decay never fails it. The Grandmaster
+    ///     works on the corpse wherever it lies -- a battlefield, a freezer, a hospital.
     /// Hostility is NOT a refusal. A hostile pawn is revived exactly as vanilla revives one (the
     /// same TryResurrect the resurrector mech serum uses): it keeps its faction and, on a map,
     /// vanilla gives it an assault lord. The order asks the player to confirm first.
@@ -74,7 +86,8 @@ namespace Grandmaster21
     ///   5. restore the snapshotted fresh wounds (smallest first, each only if it cannot kill), each
     ///      tended as the Grandmaster's no-medicine care so it stops bleeding;
     ///   6. turn up to three of the worst traumatic locations into vanilla permanent scars;
-    ///   7. close anything still open, fresh stumps included.
+    ///   7. close anything still open, fresh stumps included;
+    ///   8. apply Grandmaster Resuscitation Shock (see ApplyShock).
     ///
     /// ENGINE CLEANUP, accepted and documented: Pawn_HealthTracker.Notify_Resurrected removes
     /// immunizable diseases, curable conditions that are lethal or life-threatening, and defs
@@ -150,10 +163,16 @@ namespace Grandmaster21
             if (f.supernatural) return Gm21ResuscitationVerdict.Supernatural;
             if (f.brainDestroyed) return Gm21ResuscitationVerdict.BrainDestroyed;
             if (f.vitalUnrebuildable) return Gm21ResuscitationVerdict.VitalAnatomyUnrebuildable;
+            if (f.decayCommitted) return Gm21ResuscitationVerdict.Viable;
             if (f.rotStage != RotStage.Fresh) return Gm21ResuscitationVerdict.Deteriorated;
-            if (f.ticksSinceDeath < 0 || f.ticksSinceDeath > Gm21Medicine.ResuscitationWindowTicks)
-                return Gm21ResuscitationVerdict.TooLate;
+            if (!WithinDecayLimit(f.rotProgress)) return Gm21ResuscitationVerdict.TooDecayed;
             return Gm21ResuscitationVerdict.Viable;
+        }
+
+        /// <summary>Whether this much decay is still recoverable. Not-a-number and infinity are not.</summary>
+        public static bool WithinDecayLimit(float rotProgress)
+        {
+            return !float.IsNaN(rotProgress) && rotProgress <= Gm21Medicine.MaxResuscitationRotProgress;
         }
 
         public static string ReasonFor(Gm21ResuscitationVerdict verdict)
@@ -168,21 +187,22 @@ namespace Grandmaster21
                 case Gm21ResuscitationVerdict.BrainDestroyed: return "GM21_Med_ResBrain".Translate();
                 case Gm21ResuscitationVerdict.VitalAnatomyUnrebuildable: return "GM21_Med_ResVital".Translate();
                 case Gm21ResuscitationVerdict.Deteriorated: return "GM21_Med_ResDeteriorated".Translate();
-                default: return "GM21_Med_ResTooLate".Translate();
+                default: return "GM21_Med_ResDecayed".Translate();
             }
         }
 
         // ---------------------------------------------------------------- facts
 
         /// <summary>
-        /// Gathers facts from a corpse. <paramref name="referenceTick"/> is when the window is
-        /// measured to: now for targeting, the work-start tick once the Grandmaster has begun.
+        /// Gathers facts from a corpse. <paramref name="decayCommitted"/>: the Grandmaster has already
+        /// begun the work on a recoverable body, so decay is reported but no longer decides.
         /// Never throws: an unreadable modded corpse is reported as Unavailable.
         /// </summary>
-        public static Gm21ResuscitationFacts Gather(Thing thing, int referenceTick)
+        public static Gm21ResuscitationFacts Gather(Thing thing, bool decayCommitted)
         {
             Gm21ResuscitationFacts f = default(Gm21ResuscitationFacts);
             f.rotStage = RotStage.Fresh;
+            f.decayCommitted = decayCommitted;
             Corpse corpse = thing as Corpse;
             f.isCorpse = corpse != null;
             if (corpse == null) return f;
@@ -207,8 +227,7 @@ namespace Grandmaster21
                 f.vitalUnrebuildable = !PlanVitalRebuild(set, body, rebuild);
                 f.vitalRebuilds = rebuild.Count;
 
-                f.rotStage = corpse.GetRotStage();
-                f.ticksSinceDeath = referenceTick - corpse.timeOfDeath;
+                ReadDecay(corpse, out f.rotProgress, out f.rotStage);
             }
             catch (Exception e)
             {
@@ -319,20 +338,44 @@ namespace Grandmaster21
             return null;
         }
 
-        public static Gm21ResuscitationVerdict Evaluate(Thing thing, int referenceTick)
+        /// <summary>
+        /// The corpse's decay, read from vanilla's own CompRottable: its RotProgress and rot stage.
+        /// No rot comp: RotProgress is positive infinity (not recoverable) and the stage Fresh.
+        /// </summary>
+        public static void ReadDecay(ThingWithComps corpse, out float rotProgress, out RotStage stage)
         {
-            return Decide(Gather(thing, referenceTick));
+            CompRottable rot = corpse == null ? null : corpse.GetComp<CompRottable>();
+            if (rot == null)
+            {
+                rotProgress = float.PositiveInfinity;
+                stage = RotStage.Fresh;
+                return;
+            }
+            rotProgress = rot.RotProgress;
+            stage = rot.Stage;
         }
 
-        /// <summary>The validator the UI and the job call. The UI only displays its answer.</summary>
+        public static Gm21ResuscitationVerdict Evaluate(Thing thing, bool decayCommitted)
+        {
+            return Decide(Gather(thing, decayCommitted));
+        }
+
+        /// <summary>
+        /// The validator the UI calls when the order is given (decay decides). The UI only displays
+        /// its answer.
+        /// </summary>
         public static bool CanResuscitate(Corpse corpse, out string reason)
         {
-            return CanResuscitate(corpse, Find.TickManager.TicksGame, out reason);
+            return CanResuscitate(corpse, false, out reason);
         }
 
-        public static bool CanResuscitate(Corpse corpse, int referenceTick, out string reason)
+        /// <summary>
+        /// The validator the job calls: before the work, decay decides; once the work has begun on a
+        /// recoverable body (<paramref name="decayCommitted"/>), only the structural checks remain.
+        /// </summary>
+        public static bool CanResuscitate(Corpse corpse, bool decayCommitted, out string reason)
         {
-            Gm21ResuscitationVerdict verdict = Evaluate(corpse, referenceTick);
+            Gm21ResuscitationVerdict verdict = Evaluate(corpse, decayCommitted);
             reason = ReasonFor(verdict);
             return verdict == Gm21ResuscitationVerdict.Viable;
         }
@@ -414,7 +457,36 @@ namespace Grandmaster21
             }
 
             TendRemaining(doctor, pawn);
+
+            // ---- alive and stabilised, but not getting up: Grandmaster Resuscitation Shock
+            if (!pawn.Dead) outcome.shock = ApplyShock(pawn);
             return !pawn.Dead;
+        }
+
+        /// <summary>
+        /// Grandmaster Resuscitation Shock: the revived pawn stays unconscious -- downed, unable to
+        /// move, work or fight, but carriable and able to rest in bed -- for exactly
+        /// Gm21Medicine.ResuscitationShockTicks, then wakes. A GM21 HediffDef on vanilla's psychic-coma
+        /// pattern (Consciousness ceiling 0.1 plus a Disappears timer), never vanilla's resurrection
+        /// sickness and never a side-effect lottery. Faction and hostility are untouched: a revived
+        /// raider is a downed raider. Returns the shock, or null if it could not be applied safely.
+        /// </summary>
+        public static Hediff ApplyShock(Pawn pawn)
+        {
+            HediffDef def = Gm21MedicineDefOf.GM21_ResuscitationShock;
+            if (def == null || pawn == null || pawn.Dead || pawn.health == null) return null;
+            Hediff shock = HediffMaker.MakeHediff(def, pawn);
+            HediffComp_Disappears timer = shock.TryGetComp<HediffComp_Disappears>();
+            if (timer != null) timer.SetDuration(Gm21Medicine.ResuscitationShockTicks);
+            if (pawn.health.WouldDieAfterAddingHediff(shock))
+            {
+                // A ceiling cannot bring a living consciousness to zero, so this should never fire.
+                Log.Warning("[Grandmaster 21] Medicine 21: resuscitation shock was not applied to "
+                            + pawn.ToStringSafe() + " because vanilla predicted it would be fatal.");
+                return null;
+            }
+            pawn.health.AddHediff(shock);
+            return pawn.health.hediffSet.hediffs.Contains(shock) ? shock : pawn.health.hediffSet.GetFirstHediffOfDef(def);
         }
 
         /// <summary>Exactly the fresh injuries vanilla's revival erases, smallest first.</summary>
@@ -608,5 +680,7 @@ namespace Grandmaster21
         public readonly List<BodyPartRecord> rebuilt = new List<BodyPartRecord>();
         /// <summary>The permanent death-trauma scars, best first.</summary>
         public readonly List<Hediff_Injury> scars = new List<Hediff_Injury>();
+        /// <summary>The Resuscitation Shock, or null if it could not be applied.</summary>
+        public Hediff shock;
     }
 }

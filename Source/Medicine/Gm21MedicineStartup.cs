@@ -46,6 +46,8 @@ namespace Grandmaster21
     ///   * every Grandmaster Treatment on the pawn's hediffs is dropped, so no gm21Treatment*
     ///     element is written into any hediff node;
     ///   * the Medicine mode is dropped, so no gm21MedicineMode element is written;
+    ///   * Grandmaster Resuscitation Shock is removed (the pawn simply wakes), so no GM21 HediffDef
+    ///     is left in any hediff list -- a save that must load without the mod cannot reference it;
     ///   * an intervention in progress or queued is ended, so no GM21_Medicine* JobDef is saved
     ///     into the pawn's job tracker -- a save that must load without the mod cannot reference
     ///     this mod's JobDefs.
@@ -70,8 +72,24 @@ namespace Grandmaster21
                 }
             }
 
+            cleared += RemoveShock(pawn);
+
             cleared += EndInterventions(pawn);
             return cleared;
+        }
+
+        private static int RemoveShock(Pawn pawn)
+        {
+            HediffDef shock = Gm21MedicineDefOf.GM21_ResuscitationShock;
+            if (shock == null || pawn.health == null || pawn.health.hediffSet == null) return 0;
+            List<Hediff> found = new List<Hediff>();
+            List<Hediff> hediffs = pawn.health.hediffSet.hediffs;
+            for (int i = 0; i < hediffs.Count; i++)
+            {
+                if (hediffs[i] != null && hediffs[i].def == shock) found.Add(hediffs[i]);
+            }
+            for (int i = 0; i < found.Count; i++) pawn.health.RemoveHediff(found[i]);
+            return found.Count;
         }
 
         private static int EndInterventions(Pawn pawn)
