@@ -13,6 +13,14 @@
 //     real ones re-evaluate a live pawn's capacities and death state, which needs a whole game;
 //   * PawnCapacitiesHandler.CapableOf and RaceProperties.IsMechanoid answer from the fixture.
 //
+//   * Pawn.HealthScale is 1 and PawnCapacitiesHandler.GetLevel answers from the fixture;
+//   * ThingIDMaker.GiveIDTo hands out test IDs, and Thing.RemoveAllReservationsAndDesignationsOnThis
+//     and ThingOwnerUtility.ShouldRemoveDesignationsOnAddedThings skip the maps' designations, and
+//     ReliquaryUtility.IsRelic (which reads the mods config file) answers false -- all
+//     reach for a running game's managers -- so real medicine Things can be added, split and
+//     destroyed in a real inventory ThingOwner;
+//   * Find.ActiveLanguageWorker is vanilla's default worker, so formatted keys can be built.
+//
 // NOT covered: a running map, jobs, pathing, targeting UI, save/reload of a whole game, revival.
 // Those are listed as the runtime checklist in Docs/Medicine21.md.
 //
@@ -48,6 +56,8 @@ internal static class MedicineChecks
     {
         Console.WriteLine("BLOCKED  " + name + "   [" + e.GetBaseException().GetType().Name + ": "
                           + e.GetBaseException().Message + "]");
+        string trace = (e.GetBaseException().StackTrace ?? "") + "\n" + (e.StackTrace ?? "");
+        foreach (string line in trace.Split('\n').Take(24)) Console.WriteLine("           " + line.Trim());
         blocked++;
     }
 
@@ -71,6 +81,14 @@ internal static class MedicineChecks
     }
     public static bool FixtureCapable(ref bool __result) { __result = capable; return false; }
     public static bool NotMechanoid(ref bool __result) { __result = false; return false; }
+    public static bool UnitHealthScale(ref float __result) { __result = 1f; return false; }
+    static float manipulationLevel = 1f;
+    public static bool FixtureLevel(ref float __result) { __result = manipulationLevel; return false; }
+    public static bool NoMapDesignations(ref bool __result) { __result = false; return false; }
+    static readonly LanguageWorker defaultLanguageWorker = new LanguageWorker_Default();
+    public static bool DefaultLanguageWorker(ref LanguageWorker __result) { __result = defaultLanguageWorker; return false; }
+    static int nextThingId = 5000;
+    public static bool FixtureThingId(Thing t) { t.thingIDNumber = nextThingId++; return false; }
     public static readonly List<string> logged = new List<string>();
     public static bool ConsoleLog(string text) { logged.Add(text); Console.WriteLine("        [game log] " + text); return false; }
 
@@ -83,6 +101,15 @@ internal static class MedicineChecks
         h.Patch(AccessTools.Method(typeof(Pawn_HealthTracker), "RemoveHediff"), Stub("ListOnlyRemove"));
         h.Patch(AccessTools.Method(typeof(PawnCapacitiesHandler), "CapableOf"), Stub("FixtureCapable"));
         h.Patch(AccessTools.PropertyGetter(typeof(RaceProperties), "IsMechanoid"), Stub("NotMechanoid"));
+        h.Patch(AccessTools.PropertyGetter(typeof(Pawn), "HealthScale"), Stub("UnitHealthScale"));
+        h.Patch(AccessTools.Method(typeof(PawnCapacitiesHandler), "GetLevel"), Stub("FixtureLevel"));
+        h.Patch(AccessTools.Method(typeof(ThingIDMaker), "GiveIDTo"), Stub("FixtureThingId"));
+        h.Patch(AccessTools.Method(typeof(Thing), "RemoveAllReservationsAndDesignationsOnThis"), Stub("SkipNotify"));
+        h.Patch(AccessTools.Method(typeof(ThingOwnerUtility), "ShouldRemoveDesignationsOnAddedThings"), Stub("NoMapDesignations"));
+        // Stacking asks whether either Thing is an Ideology relic, which reads the mods config file.
+        h.Patch(AccessTools.Method(typeof(ReliquaryUtility), "IsRelic"), Stub("NoMapDesignations"));
+        // Formatted translations ask the active language for its grammar worker; there is no language headless.
+        h.Patch(AccessTools.PropertyGetter(typeof(Find), "ActiveLanguageWorker"), Stub("DefaultLanguageWorker"));
         // Verse.Log bottoms out in Unity's logger; route it to the console so messages are visible.
         foreach (string level in new[] { "Message", "Warning", "Error" })
             h.Patch(AccessTools.Method(typeof(Log), level, new[] { typeof(string) }), Stub("ConsoleLog"));
@@ -92,7 +119,8 @@ internal static class MedicineChecks
         binding.SetValue(null, true);
         try
         {
-            foreach (Type t in new[] { typeof(SkillDefOf), typeof(HediffDefOf), typeof(PawnCapacityDefOf) })
+            foreach (Type t in new[] { typeof(SkillDefOf), typeof(HediffDefOf), typeof(PawnCapacityDefOf),
+                                       typeof(BodyPartTagDefOf), typeof(StatDefOf) })
                 System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(t.TypeHandle);
         }
         finally { binding.SetValue(null, false); }
@@ -101,6 +129,17 @@ internal static class MedicineChecks
         PawnCapacityDefOf.Manipulation = new PawnCapacityDef { defName = "Manipulation" };
         HediffDefOf.FoodPoisoning = Disease("FoodPoisoning");
         HediffDefOf.MissingBodyPart = new HediffDef { defName = "MissingBodyPart", hediffClass = typeof(Hediff_MissingPart) };
+        StatDefOf.MedicalPotency = new StatDef { defName = "MedicalPotency", label = "medical potency" };
+        // The vital-anatomy tags, bound to the fixture's own non-vanilla tag defs.
+        BodyPartTagDefOf.ConsciousnessSource = ConsciousnessTag;
+        BodyPartTagDefOf.BloodPumpingSource = PumpTag;
+        BodyPartTagDefOf.BloodFiltrationKidney = KidneyTag;
+        BodyPartTagDefOf.BloodFiltrationLiver = LiverTag;
+        BodyPartTagDefOf.BloodFiltrationSource = FilterSourceTag;
+        BodyPartTagDefOf.BreathingSource = LungTag;
+        BodyPartTagDefOf.BreathingPathway = PathwayTag;
+        BodyPartTagDefOf.BreathingSourceCage = CageTag;
+        BodyPartTagDefOf.MetabolismSource = MetabolismTag;
     }
 
     // ------------------------------------------------------------------ fixtures
@@ -141,6 +180,12 @@ internal static class MedicineChecks
     static readonly BodyPartTagDef PumpTag = new BodyPartTagDef { defName = "TestBloodPumpingSource" };
     static readonly BodyPartTagDef KidneyTag = new BodyPartTagDef { defName = "TestBloodFiltrationKidney" };
     static readonly BodyPartTagDef UnusedTag = new BodyPartTagDef { defName = "TestTagNobodyHas" };
+    static readonly BodyPartTagDef LiverTag = new BodyPartTagDef { defName = "TestBloodFiltrationLiver" };
+    static readonly BodyPartTagDef FilterSourceTag = new BodyPartTagDef { defName = "TestBloodFiltrationSource" };
+    static readonly BodyPartTagDef LungTag = new BodyPartTagDef { defName = "TestBreathingSource" };
+    static readonly BodyPartTagDef PathwayTag = new BodyPartTagDef { defName = "TestBreathingPathway" };
+    static readonly BodyPartTagDef CageTag = new BodyPartTagDef { defName = "TestBreathingSourceCage" };
+    static readonly BodyPartTagDef MetabolismTag = new BodyPartTagDef { defName = "TestMetabolismSource" };
 
     /// Generic biped with deliberately non-human names, so nothing can match on names.
     static Body MakeBody()
@@ -170,6 +215,7 @@ internal static class MedicineChecks
     static Pawn MakePawn(int medicineLevel, Body body = null)
     {
         Pawn p = Uninit<Pawn>();
+        p.Name = new NameSingle("Fixture" + medicineLevel);
         ThingDef race = Uninit<ThingDef>();
         race.defName = "TestRace";
         RaceProperties props = Uninit<RaceProperties>();
@@ -296,6 +342,8 @@ internal static class MedicineChecks
         Console.WriteLine("\n=== 3. Gm21MedicinePatches.Apply against the real methods ===");
         Gm21MedicinePatches_Apply();
         Check("deterministic tend patches applied", Gm21Medicine.TendEnabled);
+        Check("effective-quality propagation transpiler applied, at exactly one call site",
+              Gm21Medicine.TendPropagationEnabled && Gm21GrandmasterTend.PropagationSites == 1);
         Check("treatment (tend + Hediff.ExposeData persistence) applied", Gm21Medicine.TreatmentEnabled);
         Check("injury recovery patches applied", Gm21Medicine.RecoveryEnabled);
         Check("immunity patch applied", Gm21Medicine.ImmunityEnabled);
@@ -308,6 +356,9 @@ internal static class MedicineChecks
                                           "Pawn_HealthTracker.HealthTickInterval", "Hediff_Injury.Heal",
                                           "ImmunityRecord.ImmunityChangePerTick", "SurgeryOutcomeEffectDef.GetOutcome" })
             Check("  patched: " + target, patched.Contains(target));
+        Patches doTendInfo = Harmony.GetPatchInfo(AccessTools.Method(typeof(TendUtility), "DoTend"));
+        Check("  patched: TendUtility.DoTend transpiler (effective quality)",
+              doTendInfo != null && doTendInfo.Transpilers.Any(tp => tp.owner == "ared.grandmaster21"));
         Check("no global medicine-stat or WorkGiver patch was installed",
               !patched.Any(p => p.StartsWith("StatWorker") || p.StartsWith("WorkGiver") || p.StartsWith("Hediff.TendableNow")
                                 || p.Contains("TendableNow")));
@@ -654,9 +705,13 @@ internal static class MedicineChecks
         f = ok; f.available = false; Check("unavailable/invalid corpse -> rejected", D(f) == Gm21ResuscitationVerdict.Unavailable);
         f = ok; f.isFlesh = false; Check("non-flesh -> rejected", D(f) == Gm21ResuscitationVerdict.NotFlesh);
         f = ok; f.supernatural = true; Check("entity/mutant/unnatural -> rejected", D(f) == Gm21ResuscitationVerdict.Supernatural);
-        f = ok; f.hostile = true; Check("hostile -> rejected", D(f) == Gm21ResuscitationVerdict.Hostile);
-        f = ok; f.brainDestroyed = true; Check("destroyed consciousness anatomy -> 'Brain destroyed'", D(f) == Gm21ResuscitationVerdict.BrainDestroyed);
-        f = ok; f.vitalAnatomyDestroyed = true; Check("destroyed vital anatomy -> rejected", D(f) == Gm21ResuscitationVerdict.VitalAnatomyDestroyed);
+        f = ok; f.hostile = true; Check("hostile -> VIABLE (not a refusal; the order confirms, the pawn stays hostile)", D(f) == Gm21ResuscitationVerdict.Viable);
+        Check("the verdict enum no longer has a Hostile refusal",
+              !Enum.GetNames(typeof(Gm21ResuscitationVerdict)).Any(n => n.IndexOf("Hostile", StringComparison.OrdinalIgnoreCase) >= 0));
+        f = ok; f.brainDestroyed = true; Check("destroyed consciousness anatomy -> 'Brain destroyed' (hard boundary)", D(f) == Gm21ResuscitationVerdict.BrainDestroyed);
+        f = ok; f.vitalRebuilds = 2; Check("destroyed but rebuildable vital anatomy -> viable", D(f) == Gm21ResuscitationVerdict.Viable);
+        f = ok; f.vitalUnrebuildable = true; Check("vital anatomy that cannot be rebuilt minimally -> rejected", D(f) == Gm21ResuscitationVerdict.VitalAnatomyUnrebuildable);
+        f = ok; f.brainDestroyed = true; f.vitalUnrebuildable = true; Check("brain destruction is reported before vital anatomy", D(f) == Gm21ResuscitationVerdict.BrainDestroyed);
         f = ok; f.rotStage = RotStage.Rotting; Check("rotting -> 'deteriorated beyond recovery'", D(f) == Gm21ResuscitationVerdict.Deteriorated);
         f = ok; f.rotStage = RotStage.Dessicated; Check("dessicated -> 'deteriorated beyond recovery'", D(f) == Gm21ResuscitationVerdict.Deteriorated);
         f = ok; f.ticksSinceDeath = Gm21Medicine.ResuscitationWindowTicks; Check("exactly at the window edge -> viable", D(f) == Gm21ResuscitationVerdict.Viable);
@@ -678,6 +733,673 @@ internal static class MedicineChecks
         Attach<Hediff_MissingPart>(p, HediffDefOf.MissingBodyPart, b.brain);
         Check("destroyed head (brain marker beneath it) -> brain destroyed", Gm21Resuscitation.TagEntirelyMissing(set, b.def, ConsciousnessTag));
         Check("a race without a tag is never judged by it", !Gm21Resuscitation.TagEntirelyMissing(set, b.def, UnusedTag));
+    }
+
+    // ------------------------------------------------------------------ 14. tend quality propagation
+
+    /// Records exactly what Hediff.Tended received -- stands in for any condition-specific override.
+    public class RecordingCondition : HediffWithComps
+    {
+        public float gotQuality = -1f, gotMax = -1f;
+        public override void Tended(float quality, float maxQuality, int batchPosition = 0)
+        {
+            gotQuality = quality; gotMax = maxQuality;
+            base.Tended(quality, maxQuality, batchPosition);
+        }
+    }
+
+    static void Propagation()
+    {
+        Console.WriteLine("\n=== 14. Effective tend quality reaches Hediff.Tended (DoTend transpiler) ===");
+        MethodInfo doTend = AccessTools.Method(typeof(TendUtility), "DoTend");
+        MethodInfo tended = AccessTools.Method(typeof(Hediff), "Tended", new[] { typeof(float), typeof(float), typeof(int) });
+        MethodInfo effective = AccessTools.Method(typeof(Gm21GrandmasterTend), "TendedEffective");
+        try
+        {
+            List<CodeInstruction> live = PatchProcessor.GetCurrentInstructions(doTend);
+            int toEffective = live.Count(i => (i.opcode == System.Reflection.Emit.OpCodes.Call) && Equals(i.operand, effective));
+            int toTended = live.Count(i => (i.opcode == System.Reflection.Emit.OpCodes.Call || i.opcode == System.Reflection.Emit.OpCodes.Callvirt)
+                                            && Equals(i.operand, tended));
+            Check("patched DoTend calls TendedEffective exactly once and Hediff.Tended directly never",
+                  toEffective == 1 && toTended == 0, "effective=" + toEffective + " tended=" + toTended);
+            List<CodeInstruction> original = PatchProcessor.GetOriginalInstructions(doTend);
+            Check("unpatched DoTend has exactly one Hediff.Tended call (the premise)",
+                  original.Count(i => (i.opcode == System.Reflection.Emit.OpCodes.Callvirt || i.opcode == System.Reflection.Emit.OpCodes.Call)
+                                      && Equals(i.operand, tended)) == 1);
+        }
+        catch (Exception e) { Blocked("reading DoTend's live IL", e); }
+
+        // Robustness: two call sites -> the transpiler changes nothing and reports 0 sites.
+        MethodInfo transpiler = typeof(Gm21GrandmasterTend).GetMethod("Transpiler_DoTend", Any);
+        List<CodeInstruction> twice = new List<CodeInstruction>
+        {
+            new CodeInstruction(System.Reflection.Emit.OpCodes.Callvirt, tended),
+            new CodeInstruction(System.Reflection.Emit.OpCodes.Callvirt, tended),
+            new CodeInstruction(System.Reflection.Emit.OpCodes.Ret)
+        };
+        List<CodeInstruction> result = ((IEnumerable<CodeInstruction>)transpiler.Invoke(null, new object[] { twice })).ToList();
+        Check("an unexpected IL shape (two Tended calls) is left untouched and reported (0 sites)",
+              Gm21GrandmasterTend.PropagationSites == 0 && result.Count(i => Equals(i.operand, tended)) == 2);
+        List<CodeInstruction> once = new List<CodeInstruction>
+        {
+            new CodeInstruction(System.Reflection.Emit.OpCodes.Callvirt, tended),
+            new CodeInstruction(System.Reflection.Emit.OpCodes.Ret)
+        };
+        ((IEnumerable<CodeInstruction>)transpiler.Invoke(null, new object[] { once })).ToList();
+        Check("...and the single-site shape is rewritten again (1 site)", Gm21GrandmasterTend.PropagationSites == 1);
+
+        Pawn patient = MakePawn(0);
+        HediffDef recordDef = Disease("TestRecorder", tendable: true);
+        recordDef.hediffClass = typeof(RecordingCondition);
+        foreach (float target in new[] { 1.00f, 1.30f, 1.60f })
+        {
+            RecordingCondition c = Attach<RecordingCondition>(patient, recordDef);
+            SetFrame(true, target);
+            Gm21GrandmasterTend.TendedEffective(c, 0.42f, 0.70f, 1);
+            SetFrame(false, 0f);
+            Check("GM frame " + target.ToString("0.00") + ": the condition's own Tended receives quality = max = target",
+                  c.gotQuality == target && c.gotMax == target && Tend(c).tendQuality == target,
+                  "got " + c.gotQuality + "/" + c.gotMax);
+        }
+        RecordingCondition plain = Attach<RecordingCondition>(patient, recordDef);
+        Gm21GrandmasterTend.TendedEffective(plain, 0.42f, 0.70f, 1);
+        Check("no frame (ordinary doctor, or no medicine): the original values pass through untouched",
+              plain.gotQuality == 0.42f && plain.gotMax == 0.70f);
+
+        // Regression: vanilla Hediff_HeartAttack.Tended rolls 0.65 x quality against Rand.Value.
+        HediffDef heartDef = Disease("TestHeartAttack", tendable: true);
+        heartDef.hediffClass = typeof(Hediff_HeartAttack);
+        Func<bool, float, float, int, float> successRate = (grandmaster, target, vanillaQuality, n) =>
+        {
+            int ok = 0;
+            for (int i = 0; i < n; i++)
+            {
+                Hediff_HeartAttack h = Attach<Hediff_HeartAttack>(patient, heartDef);
+                Set(h, "severityInt", 0.6f);
+                SetFrame(grandmaster, target);
+                Gm21GrandmasterTend.TendedEffective(h, vanillaQuality, 1.00f, 1);
+                SetFrame(false, 0f);
+                if (h.Severity < 0.55f) ok++;
+                patient.health.hediffSet.hediffs.Remove(h);
+            }
+            return ok / (float)n;
+        };
+        const int N = 6000;
+        float vanilla = successRate(false, 0f, 1.00f, N);
+        float gm100 = successRate(true, 1.00f, 1.00f, N);
+        float gm130 = successRate(true, 1.30f, 1.00f, N);
+        float gm160 = successRate(true, 1.60f, 1.00f, N);
+        Check("heart attack, ordinary doctor at 100%: vanilla ~65% treatment success", Math.Abs(vanilla - 0.65f) < 0.03f, vanilla.ToString("0.000"));
+        Check("heart attack, Grandmaster at 100% effective: ~65% (same as the quality says)", Math.Abs(gm100 - 0.65f) < 0.03f, gm100.ToString("0.000"));
+        Check("heart attack, Grandmaster at 130% effective (industrial): ~84.5%, not 65%", Math.Abs(gm130 - 0.845f) < 0.03f, gm130.ToString("0.000"));
+        Check("heart attack, Grandmaster at 160% effective (glitterworld): 100%", gm160 == 1f, gm160.ToString("0.000"));
+    }
+
+    // ------------------------------------------------------------------ 15. intervention medicine
+
+    /// ThingDef's constructor reaches Unity's shader database, so the def is built field by field.
+    static ThingDef MedDef(string name, float potency)
+    {
+        ThingDef d = Uninit<ThingDef>();
+        d.defName = name; d.label = name; d.thingClass = typeof(ThingWithComps); d.category = ThingCategory.Item;
+        d.stackLimit = 25; d.useHitPoints = false; d.destroyable = true;
+        d.comps = new List<CompProperties>();
+        d.statBases = new List<StatModifier> { new StatModifier { stat = StatDefOf.MedicalPotency, value = potency } };
+        return d;
+    }
+
+    static Thing Stack(ThingDef def, int count)
+    {
+        Thing t = ThingMaker.MakeThing(def);
+        t.stackCount = count;
+        return t;
+    }
+
+    static int Units(Pawn doctor, ThingDef def)
+    {
+        return doctor.inventory.innerContainer.Where(t => t.def == def).Sum(t => t.stackCount);
+    }
+
+    static float Potency(Pawn doctor)
+    {
+        return doctor.inventory.innerContainer.Sum(t => Gm21MedicineSupplies.PotencyOf(t.def) * t.stackCount);
+    }
+
+    static Gm21SupplyStack S(float potency, int available, bool inventory = false, float dist = 0f)
+    {
+        return new Gm21SupplyStack { potency = potency, available = available, inInventory = inventory, distanceSquared = dist };
+    }
+
+    static int[] PlanOf(float budget, params Gm21SupplyStack[] stacks)
+    {
+        int[] take = new int[stacks.Length];
+        bool ok = Gm21MedicineSupplies.Plan(stacks.Select(x => x.potency).ToList(), stacks.Select(x => x.available).ToList(), budget, take);
+        return ok ? take : null;
+    }
+
+    static string Show(int[] take) { return take == null ? "refused" : string.Join(",", take.Select(x => x.ToString()).ToArray()); }
+
+    static void InterventionMedicine()
+    {
+        Console.WriteLine("\n=== 15. Intervention medicine: potency budgets, planning, consumption ===");
+        Check("budgets: Cure 1.0 < Reconstruct 2.0 < Resuscitate 3.0 (provisional)",
+              Gm21Medicine.CurePotencyBudget == 1f && Gm21Medicine.ReconstructPotencyBudget == 2f
+              && Gm21Medicine.ResuscitatePotencyBudget == 3f
+              && Gm21MedicineSupplies.BudgetFor(Gm21MedicineMode.Cure) == 1f
+              && Gm21MedicineSupplies.BudgetFor(Gm21MedicineMode.Reconstruct) == 2f
+              && Gm21MedicineSupplies.BudgetFor(Gm21MedicineMode.Resuscitate) == 3f);
+
+        int[] t;
+        t = PlanOf(1f, S(1f, 5)); Check("Cure, industrial x5 available: takes exactly 1", Show(t) == "1", Show(t));
+        t = PlanOf(1f, S(0.6f, 5)); Check("Cure, herbal only: takes 2 (1.2 >= 1.0)", Show(t) == "2", Show(t));
+        t = PlanOf(1f, S(1.6f, 3)); Check("Cure, glitterworld only: takes 1 (potency sets QUANTITY only)", Show(t) == "1", Show(t));
+        t = PlanOf(3f, S(1.6f, 1), S(1f, 1), S(0.6f, 4));
+        Check("Resuscitate from a mixture: glitterworld 1 + industrial 1 + herbal 1 = 3.2", Show(t) == "1,1,1", Show(t));
+        t = PlanOf(3f, S(0.6f, 10)); Check("Resuscitate from herbal: exactly 5 (float-safe 5 x 0.6 = 3.0)", Show(t) == "5", Show(t));
+        t = PlanOf(1f, S(0.35f, 10)); Check("modded medicine at potency 0.35 participates: 3 units", Show(t) == "3", Show(t));
+        t = PlanOf(2f, S(0.6f, 3)); Check("insufficient (herbal x3 = 1.8 for Reconstruct 2.0): refused, nothing taken", t == null, Show(t));
+        t = PlanOf(1f, S(0f, 9), S(1f, 0), S(0.6f, 2)); Check("zero-potency and empty stacks are skipped", Show(t) == "0,0,2", Show(t));
+
+        List<Gm21SupplyStack> order = new List<Gm21SupplyStack> { S(0.6f, 1, false, 4f), S(1f, 1, false, 100f), S(1f, 1, true, 900f), S(1f, 1, false, 1f), S(1.6f, 1, false, 50f) };
+        Gm21MedicineSupplies.SortByPreference(order);
+        Check("preference: best potency first, inventory before map at equal potency, then nearest",
+              order[0].potency == 1.6f && order[1].inInventory && order[2].distanceSquared == 1f && order[3].distanceSquared == 100f
+              && order[4].potency == 0.6f);
+
+        List<KeyValuePair<Gm21SupplyStack, int>> plan = new List<KeyValuePair<Gm21SupplyStack, int>>();
+        float avail;
+        Check("TryPlan reports the available potency when it refuses",
+              !Gm21MedicineSupplies.TryPlan(new List<Gm21SupplyStack> { S(0.6f, 3) }, 2f, plan, out avail) && Near(avail, 1.8f) && plan.Count == 0,
+              avail.ToString());
+
+        // Medical care.
+        Pawn noSettings = MakePawn(0);
+        Check("no patient (Resuscitate) -> no medical-care restriction", !Gm21MedicineSupplies.CareFor(null).HasValue);
+        Check("a patient with no setting and no running game -> no restriction (headless fallback)",
+              !Gm21MedicineSupplies.CareFor(noSettings).HasValue);
+        Pawn noMeds = MakePawn(0);
+        noMeds.playerSettings = Uninit<Pawn_PlayerSettings>(); noMeds.playerSettings.medCare = MedicalCareCategory.NoMeds;
+        Pawn best = MakePawn(0);
+        best.playerSettings = Uninit<Pawn_PlayerSettings>(); best.playerSettings.medCare = MedicalCareCategory.Best;
+        ThingDef industrial = MedDef("TestIndustrialMedicine", 1.0f), herbal = MedDef("TestHerbalMedicine", 0.6f),
+                 modded = MedDef("TestModdedSalve", 0.35f), notMedicine = MedDef("TestSteel", 0f);
+        notMedicine.statBases.Clear();
+        Check("the patient's own medical care is respected: 'no medicine' allows none, 'best' allows all",
+              !Gm21MedicineSupplies.Allowed(noMeds, industrial) && Gm21MedicineSupplies.Allowed(best, industrial)
+              && Gm21MedicineSupplies.Allowed(null, industrial));
+
+        // Real potency read (the same MedicalPotency stat vanilla uses), including a modded medicine.
+        Check("real stat read: potency of medicine defs by their loaded MedicalPotency (no DefNames)",
+              Near(Gm21MedicineSupplies.PotencyOf(industrial), 1f) && Near(Gm21MedicineSupplies.PotencyOf(herbal), 0.6f)
+              && Near(Gm21MedicineSupplies.PotencyOf(modded), 0.35f) && Gm21MedicineSupplies.PotencyOf(notMedicine) == 0f,
+              Gm21MedicineSupplies.PotencyOf(industrial) + "/" + Gm21MedicineSupplies.PotencyOf(herbal) + "/" + Gm21MedicineSupplies.PotencyOf(modded));
+
+        // Consumption through real Things in a real inventory ThingOwner.
+        try
+        {
+            Pawn doctor = MakePawn(21);
+            doctor.inventory = new Pawn_InventoryTracker(doctor);
+            doctor.inventory.innerContainer.TryAdd(Stack(industrial, 2));
+            doctor.inventory.innerContainer.TryAdd(Stack(herbal, 5));
+            string reason;
+            float before = Potency(doctor);
+
+            plan.Clear();
+            bool planned = Gm21MedicineSupplies.TryPlanFromInventory(doctor, best, Gm21Medicine.CurePotencyBudget, plan, out reason);
+            Check("an interrupted intervention consumes nothing: planning alone leaves the inventory intact",
+                  planned && Near(Potency(doctor), before) && Units(doctor, industrial) == 2 && Units(doctor, herbal) == 5);
+            int used = Gm21MedicineSupplies.Consume(plan);
+            Check("a completed Cure consumes exactly one industrial medicine, nothing else",
+                  used == 1 && Units(doctor, industrial) == 1 && Units(doctor, herbal) == 5 && Near(Potency(doctor), before - 1f),
+                  "used=" + used + " industrial=" + Units(doctor, industrial) + " herbal=" + Units(doctor, herbal));
+
+            plan.Clear();
+            planned = Gm21MedicineSupplies.TryPlanFromInventory(doctor, best, Gm21Medicine.ResuscitatePotencyBudget, plan, out reason);
+            used = Gm21MedicineSupplies.Consume(plan);
+            Check("a completed Resuscitation combines stacks: industrial 1 + herbal 4 (3.4 >= 3.0), whole stack removed",
+                  planned && used == 5 && Units(doctor, industrial) == 0 && Units(doctor, herbal) == 1
+                  && !doctor.inventory.innerContainer.Any(x => x.def == industrial),
+                  "used=" + used + " industrial=" + Units(doctor, industrial) + " herbal=" + Units(doctor, herbal));
+
+            plan.Clear();
+            planned = Gm21MedicineSupplies.TryPlanFromInventory(doctor, best, Gm21Medicine.ReconstructPotencyBudget, plan, out reason);
+            Check("not enough left for Reconstruct (0.6 of 2.0): refused, with the reason, nothing consumed",
+                  !planned && plan.Count == 0 && Units(doctor, herbal) == 1 && reason != null);
+
+            plan.Clear();
+            Check("medical care is applied at completion too: 'no medicine' patient -> refused",
+                  !Gm21MedicineSupplies.TryPlanFromInventory(doctor, noMeds, 0.5f, plan, out reason));
+
+            doctor.inventory.innerContainer.TryAdd(Stack(modded, 3));
+            plan.Clear();
+            planned = Gm21MedicineSupplies.TryPlanFromInventory(doctor, best, 1f, plan, out reason);
+            used = Gm21MedicineSupplies.Consume(plan);
+            Check("modded medicine is consumed by its own potency (herbal 1 + salve 2 = 1.3 >= 1.0)",
+                  planned && used == 3 && Units(doctor, herbal) == 0 && Units(doctor, modded) == 1,
+                  "used=" + used + " herbal=" + Units(doctor, herbal) + " salve=" + Units(doctor, modded));
+        }
+        catch (Exception e) { Blocked("real medicine Things in a real inventory", e); }
+
+        // Lifecycle, by IL: the only consumption site, and it sits behind a successful apply.
+        using (AssemblyDefinition mod = AssemblyDefinition.ReadAssembly(Mod.Location))
+        {
+            List<string> consumeSites = new List<string>();
+            List<string> destroySites = new List<string>();
+            foreach (TypeDefinition type in AllTypes(mod.MainModule))
+                foreach (MethodDefinition m in type.Methods.Where(x => x.HasBody))
+                    foreach (Instruction i in m.Body.Instructions)
+                    {
+                        MethodReference r = i.Operand as MethodReference;
+                        if (r == null) continue;
+                        if (r.Name == "Consume" && r.DeclaringType.Name == "Gm21MedicineSupplies") consumeSites.Add(type.Name + "." + m.Name);
+                        if ((r.Name == "Destroy" || r.Name == "SplitOff") && type.FullName.Contains("JobDriver_Gm21")) destroySites.Add(type.Name + "." + m.Name);
+                    }
+            Check("medicine is consumed at exactly ONE site: JobDriver_Gm21Intervention.Finish",
+                  consumeSites.Count == 1 && consumeSites[0] == "JobDriver_Gm21Intervention.Finish", string.Join(",", consumeSites.ToArray()));
+            Check("no intervention driver destroys or splits a Thing itself", destroySites.Count == 0, string.Join(",", destroySites.ToArray()));
+
+            MethodDefinition finish = mod.MainModule.GetType("Grandmaster21.JobDriver_Gm21Intervention").Methods.First(x => x.Name == "Finish");
+            List<Instruction> ins = finish.Body.Instructions.ToList();
+            int complete = ins.FindIndex(i => i.Operand is MethodReference && ((MethodReference)i.Operand).Name == "Complete");
+            int planInv = ins.FindIndex(i => i.Operand is MethodReference && ((MethodReference)i.Operand).Name == "TryPlanFromInventory");
+            int validate = ins.FindIndex(i => i.Operand is MethodReference && ((MethodReference)i.Operand).Name == "Validate");
+            int consume = ins.FindIndex(i => i.Operand is MethodReference && ((MethodReference)i.Operand).Name == "Consume");
+            bool guarded = complete >= 0 && complete + 1 < ins.Count
+                           && (ins[complete + 1].OpCode == OpCodes.Brtrue || ins[complete + 1].OpCode == OpCodes.Brtrue_S
+                               || ins[complete + 1].OpCode == OpCodes.Brfalse || ins[complete + 1].OpCode == OpCodes.Brfalse_S);
+            Check("Finish order: validate -> plan from inventory -> apply -> consume, consumption guarded by the apply's result",
+                  validate >= 0 && validate < planInv && planInv < complete && complete < consume && guarded,
+                  validate + "<" + planInv + "<" + complete + "<" + consume + " guarded=" + guarded);
+
+            TypeDefinition driver = mod.MainModule.GetType("Grandmaster21.JobDriver_Gm21Intervention");
+            string[] toils = driver.NestedTypes.SelectMany(n => n.Methods).Concat(driver.Methods).Where(x => x.HasBody)
+                .SelectMany(x => x.Body.Instructions).Select(i => i.Operand as MethodReference).Where(r => r != null)
+                .Select(r => r.DeclaringType.Name + "." + r.Name).Distinct().ToArray();
+            Check("medicine is acquired through vanilla toils (queue extraction, TakeToInventory, stack reservation)",
+                  toils.Contains("Toils_JobTransforms.ExtractNextTargetFromQueue") && toils.Contains("Toils_Haul.TakeToInventory")
+                  && toils.Contains("ReservationManager.CanReserveStack"));
+        }
+    }
+
+    static IEnumerable<TypeDefinition> AllTypes(ModuleDefinition module)
+    {
+        foreach (TypeDefinition t in module.Types)
+        {
+            yield return t;
+            foreach (TypeDefinition n in t.NestedTypes) yield return n;
+        }
+    }
+
+    // ------------------------------------------------------------------ 16. work time, self, hostile, no limits
+
+    static void WorkAndAccess(string root)
+    {
+        Console.WriteLine("\n=== 16. Work time, self-intervention, hostile corpses, no cooldowns ===");
+        Func<int, float, int> W = Gm21Medicine.WorkTicksForSpeed;
+        Check("base work: Cure 2500 < Reconstruct 6000 < Resuscitate 7500 (provisional)",
+              Gm21Medicine.CureWorkTicks == 2500 && Gm21Medicine.ReconstructWorkTicks == 6000 && Gm21Medicine.ResuscitateWorkTicks == 7500);
+        Check("speed 1 -> base work", W(2500, 1f) == 2500 && W(7500, 1f) == 7500);
+        Check("speed scales work exactly (x2 -> half, x0.5 -> double, x1.6 -> /1.6)",
+              W(2500, 2f) == 1250 && W(2500, 0.5f) == 5000 && W(6000, 1.6f) == 3750);
+        Check("every ordinary speed 0.1..10 is unclamped", Enumerable.Range(1, 100).All(k => W(10000, k / 10f) == (int)Math.Round(10000 / (k / 10f))));
+        Check("absurd speeds are clamped: 0 / negative -> x0.1, 1000 -> x10",
+              W(2500, 0f) == 25000 && W(2500, -3f) == 25000 && W(2500, 1000f) == 250);
+        Check("non-finite speed counts as 1", W(2500, float.NaN) == 2500 && W(2500, float.PositiveInfinity) == 2500);
+        Check("tick safety floor: never under 60 ticks", W(100, 10f) == 60 && W(1, 1f) == 60);
+
+        // Self-intervention.
+        Pawn gm = MakePawn(21);
+        string reason;
+        manipulationLevel = 1f;
+        Check("self-Reconstruct allowed with full manipulation", Gm21MedicineOrders.CanReconstructOn(gm, gm, out reason));
+        manipulationLevel = 0.5f;
+        Check("self-Reconstruct allowed at 50% manipulation (one arm lost)", Gm21MedicineOrders.CanReconstructOn(gm, gm, out reason));
+        manipulationLevel = 0.3f;
+        Check("self-Reconstruct refused below 50% manipulation, with a reason",
+              !Gm21MedicineOrders.CanReconstructOn(gm, gm, out reason) && !string.IsNullOrEmpty(reason));
+        Pawn other = MakePawn(0);
+        Check("...while Reconstruct on SOMEONE ELSE needs only the ordinary ability to practise",
+              Gm21MedicineOrders.CanReconstructOn(gm, other, out reason));
+        manipulationLevel = 1f;
+        capable = false;
+        Check("a Grandmaster who cannot practise cannot self-Reconstruct", !Gm21Medicine.CanSelfReconstruct(gm));
+        capable = true;
+
+        using (AssemblyDefinition mod = AssemblyDefinition.ReadAssembly(Mod.Location))
+        {
+            TypeDefinition orders = mod.MainModule.GetType("Grandmaster21.Gm21MedicineOrders");
+            string[] strings = orders.Methods.Where(m => m.HasBody).SelectMany(m => m.Body.Instructions)
+                .Where(i => i.OpCode == OpCodes.Ldstr).Select(i => (string)i.Operand).ToArray();
+            Check("the self ban is gone (no 'NotSelf' rejection anywhere in the orders)", !strings.Any(x => x.Contains("NotSelf")));
+            MethodDefinition patientParams = orders.Methods.First(m => m.Name == "PatientParameters");
+            List<Instruction> pi = patientParams.Body.Instructions.ToList();
+            int store = pi.FindIndex(i => i.OpCode == OpCodes.Stfld && ((FieldReference)i.Operand).Name == "canTargetSelf");
+            Check("targeting allows the Grandmaster themself", store > 0 && pi[store - 1].OpCode == OpCodes.Ldc_I4_1);
+            Check("a hostile corpse asks for confirmation (vanilla confirmation box, 'will remain hostile')",
+                  strings.Contains("GM21_Med_ResHostileWarning")
+                  && orders.Methods.Where(m => m.HasBody).SelectMany(m => m.Body.Instructions)
+                     .Any(i => i.Operand is MethodReference && ((MethodReference)i.Operand).Name == "CreateConfirmation"));
+            string[] resStrings = mod.MainModule.GetType("Grandmaster21.Gm21Resuscitation").Methods.Where(m => m.HasBody)
+                .SelectMany(m => m.Body.Instructions).Where(i => i.OpCode == OpCodes.Ldstr).Select(i => (string)i.Operand).ToArray();
+            Check("resuscitation never refuses for hostility (no ResHostile reason)", !resStrings.Any(x => x == "GM21_Med_ResHostile"));
+            bool setsNoLord = mod.MainModule.GetType("Grandmaster21.Gm21Resuscitation").Methods.Where(m => m.HasBody)
+                .SelectMany(m => m.Body.Instructions).Any(i => i.OpCode == OpCodes.Stfld && ((FieldReference)i.Operand).Name == "noLord");
+            string[] revivalCalls = new[] { "Gm21Resuscitation", "Gm21Trauma" }
+                .Select(n => mod.MainModule.GetType("Grandmaster21." + n)).SelectMany(t => t.Methods.Concat(t.NestedTypes.SelectMany(x => x.Methods)))
+                .Where(m => m.HasBody).SelectMany(m => m.Body.Instructions)
+                .Select(i => i.Operand as MethodReference).Where(r => r != null).Select(r => r.Name).Distinct().ToArray();
+            string[] allegiance = revivalCalls.Where(n => n == "SetFaction" || n == "DoRecruit" || n == "SetGuestStatus"
+                                                          || n.Contains("Recruit") || n == "MakeNewLord").ToArray();
+            Check("faction and hostility are left to vanilla's revival (no noLord, no faction change, no recruitment)",
+                  !setsNoLord && allegiance.Length == 0, string.Join(",", allegiance));
+        }
+
+        // No cooldown, charge or rate limit anywhere: time and medicine are the whole price.
+        string[] banned = { "cooldown", "charge", "lastuse", "lastintervention", "perday", "daily", "usesleft", "usestoday" };
+        List<string> offenders = new List<string>();
+        foreach (Type type in Mod.GetTypes().Where(x => x.Namespace == "Grandmaster21"))
+        {
+            if (!(type.Name.Contains("Med") || type.Name.Contains("Gm21Intervention") || type.Name.Contains("Resuscitat")
+                  || type.Name.Contains("Cure") || type.Name.Contains("Reconstruct") || type.Name.Contains("Trauma")
+                  || type.Name.Contains("Supply") || type.Name.Contains("Treatment"))) continue;
+            foreach (FieldInfo fi in type.GetFields(Any))
+                if (banned.Any(b => fi.Name.ToLowerInvariant().Contains(b))) offenders.Add(type.Name + "." + fi.Name);
+        }
+        Check("no cooldown / charge / per-day field exists on any Medicine type", offenders.Count == 0, string.Join(",", offenders.ToArray()));
+
+        string source = string.Join("\n", Directory.GetFiles(Path.Combine(root, "Source/Medicine"), "*.cs").Select(File.ReadAllText).ToArray());
+        string[] keys = Regex.Matches(source, "Scribe_[A-Za-z]+\\.Look\\(ref [^,]+, \"([^\"]+)\"").Cast<Match>().Select(m => m.Groups[1].Value).Distinct().OrderBy(x => x).ToArray();
+        string[] expected = { "gm21HeldPatient", "gm21MedicineMode", "gm21TreatmentQuality", "gm21TreatmentTick", "gm21WorkStartedTick", "pathEndMode" };
+        Check("persisted state is exactly: treatment, mode, and the driver's work clock (no limit counters)",
+              keys.SequenceEqual(expected), string.Join(",", keys));
+    }
+
+    // ------------------------------------------------------------------ 17. vital anatomy
+
+    sealed class VitalBody
+    {
+        public BodyDef def;
+        public BodyPartRecord torso, pump, filterA, filterB, liver, lungA, lungB, stalk, dome, mind, chest, pump2, limb, hand, dualOrgan, gut;
+    }
+
+    /// Non-human names throughout; tags decide everything.
+    static VitalBody MakeVitalBody(bool chestPump = false, bool dual = false)
+    {
+        parts = new List<BodyPartRecord>();
+        VitalBody b = new VitalBody();
+        b.torso = Part("core", null);
+        if (!chestPump && !dual) b.pump = Part("pump", b.torso, PumpTag);
+        b.filterA = Part("filterA", b.torso, KidneyTag);
+        b.filterB = Part("filterB", b.torso, KidneyTag);
+        b.liver = Part("processor", b.torso, LiverTag, dual ? null : MetabolismTag);
+        b.lungA = Part("bellowsA", b.torso, LungTag);
+        b.lungB = Part("bellowsB", b.torso, LungTag);
+        b.stalk = Part("stalk", b.torso, PathwayTag);
+        b.dome = Part("dome", b.stalk);
+        b.mind = Part("mind", b.dome, ConsciousnessTag);
+        if (chestPump)
+        {
+            b.chest = Part("casing", b.torso);
+            b.pump2 = Part("pumpInCasing", b.chest, PumpTag);
+        }
+        if (dual)
+        {
+            b.dualOrgan = Part("dualOrgan", b.torso, PumpTag, MetabolismTag);
+            b.gut = Part("gut", b.torso, MetabolismTag);
+        }
+        b.limb = Part("limb", b.torso);
+        b.hand = Part("grasp", b.limb);
+        foreach (BodyPartRecord r in parts) r.def.tags.RemoveAll(x => x == null);
+        b.def = new BodyDef { defName = "TestVitalBody", corePart = b.torso };
+        ((List<BodyPartRecord>)Get(b.def, "cachedAllParts")).AddRange(parts);
+        foreach (BodyPartRecord r in parts) r.body = b.def;
+        return b;
+    }
+
+    static Pawn PawnOn(BodyDef body)
+    {
+        return MakePawn(0, new Body { def = body });
+    }
+
+    static Hediff_MissingPart Lose(Pawn p, BodyPartRecord part, HediffDef lastInjury = null)
+    {
+        Hediff_MissingPart m = Attach<Hediff_MissingPart>(p, HediffDefOf.MissingBodyPart, part);
+        m.lastInjury = lastInjury;
+        foreach (BodyPartRecord child in part.parts) Lose(p, child, lastInjury);
+        return m;
+    }
+
+    static string Names(List<Gm21VitalRebuild> plan) { return string.Join(",", plan.Select(r => r.part.def.defName).ToArray()); }
+
+    static void VitalAnatomy()
+    {
+        Console.WriteLine("\n=== 17. Minimum viable vital reconstruction (tags, never names) ===");
+        HediffDef gunshot = Injury("TestGunshotV", true);
+        List<Gm21VitalRebuild> plan = new List<Gm21VitalRebuild>();
+
+        VitalBody b = MakeVitalBody();
+        Pawn p = PawnOn(b.def);
+        Check("required tags mirror the workers: kidney x liver when the body has kidneys, never the source tag too",
+              Gm21Resuscitation.RequiredVitalTags(b.def).Contains(KidneyTag) && Gm21Resuscitation.RequiredVitalTags(b.def).Contains(LiverTag)
+              && !Gm21Resuscitation.RequiredVitalTags(b.def).Contains(FilterSourceTag));
+        Check("intact body: nothing to rebuild", Gm21Resuscitation.PlanVitalRebuild(p.health.hediffSet, b.def, plan) && plan.Count == 0);
+
+        Lose(p, b.pump, gunshot);
+        Lose(p, b.limb);
+        Check("destroyed pump + lost limb: rebuild the pump ONLY; the limb stays missing",
+              Gm21Resuscitation.PlanVitalRebuild(p.health.hediffSet, b.def, plan) && Names(plan) == "pump" && plan[0].lastInjury == gunshot,
+              Names(plan));
+
+        b = MakeVitalBody(); p = PawnOn(b.def);
+        Lose(p, b.filterA); Lose(p, b.filterB);
+        Check("both filtration organs lost: rebuild ONE (the first), not both",
+              Gm21Resuscitation.PlanVitalRebuild(p.health.hediffSet, b.def, plan) && Names(plan) == "filterA", Names(plan));
+
+        b = MakeVitalBody(); p = PawnOn(b.def);
+        Lose(p, b.lungA);
+        Check("one of two breathing organs lost: still viable, nothing rebuilt",
+              Gm21Resuscitation.PlanVitalRebuild(p.health.hediffSet, b.def, plan) && plan.Count == 0);
+
+        b = MakeVitalBody(); p = PawnOn(b.def);
+        Lose(p, b.dome);
+        Check("consciousness anatomy lost: never planned for rebuild (the hard boundary is Decide's)",
+              Gm21Resuscitation.PlanVitalRebuild(p.health.hediffSet, b.def, plan) && plan.Count == 0
+              && Gm21Resuscitation.TagEntirelyMissing(p.health.hediffSet, b.def, BodyPartTagDefOf.ConsciousnessSource));
+
+        b = MakeVitalBody(chestPump: true); p = PawnOn(b.def);
+        Lose(p, b.chest);
+        Check("the only pump sits inside a lost casing: refused (rebuilding it would drag the casing back)",
+              !Gm21Resuscitation.PlanVitalRebuild(p.health.hediffSet, b.def, plan));
+
+        b = MakeVitalBody(); p = PawnOn(b.def);
+        Lose(p, b.stalk);
+        Check("a lost breathing pathway whose subtree holds the mind: brain destroyed is what decides",
+              Gm21Resuscitation.TagEntirelyMissing(p.health.hediffSet, b.def, BodyPartTagDefOf.ConsciousnessSource));
+
+        b = MakeVitalBody(); p = PawnOn(b.def);
+        Attach<Hediff_AddedPart>(p, new HediffDef { defName = "TestArtificialCore", hediffClass = typeof(Hediff_AddedPart), isBad = false }, b.torso);
+        Lose(p, b.pump);
+        Check("a vital part under an artificial part is not rebuilt biologically: refused",
+              !Gm21Resuscitation.PlanVitalRebuild(p.health.hediffSet, b.def, plan));
+
+        b = MakeVitalBody(dual: true); p = PawnOn(b.def);
+        Lose(p, b.dualOrgan); Lose(p, b.gut); Lose(p, b.liver);
+        // Lost tags: pump (dualOrgan only), liver, metabolism (dualOrgan, gut, processor).
+        Check("one part covering two lost tags is preferred (fewest rebuilds): dualOrgan + processor",
+              Gm21Resuscitation.PlanVitalRebuild(p.health.hediffSet, b.def, plan) && Names(plan) == "dualOrgan,processor", Names(plan));
+    }
+
+    // ------------------------------------------------------------------ 18. death trauma
+
+    static HediffDef Injury(string name, bool scarrable)
+    {
+        HediffDef d = new HediffDef { defName = name, label = name, hediffClass = typeof(Hediff_Injury), injuryProps = new InjuryProps() };
+        d.comps = new List<HediffCompProperties> { new HediffCompProperties_TendDuration() };
+        if (scarrable) d.comps.Add(new HediffCompProperties_GetsPermanent());
+        return d;
+    }
+
+    static Gm21TraumaEvidence E(int index, float severity, float max = 40f, bool scar = true, bool destroyed = false,
+                                bool vital = false, bool blow = false)
+    {
+        return new Gm21TraumaEvidence { partIndex = index, severity = severity, partMaxHealth = max, scarrable = scar,
+                                        destroyed = destroyed, vital = vital, lethalBlow = blow, scarSourceSeverity = severity };
+    }
+
+    static string RankOf(params Gm21TraumaEvidence[] e)
+    {
+        return string.Join(",", Gm21Trauma.Rank(e, Gm21Medicine.MaxTraumaScars).Select(i => e[i].partIndex.ToString()).ToArray());
+    }
+
+    static void Trauma()
+    {
+        Console.WriteLine("\n=== 18. Death trauma: ranking and permanent scars ===");
+        Check("one catastrophic wound -> one scar", RankOf(E(3, 30f)) == "3");
+        Check("shredded by many wounds -> the three worst locations, worst first",
+              RankOf(E(1, 8f), E(2, 30f), E(3, 12f), E(4, 20f), E(5, 5f)) == "2,4,3");
+        Check("only scratches (under 10% of the part) -> no scars invented", RankOf(E(1, 2f), E(2, 3f)) == "");
+        Check("no evidence at all (death by disease) -> no scars", RankOf() == "");
+        Check("a wound vanilla never scars (bruise-like) is skipped, not substituted",
+              RankOf(E(1, 30f, scar: false), E(2, 10f)) == "2");
+        Check("a destroyed-and-rebuilt vital part outranks a heavy torso wound",
+              RankOf(E(1, 36f), E(7, 0f, 15f, destroyed: true, vital: true)) == "7,1");
+        Check("vital-part damage outranks equal relative damage elsewhere",
+              RankOf(E(1, 10f, 40f), E(2, 5f, 20f, vital: true)) == "2,1");
+        Check("the battle log's death-blow location qualifies even when light, and ranks up",
+              RankOf(E(1, 2f, 40f, blow: true)) == "1" && RankOf(E(1, 8f), E(2, 8f, blow: true)) == "2,1");
+        Check("ties break by body order, deterministically", RankOf(E(9, 10f), E(4, 10f)) == "4,9");
+        Check("one scar per location, never duplicates", RankOf(E(5, 30f), E(5, 20f), E(6, 10f)) == "5,6");
+        Check("never more than three", Gm21Trauma.Rank(Enumerable.Range(0, 10).Select(i => E(i, 10f + i)).ToList(), 3).Count == 3);
+
+        Check("scar severity: the wound's own, capped at 40% of the part",
+              Near(Gm21Trauma.ScarSeverity(E(1, 10f, 40f)), 10f) && Near(Gm21Trauma.ScarSeverity(E(1, 30f, 40f)), 16f));
+        Check("scar on a rebuilt vital part: 40% of it (meaningful, not destroying it again)",
+              Near(Gm21Trauma.ScarSeverity(E(1, 0f, 15f, destroyed: true, vital: true)), 6f));
+
+        // Evidence from a real body state.
+        HediffDef gunshot = Injury("TestGunshotT", true), bruise = Injury("TestBruiseT", false), cut = Injury("TestCutT", true);
+        VitalBody b = MakeVitalBody();
+        Pawn p = PawnOn(b.def);
+        foreach (BodyPartRecord r in b.def.AllParts) r.def.hitPoints = 30;
+        b.pump.def.hitPoints = 15;
+        Lose(p, b.pump, gunshot);
+        Lose(p, b.limb, gunshot);
+        List<Gm21InjurySnapshot> injuries = new List<Gm21InjurySnapshot>
+        {
+            Snap(p, gunshot, b.torso, 9f), Snap(p, bruise, b.torso, 12f), Snap(p, cut, b.torso, 3f),
+            Snap(p, cut, b.lungA, 1f)
+        };
+        List<Gm21VitalRebuild> rebuild = new List<Gm21VitalRebuild>();
+        Gm21Resuscitation.PlanVitalRebuild(p.health.hediffSet, b.def, rebuild);
+        List<Gm21TraumaEvidence> ev = Gm21Trauma.Collect(p, injuries, rebuild, null);
+        Gm21TraumaEvidence torso = ev.First(x => x.part == b.torso), pumpEv = ev.First(x => x.part == b.pump);
+        Check("evidence is one entry per location; the lost limb (non-vital) contributes none",
+              ev.Count == 3 && !ev.Any(x => x.part == b.limb || x.part == b.hand), string.Join(",", ev.Select(x => x.part.def.defName).ToArray()));
+        Check("location severity sums its fresh wounds; the scar takes the worst SCARRABLE wound's type",
+              Near(torso.severity, 24f) && torso.scarDef == gunshot && Near(torso.scarSourceSeverity, 9f));
+        Check("the rebuilt pump is destroyed + vital evidence, scarred as what destroyed it",
+              pumpEv.destroyed && pumpEv.vital && pumpEv.scarDef == gunshot && pumpEv.scarrable);
+        List<int> chosen = Gm21Trauma.Rank(ev, 3);
+        Check("real body: rebuilt pump first, then the torso; the 1-point lung graze is not scar material",
+              chosen.Count == 2 && ev[chosen[0]].part == b.pump && ev[chosen[1]].part == b.torso);
+
+        // Applying: the restored wound itself becomes the vanilla permanent injury.
+        Hediff_Injury restored = Attach<Hediff_Injury>(p, gunshot, b.torso);
+        Set(restored, "severityInt", 9f);
+        Hediff_Injury scar = Gm21Trauma.ApplyScar(p, torso, injuries[0]);
+        Check("the location's restored gunshot is converted, not duplicated: permanent, severity kept (under the cap)",
+              scar == restored && restored.IsPermanent() && Near(restored.Severity, 9f)
+              && p.health.hediffSet.hediffs.Count(h => h is Hediff_Injury && h.Part == b.torso) == 1);
+        Hediff_Injury heavy = Attach<Hediff_Injury>(p, cut, b.lungB);
+        Set(heavy, "severityInt", 25f);
+        Gm21TraumaEvidence lungEv = new Gm21TraumaEvidence { part = b.lungB, partIndex = b.lungB.Index, severity = 25f, partMaxHealth = 30f,
+                                                             scarrable = true, scarDef = cut, scarSourceSeverity = 25f };
+        Gm21Trauma.ApplyScar(p, lungEv, null);
+        Check("a heavy wound's scar is capped at 40% of the part (12 of 30), never heavier than the wound",
+              heavy.IsPermanent() && Near(heavy.Severity, 12f), heavy.Severity.ToString());
+        Check("a location that is missing again is never scarred", Gm21Trauma.ApplyScar(p, new Gm21TraumaEvidence
+              { part = b.limb, scarrable = true, scarDef = gunshot, partMaxHealth = 30f, scarSourceSeverity = 10f, severity = 10f }, null) == null);
+
+        Pawn armoured = PawnOn(b.def);
+        Attach<Hediff_AddedPart>(armoured, new HediffDef { defName = "TestPlating", hediffClass = typeof(Hediff_AddedPart), isBad = false }, b.limb);
+        List<Gm21TraumaEvidence> ev2 = Gm21Trauma.Collect(armoured, new List<Gm21InjurySnapshot> { Snap(armoured, gunshot, b.hand, 20f) },
+                                                          new List<Gm21VitalRebuild>(), null);
+        Check("a wound under an artificial part is never scar material (as vanilla)", ev2.Count == 1 && !ev2[0].scarrable);
+        Check("no battle log (none headless): the death-blow lookup answers null without throwing",
+              Gm21Trauma.TryFindDeathBlowPart(p, 0) == null);
+        Check("...and ranking from the body alone still selects the same scars",
+              Gm21Trauma.Rank(Gm21Trauma.Collect(p, injuries, rebuild, null), 3).Count == 2);
+        Check("the death blow flag lands on the named location only",
+              Gm21Trauma.Collect(p, injuries, rebuild, b.torso).Count(x => x.lethalBlow) == 1
+              && Gm21Trauma.Collect(p, injuries, rebuild, b.torso).First(x => x.lethalBlow).part == b.torso);
+    }
+
+    static Gm21InjurySnapshot Snap(Pawn p, HediffDef def, BodyPartRecord part, float severity)
+    {
+        Hediff_Injury h = Attach<Hediff_Injury>(p, def, part, false);
+        Set(h, "severityInt", severity);
+        h.sourceLabel = "test rifle";
+        return Gm21InjurySnapshot.Of(h);
+    }
+
+    // ------------------------------------------------------------------ 19. driver save state
+
+    static void DriverSave(string path)
+    {
+        Console.WriteLine("\n=== 19. Intervention driver save state (real Scribe) ===");
+        try
+        {
+            JobDriver_Gm21Cure driver = Uninit<JobDriver_Gm21Cure>();
+            Set(driver, "workStartedTick", 123456);
+            Set(driver, "heldPatient", true);
+            Set(driver, "pathEndMode", Verse.AI.PathEndMode.OnCell);
+            Scribe.saver.InitSaving(path, "driver"); driver.ExposeData(); Scribe.saver.FinalizeSaving();
+            XElement root = XDocument.Load(path).Root;
+            Check("the work clock, held-patient flag and path mode are written",
+                  root.Element("gm21WorkStartedTick").Value == "123456" && root.Element("gm21HeldPatient").Value == "True"
+                  && root.Element("pathEndMode").Value == "OnCell", root.ToString());
+            JobDriver_Gm21Cure back = Uninit<JobDriver_Gm21Cure>();
+            logged.Clear();
+            try
+            {
+                Scribe.loader.InitLoading(path); back.ExposeData(); Scribe.loader.FinalizeLoading();
+                if (LoadBlocked()) throw new InvalidOperationException("ParseHelper unavailable");
+                Check("...and read back: a reload mid-work keeps the clock (resuscitation window) and the release duty",
+                      (int)Get(back, "workStartedTick") == 123456 && (bool)Get(back, "heldPatient")
+                      && (Verse.AI.PathEndMode)Get(back, "pathEndMode") == Verse.AI.PathEndMode.OnCell);
+            }
+            catch (Exception e) { Scribe.ForceStop(); Blocked("driver load", e); }
+        }
+        catch (Exception e) { Scribe.ForceStop(); Blocked("driver save", e); }
+        // A death-trauma scar is an ordinary vanilla permanent injury: vanilla saves it, GM21 adds nothing.
+        try
+        {
+            HediffDef scarDef = Injury("TestScarSave", true);
+            DefDatabase<HediffDef>.Add(scarDef);
+            Pawn p = MakePawn(0);
+            Hediff_Injury scar = Attach<Hediff_Injury>(p, scarDef);
+            Set(scar, "severityInt", 6f);
+            scar.TryGetComp<HediffComp_GetsPermanent>().isPermanentInt = true;
+            Hediff h = scar;
+            Scribe.saver.InitSaving(path, "root"); Scribe_Deep.Look(ref h, "hediff"); Scribe.saver.FinalizeSaving();
+            XElement node = XDocument.Load(path).Root.Element("hediff");
+            Check("a death scar saves as plain vanilla state (isPermanent, no GM21 element)",
+                  node.Element("isPermanent") != null && node.Element("isPermanent").Value == "True"
+                  && !node.Elements().Any(e => e.Name.LocalName.StartsWith("gm21")), node.ToString());
+            logged.Clear();
+            try
+            {
+                Hediff back = null;
+                Scribe.loader.InitLoading(path); Scribe_Deep.Look(ref back, "hediff"); Scribe.loader.FinalizeLoading();
+                if (LoadBlocked()) throw new InvalidOperationException("ParseHelper unavailable");
+                Check("...and loads back permanent, at its severity", back != null && back.IsPermanent() && Near(back.Severity, 6f));
+            }
+            catch (Exception e) { Scribe.ForceStop(); Blocked("scar load", e); }
+        }
+        catch (Exception e) { Scribe.ForceStop(); Blocked("scar save", e); }
+
+        Check("the medicine plan is vanilla job state (targetQueueB/countQueue), saved by Job itself",
+              typeof(Verse.AI.Job).GetField("targetQueueB") != null && typeof(Verse.AI.Job).GetField("countQueue") != null);
     }
 
     // ------------------------------------------------------------------ 11. persistence
@@ -792,7 +1514,10 @@ internal static class MedicineChecks
         foreach (string name in new[] { "\"MedicineHerbal\"", "\"MedicineIndustrial\"", "\"MedicineUltratech\"",
                                         "\"FoodPoisoning\"", "\"Brain\"", "\"Arm\"", "\"Leg\"", "\"Heart\"", "\"Shoulder\"" })
             Check("no DefName/body-part string literal " + name + " in Medicine source", !source.Contains(name));
-        Check("no TendableNow patch in Medicine source", !source.Contains("TendableNow"));
+        // Reading a hediff's own TendableNow() (closing a stump after revival) is fine; naming it as a
+        // patch target is not.
+        Check("no TendableNow patch target in Medicine source",
+              !Regex.IsMatch(source, "\"TendableNow\"|nameof\\([^)]*TendableNow\\)"));
 
         XDocument defs = XDocument.Load(Path.Combine(root, "Defs/Medicine/Medicine21.xml"));
         string[] kinds = defs.Root.Elements().Select(e => e.Name.LocalName).Distinct().ToArray();
@@ -1063,6 +1788,70 @@ internal static class MedicineChecks
         }
         Check("every vanilla BodyDef has consciousness-source anatomy (the 'Brain destroyed' check is meaningful)",
               noBrain.Count == 0, string.Join(",", noBrain.ToArray()));
+
+        // Minimum vital reconstruction: in every vanilla FLESH body, a vital organ hangs directly off
+        // the core part (so its parent is never missing), and the only vital parts with sub-parts
+        // hold the consciousness source beneath them (their loss is 'Brain destroyed' anyway). So
+        // RestorePart on a planned organ restores that organ and nothing else.
+        HashSet<string> vitalTags = new HashSet<string> { "BloodPumpingSource", "BreathingSource", "BreathingPathway",
+            "BreathingSourceCage", "BloodFiltrationKidney", "BloodFiltrationLiver", "BloodFiltrationSource", "MetabolismSource" };
+        HashSet<string> fleshBodies = new HashSet<string>();
+        foreach (KeyValuePair<string, XElement> kv in LoadDefs(data, "ThingDef"))
+        {
+            XElement race = kv.Value.Element("race");
+            if (race == null || race.Element("body") == null) continue;
+            if ((string)race.Element("fleshType") == "Mechanoid") continue;
+            fleshBodies.Add((string)race.Element("body"));
+        }
+        List<string> unsafeParts = new List<string>();
+        int vitalParts = 0;
+        foreach (KeyValuePair<string, XElement> kv in LoadDefs(data, "BodyDef"))
+        {
+            string body = (string)kv.Value.Element("defName");
+            if (!fleshBodies.Contains(body)) continue;
+            XElement core = kv.Value.Element("corePart");
+            foreach (XElement node in core.Descendants("li").Where(x => x.Element("def") != null))
+            {
+                string def = (string)node.Element("def");
+                if (!partTags.ContainsKey(def) || !partTags[def].Any(vitalTags.Contains)) continue;
+                vitalParts++;
+                bool holdsMind = node.Descendants("def").Any(x => partTags.ContainsKey(x.Value) && partTags[x.Value].Contains("ConsciousnessSource"));
+                bool hasChildren = node.Element("parts") != null && node.Element("parts").Elements("li").Any();
+                bool underCore = node.Parent != null && node.Parent.Parent == core;
+                if (holdsMind) continue;
+                if (hasChildren || !underCore) unsafeParts.Add(body + ":" + def);
+            }
+        }
+        Check("vanilla flesh bodies: every vital organ outside the mind's subtree is a leaf directly under the core ("
+              + vitalParts + " vital parts, " + fleshBodies.Count + " flesh bodies)",
+              vitalParts > 0 && unsafeParts.Count == 0, string.Join(",", unsafeParts.ToArray()));
+
+        // What the potency budgets cost in vanilla medicine, one kind at a time.
+        Dictionary<string, float> potency = new Dictionary<string, float>();
+        foreach (KeyValuePair<string, XElement> kv in LoadDefs(data, "ThingDef"))
+        {
+            XElement stats = kv.Value.Element("statBases");
+            if (stats != null && stats.Element("MedicalPotency") != null)
+                potency[(string)kv.Value.Element("defName")] = Num(stats, "MedicalPotency", 0f);
+        }
+        List<string> costs = new List<string>();
+        foreach (Gm21MedicineMode mode in new[] { Gm21MedicineMode.Cure, Gm21MedicineMode.Reconstruct, Gm21MedicineMode.Resuscitate })
+            foreach (KeyValuePair<string, float> kv in potency.OrderBy(x => x.Value))
+            {
+                int[] take = new int[1];
+                Gm21MedicineSupplies.Plan(new List<float> { kv.Value }, new List<int> { 99 }, Gm21MedicineSupplies.BudgetFor(mode), take);
+                costs.Add(mode + ":" + kv.Key + "=" + take[0]);
+                Console.WriteLine("        " + mode + " (" + Gm21MedicineSupplies.BudgetFor(mode) + ") with " + kv.Key
+                                  + " (potency " + kv.Value + "): " + take[0] + " unit(s)");
+            }
+        string[] expectedCosts =
+        {
+            "Cure:MedicineHerbal=2", "Cure:MedicineIndustrial=1", "Cure:MedicineUltratech=1",
+            "Reconstruct:MedicineHerbal=4", "Reconstruct:MedicineIndustrial=2", "Reconstruct:MedicineUltratech=2",
+            "Resuscitate:MedicineHerbal=5", "Resuscitate:MedicineIndustrial=3", "Resuscitate:MedicineUltratech=2"
+        };
+        Check("vanilla medicine per intervention (herbal / industrial / glitterworld): Cure 2/1/1, Reconstruct 4/2/2, Resuscitate 5/3/2",
+              expectedCosts.All(costs.Contains), string.Join(" ", costs.ToArray()));
     }
 
     static int Main(string[] args)
@@ -1088,11 +1877,18 @@ internal static class MedicineChecks
             Resuscitation();
             Persistence(xml);
             Structure(root, acs);
+            Propagation();
+            InterventionMedicine();
+            WorkAndAccess(root);
+            VitalAnatomy();
+            Trauma();
+            DriverSave(xml);
             VanillaData(args.Length > 4 ? args[4] : null);
         }
         catch (Exception e) { Console.WriteLine("FAIL  unhandled: " + e); fail++; }
         Console.WriteLine("\nNOT RUN HERE (needs the Unity player and a loaded game): tending jobs, the gizmo, targeting,"
-                          + " intervention jobs, revival, whole-game save/reload. See Docs/Medicine21.md.");
+                          + " intervention jobs (collection, interruption, pathing), revival itself (TryResurrect,"
+                          + " hostile lords), whole-game save/reload. See Docs/Medicine21.md.");
         Console.WriteLine("================================");
         Console.WriteLine("PASS: " + pass + "   FAIL: " + fail + "   BLOCKED: " + blocked);
         return fail == 0 ? 0 : 1;

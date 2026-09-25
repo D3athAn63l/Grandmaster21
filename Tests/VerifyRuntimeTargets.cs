@@ -413,6 +413,22 @@ static class VerifyRuntimeTargets
         NeedParam("TendUtility.DoTend", doTend, "patient", "Pawn");
         NeedParam("TendUtility.DoTend", doTend, "medicine", "Medicine");
 
+        MethodInfo hediffTended = AccessTools.Method(typeof(Hediff), "Tended", new[] { typeof(float), typeof(float), typeof(int) });
+        Ok("Hediff.Tended(float, float, int) resolves and is virtual (condition-specific overrides)",
+           hediffTended != null && hediffTended.IsVirtual, Params(hediffTended));
+        int tendedCalls = 0;
+        try
+        {
+            tendedCalls = PatchProcessor.GetOriginalInstructions(doTend)
+                .Count(i => (i.opcode == System.Reflection.Emit.OpCodes.Callvirt || i.opcode == System.Reflection.Emit.OpCodes.Call)
+                            && Equals(i.operand, hediffTended));
+        }
+        catch (Exception) { tendedCalls = -1; }
+        Ok("TendUtility.DoTend calls Hediff.Tended at exactly one site (the propagation transpiler's premise)",
+           tendedCalls == 1, "sites=" + tendedCalls);
+        Ok("Hediff_HeartAttack overrides Tended (the propagation regression case)",
+           AccessTools.DeclaredMethod(typeof(Hediff_HeartAttack), "Tended") != null);
+
         MethodInfo compTended = AccessTools.Method(typeof(HediffComp_TendDuration), "CompTended");
         Ok("HediffComp_TendDuration.CompTended resolves", compTended != null, Params(compTended));
         NeedParam("HediffComp_TendDuration.CompTended", compTended, "quality", "Single");
@@ -474,6 +490,47 @@ static class VerifyRuntimeTargets
         foreach (string tag in new[] { "BloodFiltrationKidney", "BloodFiltrationLiver", "BreathingSourceCage", "MetabolismSource" })
             Ok("  tag defName '" + tag + "' (resuscitation vital anatomy)",
                tagDefOf != null && tagDefOf.GetField(tag) != null);
+        Console.WriteLine("\n=== Medicine 21: intervention medicine, trauma and hostile revival ===");
+        Ok("StatDefOf.MedicalPotency exists (the budget's currency)", typeof(StatDefOf).GetField("MedicalPotency") != null);
+        Ok("ThingDef.IsMedicine exists", AccessTools.PropertyGetter(typeof(ThingDef), "IsMedicine") != null);
+        Ok("MedicalCareUtility.AllowsMedicine(MedicalCareCategory, ThingDef) resolves",
+           AccessTools.Method(typeof(MedicalCareUtility), "AllowsMedicine") != null);
+        foreach (string f in new[] { "defaultCareForColonist", "defaultCareForSlave", "defaultCareForPrisoner", "defaultCareForTamedAnimal",
+                                     "defaultCareForFriendlyFaction", "defaultCareForNeutralFaction", "defaultCareForHostileFaction",
+                                     "defaultCareForNoFaction", "defaultCareForWildlife" })
+            Ok("  PlaySettings." + f + " exists", typeof(PlaySettings).GetField(f) != null);
+        Ok("ReservationManager.CanReserveStack resolves", AccessTools.Method(typeof(Verse.AI.ReservationManager), "CanReserveStack") != null);
+        Ok("Job.targetQueueB / countQueue are public lists (the collection plan, saved by Job)",
+           typeof(Verse.AI.Job).GetField("targetQueueB") != null && typeof(Verse.AI.Job).GetField("countQueue") != null);
+        Ok("Toils_JobTransforms.ExtractNextTargetFromQueue(TargetIndex, bool) resolves",
+           AccessTools.Method(typeof(Verse.AI.Toils_JobTransforms), "ExtractNextTargetFromQueue",
+               new[] { typeof(Verse.AI.TargetIndex), typeof(bool) }) != null);
+        Ok("Toils_Haul.TakeToInventory(TargetIndex, Func<int>) resolves",
+           AccessTools.Method(typeof(Verse.AI.Toils_Haul), "TakeToInventory",
+               new[] { typeof(Verse.AI.TargetIndex), typeof(Func<int>) }) != null);
+        Ok("Toils_Jump.JumpIfHaveTargetInQueue resolves",
+           AccessTools.Method(typeof(Verse.AI.Toils_Jump), "JumpIfHaveTargetInQueue") != null);
+        Ok("Thing.SplitOff(int) resolves", AccessTools.Method(typeof(Thing), "SplitOff", new[] { typeof(int) }) != null);
+        Ok("HediffComp_GetsPermanent.isPermanentInt is public, SetPainCategory resolves",
+           typeof(HediffComp_GetsPermanent).GetField("isPermanentInt") != null
+           && AccessTools.Method(typeof(HediffComp_GetsPermanent), "SetPainCategory") != null);
+        Ok("HealthTuning.InjuryPainCategories is public", typeof(HealthTuning).GetField("InjuryPainCategories") != null);
+        Ok("Pawn_HealthTracker.WouldLosePartAfterAddingHediff(HediffDef, BodyPartRecord, float) resolves",
+           AccessTools.Method(typeof(Pawn_HealthTracker), "WouldLosePartAfterAddingHediff",
+               new[] { typeof(HediffDef), typeof(BodyPartRecord), typeof(float) }) != null);
+        Ok("Hediff_MissingPart.lastInjury is public", typeof(Hediff_MissingPart).GetField("lastInjury") != null);
+        Ok("Hediff.combatLogEntry / combatLogText are public (scar provenance)",
+           typeof(Hediff).GetField("combatLogEntry") != null && typeof(Hediff).GetField("combatLogText") != null);
+        Ok("GeneDef.preventPermanentWounds exists", typeof(GeneDef).GetField("preventPermanentWounds") != null);
+        foreach (string f in new[] { "subjectPawn", "culpritTargetPart", "culpritHediffTargetPart" })
+            Ok("  BattleLogEntry_StateTransition." + f + " exists (death-blow corroboration only)",
+               AccessTools.Field(typeof(BattleLogEntry_StateTransition), f) != null);
+        Ok("ResurrectionParams.noLord exists (deliberately NOT set: a hostile revives hostile)",
+           typeof(ResurrectionParams).GetField("noLord") != null);
+        Ok("Dialog_MessageBox.CreateConfirmation(TaggedString, Action, bool, ...) resolves (hostile-corpse confirmation)",
+           typeof(Dialog_MessageBox).GetMethods().Any(m => m.Name == "CreateConfirmation" && m.GetParameters().Length >= 3
+               && m.GetParameters()[0].ParameterType == typeof(TaggedString) && m.GetParameters()[1].ParameterType == typeof(Action)
+               && m.GetParameters()[2].ParameterType == typeof(bool)));
         Ok("Command.ProcessInput(Event) is virtual (right-click activation)",
            AccessTools.Method(typeof(Command), "ProcessInput") != null
            && AccessTools.Method(typeof(Command), "ProcessInput").IsVirtual);

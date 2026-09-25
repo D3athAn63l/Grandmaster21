@@ -1062,8 +1062,8 @@ New in **0.12.0 Beta**, **experimental**, and **not yet verified in a running ga
 number is provisional. Full reference: [Docs/Medicine21.md](Docs/Medicine21.md).
 
 *"I do not need miraculous technology to practice miraculous medicine. I am the Grandmaster."*
-No research, items, buildings, implants or consumables are added — only three JobDefs for the
-Grandmaster's own interventions. Status is stored Medicine 21, read like every other capstone, and
+No research, items, buildings, implants or special consumables are added — only three JobDefs for
+the Grandmaster's own interventions, which cost ordinary medicine and the Grandmaster's time. Status is stored Medicine 21, read like every other capstone, and
 a Grandmaster who cannot use their hands or is unconscious falls back to vanilla medicine.
 
 * **Grandmaster Medicine Utilization.** Medicine tiers are discovered once at startup from every
@@ -1072,8 +1072,10 @@ a Grandmaster who cannot use their hands or is unconscious falls back to vanilla
   **130%**, glitterworld 130% → **160%**. A small bridge tier cannot consume the bonus; a genuinely
   qualifying modded tier is used.
 * **Deterministic tending.** A Grandmaster tend with medicine lands exactly on that target, every
-  time — vanilla's own clamp does it, so the mote, tooltip and tend state all agree. Ordinary
-  doctors keep vanilla's roll. Without medicine, a Grandmaster tends by vanilla rules.
+  time — vanilla's own clamp does it, so the mote, tooltip and tend state all agree. The same
+  effective quality reaches the condition itself, so condition-specific treatment such as a heart
+  attack's success roll sees 100 / 130 / 160%. Ordinary doctors keep vanilla's roll. Without
+  medicine, a Grandmaster tends by vanilla rules.
 * **Grandmaster Treatment.** Each condition the Grandmaster actually tends carries its own regimen:
   that injury recovers faster, or immunity to that disease builds faster (100% → ×1.25, 130% →
   ×1.50, 160% → ×1.75). It refreshes, never stacks, lapses with the tend, and is replaced by
@@ -1082,16 +1084,25 @@ a Grandmaster who cannot use their hands or is unconscious falls back to vanilla
   Every requirement of the operation — bills, parts, ingredients, work, anaesthesia — is untouched.
 * **Grandmaster Medicine command.** Left-click chooses **Cure / Reconstruct / Resuscitate**;
   right-click performs it through vanilla targeting and a medical job the Grandmaster carries out
-  personally. Nothing applies until the work completes; interruption changes nothing.
+  personally. **The price is time and ordinary medicine — no cooldowns, no charges.** Each
+  intervention needs a medicine-potency budget (Cure 1.0, Reconstruct 2.0, Resuscitate 3.0: one,
+  two, three industrial medicine, or herbal/glitterworld/modded medicine by potency), fetched with
+  vanilla hauling under the patient's medical-care setting and consumed only when the intervention
+  succeeds; and hours of work (Cure 1 h, Reconstruct 2.4 h, Resuscitate 3 h at tend speed 1,
+  scaled by the Grandmaster's tend speed). Interruption applies and consumes nothing. Self-Cure is
+  allowed; self-Reconstruct needs at least 50% manipulation.
   * **Cure** one pathological condition ordinary medicine cannot properly address — immunizable
     diseases, chronic illness, tendable sicknesses and food poisoning. Wounds, missing parts,
     implants, addictions, pregnancy, supernatural and unknown modded states are never offered.
     Against the full vanilla data set that is exactly 28 conditions.
   * **Reconstruct** one missing natural body part, found structurally; a location already
     replaced by a bionic or prosthetic is never offered.
-  * **Resuscitate** a fresh, non-hostile corpse whose brain and vital anatomy are intact, within
-    **four in-game hours** of death. Wounds are preserved and bandaged, not erased; no
-    resurrection-sickness roll.
+  * **Resuscitate** a fresh corpse whose brain is intact, within **four in-game hours** of death.
+    Destroyed vital organs are rebuilt only as far as life requires; lost limbs stay lost. Wounds
+    are preserved and bandaged, not erased, and up to **three** of the worst traumatic locations
+    become permanent scars. No resurrection-sickness lottery. A hostile pawn can be saved — after a
+    confirmation — and stays hostile. The resurrector mech serum is untouched and remains a
+    different tool.
 
 Before uninstalling, run **Prepare Save for Uninstall** — it now also removes Medicine treatments
 and modes and stops interventions in progress.
@@ -1347,6 +1358,7 @@ one Medicine feature and logs once. Why each hook sits where it does is in
 | Target | Kind | Why |
 |---|---|---|
 | `TendUtility.DoTend` | Prefix + **void Finalizer** | Opens/closes the Grandmaster tend frame (doctor + medicine), nesting-safe |
+| `TendUtility.DoTend` | **Transpiler** (one call site) | Its single `Hediff.Tended` call goes through `TendedEffective`, so condition-specific overrides see the Grandmaster quality; any other IL shape is left untouched and the feature disables itself |
 | `HediffComp_TendDuration.CompTended` | Prefix (`ref quality`, `ref maxQuality`) + Postfix | Exact tend quality through vanilla's own clamp; starts, refreshes or clears the condition's regimen |
 | `HediffComp_TendDuration.CompTipStringExtra` | Postfix | Cosmetic treatment line |
 | `Hediff.ExposeData` | Postfix | Persists an active regimen inside that hediff's own node |
@@ -1355,9 +1367,10 @@ one Medicine feature and logs once. Why each hook sits where it does is in
 | `ImmunityRecord.ImmunityChangePerTick` | Postfix | A treated disease instance builds immunity faster |
 | `SurgeryOutcomeEffectDef.GetOutcome` | Prefix (replaces for a practising Grandmaster only) | No failure/death outcome is ever evaluated |
 
-### The single transpiler
+### The progression transpiler
 
-Exactly one instruction is changed, in `SkillRecord.Learn`. Vanilla:
+Exactly one instruction is changed, in `SkillRecord.Learn`. (Medicine 21's `DoTend` transpiler is
+the only other one; it is described with the Medicine patches above.) Vanilla:
 
 ```
 ldarg.0
@@ -1490,8 +1503,9 @@ Medicine 21 is excluded from the stub build too, and verified against the real g
 ```
 
 It installs the mod's real Medicine patches on the real vanilla methods and executes them —
-`Hediff.Tended`→`CompTended`, `Hediff_Injury.Heal`, `SurgeryOutcomeEffectDef.GetOutcome`,
-`HediffSet`, and the real Scribe saver/loader — plus, given the game's `Data/` folder, runs the real
+`Hediff.Tended`→`CompTended`, the patched `DoTend` IL and `Hediff_HeartAttack.Tended`,
+`Hediff_Injury.Heal`, `SurgeryOutcomeEffectDef.GetOutcome`, `HediffSet`, real medicine Things in a
+real inventory, and the real Scribe saver/loader — plus, given the game's `Data/` folder, runs the real
 C# Cure, tier and surgery rules over every vanilla Def in all six content packs. Test-process-only
 shims cover what needs a live game (icon loading, live-pawn re-evaluation, and Steamworks for
 `ParseHelper` via `tools/stubs/SteamworksShim.cs`); none of them ship. Details and results:
@@ -1550,8 +1564,11 @@ hand-written approximations. Only a real build does that. See `tools/stubs/READM
 ## Release status
 
 **0.12.0 Beta.** Medicine 21 builds against the real RimWorld 1.6/Unity/Harmony assemblies with
-zero warnings/errors. `tools/verify-medicine.sh` reports **177 PASS, 0 FAIL, 0 BLOCKED**, including
-real Scribe save **and load** round trips and an audit of every vanilla Def. **Medicine 21 has had
+zero warnings/errors. After the second design pass (tend-quality propagation, medicine cost, work
+time, self-intervention, hostile resuscitation, minimum vital reconstruction, death-trauma scars)
+`tools/verify-medicine.sh` reports **279 PASS, 0 FAIL, 0 BLOCKED** with the vanilla `Data/`
+folder, including real Scribe save **and load** round trips, real medicine Things consumed in a real
+inventory, and an audit of every vanilla Def. **Medicine 21 has had
 NO runtime gameplay testing** — see the runtime checklist in
 [Docs/Medicine21.md](Docs/Medicine21.md#14-runtime-checklist-not-run--needs-a-real-game).
 The Shooting, Melee and Crafting implementations are unchanged in this version.

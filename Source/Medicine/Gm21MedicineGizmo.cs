@@ -82,7 +82,8 @@ namespace Grandmaster21
             Command_Gm21Medicine cmd = new Command_Gm21Medicine();
             cmd.doctor = __instance;
             cmd.defaultLabel = "GM21_Med_GizmoLabel".Translate(LabelFor(current));
-            cmd.defaultDesc = "GM21_Med_GizmoDesc".Translate(LabelFor(current), DescFor(current));
+            cmd.defaultDesc = "GM21_Med_GizmoDesc".Translate(LabelFor(current), DescFor(current))
+                              + "\n\n" + CostFor(__instance, current);
             cmd.icon = Icon;
             if (!Gm21Medicine.CanPractise(__instance))
             {
@@ -107,6 +108,20 @@ namespace Grandmaster21
                 case Gm21MedicineMode.Resuscitate: return "GM21_Med_ModeResuscitate".Translate();
                 default: return "GM21_Med_ModeCure".Translate();
             }
+        }
+
+        /// <summary>The intervention's price for this Grandmaster: medicine potency and work time.</summary>
+        internal static string CostFor(Pawn doctor, Gm21MedicineMode mode)
+        {
+            int baseTicks;
+            switch (mode)
+            {
+                case Gm21MedicineMode.Reconstruct: baseTicks = Gm21Medicine.ReconstructWorkTicks; break;
+                case Gm21MedicineMode.Resuscitate: baseTicks = Gm21Medicine.ResuscitateWorkTicks; break;
+                default: baseTicks = Gm21Medicine.CureWorkTicks; break;
+            }
+            return "GM21_Med_ModeCost".Translate(Gm21MedicineSupplies.BudgetFor(mode).ToString("0.##"),
+                Gm21Medicine.WorkTicks(doctor, baseTicks).ToStringTicksToPeriod());
         }
 
         internal static string DescFor(Gm21MedicineMode mode)

@@ -163,6 +163,14 @@ class PatchAllTest
             () => harmony.Patch(AccessTools.Method(typeof(TendUtility), "DoTend"),
                                 med(tend, "Prefix_DoTend"), null, null, med(tend, "Finalizer_DoTend")));
 
+        Bind("TendUtility.DoTend  [transpiler: the one Hediff.Tended call -> TendedEffective]", ref okCount, ref failCount, ref blockedCount,
+            () =>
+            {
+                harmony.Patch(AccessTools.Method(typeof(TendUtility), "DoTend"), null, null, med(tend, "Transpiler_DoTend"));
+                int sites = (int)AccessTools.Property(tend, "PropagationSites").GetValue(null, null);
+                if (sites != 1) throw new InvalidOperationException("DoTend has " + sites + " rewritable Hediff.Tended call sites, expected 1");
+            });
+
         Bind("HediffComp_TendDuration.CompTended  [prefix ref quality/maxQuality + postfix]", ref okCount, ref failCount, ref blockedCount,
             () => harmony.Patch(AccessTools.Method(typeof(HediffComp_TendDuration), "CompTended"),
                                 med(tend, "Prefix_CompTended"), med(tend, "Postfix_CompTended")));

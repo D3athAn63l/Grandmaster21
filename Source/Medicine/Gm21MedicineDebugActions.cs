@@ -50,7 +50,15 @@ namespace Grandmaster21
                         + "x 1.30->" + Gm21Medicine.RecoveryMultiplierFor(1.3f).ToString("0.00")
                         + "x 1.60->" + Gm21Medicine.RecoveryMultiplierFor(1.6f).ToString("0.00")
                         + "x 1.90->" + Gm21Medicine.RecoveryMultiplierFor(1.9f).ToString("0.00") + "x"
-                        + "\n  flags: tend=" + Gm21Medicine.TendEnabled + " treatment=" + Gm21Medicine.TreatmentEnabled
+                        + "\n  intervention budgets (MedicalPotency): cure=" + Gm21Medicine.CurePotencyBudget
+                        + " reconstruct=" + Gm21Medicine.ReconstructPotencyBudget
+                        + " resuscitate=" + Gm21Medicine.ResuscitatePotencyBudget
+                        + "\n  base work ticks: cure=" + Gm21Medicine.CureWorkTicks
+                        + " reconstruct=" + Gm21Medicine.ReconstructWorkTicks
+                        + " resuscitate=" + Gm21Medicine.ResuscitateWorkTicks
+                        + " (divided by MedicalTendSpeed, clamped " + Gm21Medicine.MinWorkSpeed + ".." + Gm21Medicine.MaxWorkSpeed + ")"
+                        + "\n  flags: tend=" + Gm21Medicine.TendEnabled + " propagation=" + Gm21Medicine.TendPropagationEnabled
+                        + " treatment=" + Gm21Medicine.TreatmentEnabled
                         + " recovery=" + Gm21Medicine.RecoveryEnabled + " immunity=" + Gm21Medicine.ImmunityEnabled
                         + " surgery=" + Gm21Medicine.SurgeryEnabled);
         }
@@ -65,6 +73,18 @@ namespace Grandmaster21
             sb.AppendLine("  Medicine Grandmaster=" + Gm21Medicine.IsMedicineGrandmaster(p)
                           + "  practising=" + Gm21Medicine.CanPractise(p)
                           + "  mode=" + Gm21MedicineModeStore.Get(p));
+            if (Gm21Medicine.IsMedicineGrandmaster(p))
+            {
+                float speed = p.GetStatValue(StatDefOf.MedicalTendSpeed);
+                sb.AppendLine("  MedicalTendSpeed=" + speed.ToString("0.00")
+                              + "  work ticks: cure=" + Gm21Medicine.WorkTicks(p, Gm21Medicine.CureWorkTicks)
+                              + " reconstruct=" + Gm21Medicine.WorkTicks(p, Gm21Medicine.ReconstructWorkTicks)
+                              + " resuscitate=" + Gm21Medicine.WorkTicks(p, Gm21Medicine.ResuscitateWorkTicks)
+                              + "  self-reconstruct=" + Gm21Medicine.CanSelfReconstruct(p));
+                sb.AppendLine("  Medicine potency this Grandmaster could gather for themself: "
+                              + Gm21MedicineSupplies.AvailablePotency(p, p).ToString("0.##")
+                              + " (any patient's care allowing all: " + Gm21MedicineSupplies.AvailablePotency(p, null).ToString("0.##") + ")");
+            }
 
             sb.AppendLine("  Hediffs (Grandmaster Treatment / Cure verdict):");
             foreach (Hediff h in p.health.hediffSet.hediffs)
@@ -100,12 +120,45 @@ namespace Grandmaster21
                 int now = Find.TickManager.TicksGame;
                 Gm21ResuscitationFacts f = Gm21Resuscitation.Gather(corpse, now);
                 Gm21ResuscitationVerdict v = Gm21Resuscitation.Decide(f);
-                Log.Message("[Grandmaster 21] Resuscitation " + corpse.LabelShortCap + ": " + v
-                            + (v == Gm21ResuscitationVerdict.Viable ? "" : " (" + Gm21Resuscitation.ReasonFor(v) + ")")
-                            + "\n  flesh=" + f.isFlesh + " supernatural=" + f.supernatural + " hostile=" + f.hostile
-                            + " brainDestroyed=" + f.brainDestroyed + " vitalDestroyed=" + f.vitalAnatomyDestroyed
-                            + " rot=" + f.rotStage + " sinceDeath=" + f.ticksSinceDeath.ToStringTicksToPeriod()
-                            + " (" + f.ticksSinceDeath + " / window " + Gm21Medicine.ResuscitationWindowTicks + " ticks)");
+                StringBuilder sb = new StringBuilder();
+                sb.AppendLine("[Grandmaster 21] Resuscitation " + corpse.LabelShortCap + ": " + v
+                              + (v == Gm21ResuscitationVerdict.Viable ? "" : " (" + Gm21Resuscitation.ReasonFor(v) + ")"));
+                sb.AppendLine("  flesh=" + f.isFlesh + " supernatural=" + f.supernatural + " hostile=" + f.hostile
+                              + " brainDestroyed=" + f.brainDestroyed + " vitalRebuilds=" + f.vitalRebuilds
+                              + " vitalUnrebuildable=" + f.vitalUnrebuildable
+                              + " rot=" + f.rotStage + " sinceDeath=" + f.ticksSinceDeath.ToStringTicksToPeriod()
+                              + " (" + f.ticksSinceDeath + " / window " + Gm21Medicine.ResuscitationWindowTicks + " ticks)");
+                Pawn inner = corpse.InnerPawn;
+                if (inner != null && inner.health != null && f.available)
+                {
+                    List<Gm21VitalRebuild> rebuild = new List<Gm21VitalRebuild>();
+                    bool ok = Gm21Resuscitation.PlanVitalRebuild(inner.health.hediffSet, inner.RaceProps.body, rebuild);
+                    sb.Append("  minimum vital rebuild (" + (ok ? "possible" : "IMPOSSIBLE") + "):");
+                    if (rebuild.Count == 0) sb.Append(" none");
+                    foreach (Gm21VitalRebuild r in rebuild)
+                        sb.Append(" " + r.part.Label + (r.lastInjury != null ? " [" + r.lastInjury.defName + "]" : ""));
+                    sb.AppendLine();
+
+                    List<Gm21InjurySnapshot> injuries = Gm21Resuscitation.SnapshotFreshInjuries(inner);
+                    BodyPartRecord blow = Gm21Trauma.TryFindDeathBlowPart(inner, corpse.timeOfDeath);
+                    List<Gm21TraumaEvidence> evidence = Gm21Trauma.Collect(inner, injuries, rebuild, blow);
+                    List<int> chosen = Gm21Trauma.Rank(evidence, Gm21Medicine.MaxTraumaScars);
+                    sb.AppendLine("  death blow (battle log): " + (blow != null ? blow.Label : "not recorded"));
+                    sb.AppendLine("  trauma evidence (score / relative / flags -> scar):");
+                    for (int i = 0; i < evidence.Count; i++)
+                    {
+                        Gm21TraumaEvidence e = evidence[i];
+                        int rank = chosen.IndexOf(i);
+                        sb.AppendLine("    " + e.part.Label + ": " + Gm21Trauma.Score(e).ToString("0.00")
+                                      + " / " + Gm21Trauma.RelativeSeverity(e).ToString("0.00")
+                                      + (e.destroyed ? " destroyed" : "") + (e.vital ? " vital" : "")
+                                      + (e.lethalBlow ? " death-blow" : "") + (e.scarrable ? "" : " not-scarrable")
+                                      + (rank >= 0 ? "  -> SCAR #" + (rank + 1) + " " + e.scarDef.defName
+                                                     + " severity " + Gm21Trauma.ScarSeverity(e).ToString("0.0")
+                                                   : ""));
+                    }
+                }
+                Log.Message(sb.ToString().TrimEnd());
             }
         }
 

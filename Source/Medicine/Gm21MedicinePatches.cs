@@ -16,6 +16,7 @@ namespace Grandmaster21
     ///
     ///   persistence -- Hediff.ExposeData                                    (needed by treatment)
     ///   tend        -- TendUtility.DoTend, HediffComp_TendDuration.CompTended  (Gm21Medicine.TendEnabled)
+    ///   propagation -- TendUtility.DoTend transpiler (one call site)          (Gm21Medicine.TendPropagationEnabled)
     ///   treatment   -- tend + persistence                                    (Gm21Medicine.TreatmentEnabled)
     ///   recovery    -- Pawn_HealthTracker.HealthTickInterval, Hediff_Injury.Heal (Gm21Medicine.RecoveryEnabled)
     ///   immunity    -- ImmunityRecord.ImmunityChangePerTick                   (Gm21Medicine.ImmunityEnabled)
@@ -49,6 +50,21 @@ namespace Grandmaster21
                     prefix: Hook(typeof(Gm21GrandmasterTend), nameof(Gm21GrandmasterTend.Prefix_CompTended)),
                     postfix: Hook(typeof(Gm21GrandmasterTend), nameof(Gm21GrandmasterTend.Postfix_CompTended)));
             });
+
+            if (Gm21Medicine.TendEnabled)
+            {
+                // Separate group: without it the tend is still exact, but a condition-specific
+                // Tended override would see the medicine's ordinary ceiling instead of the
+                // Grandmaster effective quality.
+                Gm21Medicine.TendPropagationEnabled = Try("Grandmaster effective tend quality", delegate
+                {
+                    MethodInfo doTend = Need(AccessTools.Method(typeof(TendUtility), nameof(TendUtility.DoTend)), "TendUtility.DoTend");
+                    harmony.Patch(doTend, prefix: NoPatch, postfix: NoPatch,
+                        transpiler: Hook(typeof(Gm21GrandmasterTend), nameof(Gm21GrandmasterTend.Transpiler_DoTend)));
+                    if (Gm21GrandmasterTend.PropagationSites != 1)
+                        throw new MissingMethodException("TendUtility.DoTend no longer has exactly one Hediff.Tended call");
+                });
+            }
 
             Gm21Medicine.TreatmentEnabled = Gm21Medicine.TendEnabled && persistence;
 

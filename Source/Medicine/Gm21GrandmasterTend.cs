@@ -1,3 +1,7 @@
+using System.Collections.Generic;
+using System.Reflection;
+using System.Reflection.Emit;
+using HarmonyLib;
 using RimWorld;
 using Verse;
 
@@ -25,16 +29,26 @@ namespace Grandmaster21
     /// maxQuality is the medicine's MedicalQualityMax. So a Grandmaster needs two things only:
     /// the ceiling raised to the Grandmaster target, and the roll unable to land anywhere else.
     ///
-    /// HOW. DoTend is wrapped in a frame (prefix/finalizer) that knows the doctor and the medicine.
-    /// While a Grandmaster frame is open, a prefix on CompTended rewrites ONLY that comp's two
-    /// arguments: maxQuality = target, quality = target + 0.25 + margin. Vanilla's own clamp then
-    /// yields exactly target for every possible roll -- the lowest roll is still above the ceiling.
-    /// Vanilla still writes tendQuality, still accumulates totalTendQuality, still sets
-    /// tendTicksLeft and still throws its "Tended ... Quality 100%" mote, all with the exact value.
+    /// HOW, in two steps.
     ///
-    /// Nothing else sees the rewritten arguments. Hediff.Tended and every other comp receive
-    /// vanilla's inputs, which keeps condition-specific tend side effects -- vanilla's heart-attack
-    /// treatment roll, other mods' comps -- on their own vanilla footing.
+    /// 1. EFFECTIVE QUALITY. DoTend is wrapped in a frame (prefix/finalizer) that knows the doctor and
+    ///    the medicine, and a transpiler replaces DoTend's single call to Hediff.Tended(quality,
+    ///    maxQuality, batch) with TendedEffective, which has the same stack shape. Inside a
+    ///    Grandmaster frame it substitutes the Grandmaster effective quality for BOTH arguments and
+    ///    then calls hediff.Tended virtually. So every consumer of the tend -- condition-specific
+    ///    overrides such as vanilla's heart-attack treatment roll (0.65 x quality), Hediff_MissingPart,
+    ///    every comp, and any modded override -- sees 100% / 130% / 160%, not the medicine's ordinary
+    ///    70% / 100% / 130% ceiling.
+    ///
+    /// 2. NO ROLL. HediffComp_TendDuration.CompTended would still add +-0.25 below the ceiling. While
+    ///    a Grandmaster frame is open its prefix hands it quality = target + 0.25 + margin with
+    ///    maxQuality = target, so vanilla's own clamp yields exactly target for every possible roll.
+    ///    Vanilla still writes tendQuality, accumulates totalTendQuality, sets tendTicksLeft and throws
+    ///    its "Tended ... Quality 100%" mote, all with the exact value.
+    ///
+    /// Only DoTend's call site is rewritten; the tend's other inputs (patient, batch, records, medicine
+    /// consumption) are untouched. If the call site cannot be found exactly once, the transpiler changes
+    /// nothing and step 2 still applies.
     ///
     /// ORDINARY DOCTORS are untouched: no frame is opened for them, and the prefix is one bool
     /// test. A Grandmaster tending WITHOUT medicine is also vanilla (see Frame for the full rule).
@@ -106,6 +120,59 @@ namespace Grandmaster21
         internal static void Finalizer_DoTend(Gm21TendFrame __state)
         {
             current = __state;
+        }
+
+        /// <summary>
+        /// Replaces DoTend's call to Hediff.Tended. Same stack shape (instance first), so it drops into
+        /// the IL in place of the callvirt. Outside a Grandmaster frame it passes vanilla's arguments
+        /// through untouched.
+        /// </summary>
+        public static void TendedEffective(Hediff hediff, float quality, float maxQuality, int batchPosition)
+        {
+            if (current.grandmaster)
+            {
+                quality = current.target;
+                maxQuality = current.target;
+            }
+            hediff.Tended(quality, maxQuality, batchPosition);
+        }
+
+        /// <summary>How many Hediff.Tended call sites the transpiler rewrote. 1 when active.</summary>
+        public static int PropagationSites { get; private set; }
+
+        /// <summary>
+        /// TendUtility.DoTend transpiler. Rewrites the one callvirt Hediff::Tended(float, float, int)
+        /// to a call to TendedEffective. Anything other than exactly one match leaves the method as it
+        /// was -- a guess at an unfamiliar IL shape is worse than no propagation.
+        /// </summary>
+        internal static IEnumerable<CodeInstruction> Transpiler_DoTend(IEnumerable<CodeInstruction> instructions)
+        {
+            MethodInfo tended = AccessTools.Method(typeof(Hediff), nameof(Hediff.Tended),
+                new[] { typeof(float), typeof(float), typeof(int) });
+            MethodInfo effective = AccessTools.Method(typeof(Gm21GrandmasterTend), nameof(TendedEffective));
+            List<CodeInstruction> list = new List<CodeInstruction>(instructions);
+            int matches = 0;
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (IsTendedCall(list[i], tended)) matches++;
+            }
+            PropagationSites = 0;
+            if (matches != 1 || effective == null) return list;
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (!IsTendedCall(list[i], tended)) continue;
+                // In place, so labels and exception blocks on the instruction are preserved.
+                list[i].opcode = OpCodes.Call;
+                list[i].operand = effective;
+                PropagationSites = 1;
+            }
+            return list;
+        }
+
+        private static bool IsTendedCall(CodeInstruction ins, MethodInfo tended)
+        {
+            return (ins.opcode == OpCodes.Callvirt || ins.opcode == OpCodes.Call)
+                && ins.operand is MethodInfo && (MethodInfo)ins.operand == tended;
         }
 
         /// <summary>

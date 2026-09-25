@@ -25,6 +25,12 @@ namespace Grandmaster21
         public static bool TendEnabled;
 
         /// <summary>
+        /// The Grandmaster effective quality reaches Hediff.Tended itself (and so condition-specific
+        /// overrides such as the heart-attack treatment roll), not only the TendDuration comp.
+        /// </summary>
+        public static bool TendPropagationEnabled;
+
+        /// <summary>
         /// Grandmaster Treatment is attached to tended conditions. Requires the tend patch AND the
         /// Hediff.ExposeData persistence patch: state that would silently vanish on reload is never
         /// created in the first place.
@@ -96,22 +102,53 @@ namespace Grandmaster21
         }
 
         // ---------------------------------------------------------------- interventions (PROVISIONAL)
+        //
+        // BALANCE LINE: an intervention costs the Grandmaster's TIME and ordinary MEDICINE, nothing
+        // else. There is deliberately no cooldown, no charge, no per-pawn or per-day limit: a
+        // Grandmaster who spends their day curing is a Grandmaster who did not spend it tending,
+        // operating or doing anything else, and the medicine comes out of the colony's stores.
 
-        /// <summary>Base work ticks for Cure at MedicalTendSpeed 1 (vanilla tend is 600).</summary>
-        public const int CureWorkTicks = 1200;
+        /// <summary>
+        /// Base work ticks for Cure at MedicalTendSpeed 1: one in-game hour (vanilla tend is 600,
+        /// a heart or cataract operation 4500 work). A Grandmaster's own tend speed shortens it.
+        /// </summary>
+        public const int CureWorkTicks = 2500;
 
-        /// <summary>Base work ticks for Reconstruct at MedicalTendSpeed 1.</summary>
-        public const int ReconstructWorkTicks = 4000;
+        /// <summary>Base work ticks for Reconstruct at MedicalTendSpeed 1: 2.4 in-game hours.</summary>
+        public const int ReconstructWorkTicks = 6000;
 
-        /// <summary>Base work ticks for Resuscitate at MedicalTendSpeed 1.</summary>
-        public const int ResuscitateWorkTicks = 1250;
+        /// <summary>
+        /// Base work ticks for Resuscitate at MedicalTendSpeed 1: three in-game hours, the longest
+        /// intervention. The viability window only has to be met when the work BEGINS.
+        /// </summary>
+        public const int ResuscitateWorkTicks = 7500;
 
-        /// <summary>Speed stat is clamped into this band so a modded stat can neither stall nor skip the job.</summary>
-        public const float MinWorkSpeed = 0.25f;
-        public const float MaxWorkSpeed = 4f;
+        /// <summary>
+        /// MedicalTendSpeed is clamped into this band before it divides the base work, so only an
+        /// absurd modded value (a zero, a negative, a thousand) is corrected. Every ordinary speed,
+        /// fast or slow, scales the work exactly.
+        /// </summary>
+        public const float MinWorkSpeed = 0.1f;
+        public const float MaxWorkSpeed = 10f;
 
-        /// <summary>No intervention completes in less than one in-game minute of work.</summary>
+        /// <summary>Tick safety floor: no intervention completes in under a second of real time.</summary>
         public const int MinWorkTicks = 60;
+
+        /// <summary>
+        /// Ordinary medicine each intervention consumes, measured in MedicalPotency: 1.0 is one unit
+        /// of industrial medicine, 0.60 herbal, 1.60 glitterworld; modded medicine counts by its own
+        /// loaded potency. Stacks combine (herbal x2 = 1.2 meets Cure). Potency decides only HOW MUCH
+        /// medicine is used, never how well the intervention works.
+        /// </summary>
+        public const float CurePotencyBudget = 1.0f;
+        public const float ReconstructPotencyBudget = 2.0f;
+        public const float ResuscitatePotencyBudget = 3.0f;
+
+        /// <summary>
+        /// Reconstructing one's own body needs real hands: at least this Manipulation (a Grandmaster
+        /// missing one arm is at 0.50). Self-Cure only needs the ordinary ability to practise.
+        /// </summary>
+        public const float SelfReconstructMinManipulation = 0.5f;
 
         /// <summary>
         /// Resuscitation viability window: how long after death the intervention may BEGIN.
@@ -123,6 +160,39 @@ namespace Grandmaster21
         /// started inside the window is not failed by the window while it is being performed.
         /// </summary>
         public const int ResuscitationWindowTicks = 4 * GenDate.TicksPerHour;
+
+        // ---------------------------------------------------------------- resuscitation trauma (PROVISIONAL)
+        //
+        // A resuscitated pawn keeps physical evidence of the death: up to MaxTraumaScars of the worst
+        // traumatic LOCATIONS become vanilla permanent injuries. Ranking (Gm21Trauma.Score):
+        //
+        //     score = relative severity           (fresh injury severity at the part / part max health, <= 1;
+        //                                          a destroyed-and-rebuilt part counts as 1)
+        //           + DestroyedTraumaBonus         the part was destroyed and had to be rebuilt for life
+        //           + VitalTraumaBonus             the part carries a lethal-capacity tag
+        //           + LethalBlowTraumaBonus        the battle log names it as the death blow's target
+        //
+        // A location qualifies if it can carry a vanilla scar AND (it was destroyed, OR it took the
+        // death blow, OR its relative severity is at least MinTraumaRelativeSeverity). Nothing is
+        // invented to reach three.
+
+        public const int MaxTraumaScars = 3;
+        public const float MinTraumaRelativeSeverity = 0.10f;
+        public const float DestroyedTraumaBonus = 1.0f;
+        public const float VitalTraumaBonus = 0.5f;
+        public const float LethalBlowTraumaBonus = 0.5f;
+
+        /// <summary>
+        /// A scar never takes more than this fraction of the part's max health, and never more than
+        /// the wound it came from: meaningful, never fatal, never re-destroying the part.
+        /// </summary>
+        public const float MaxScarPartFraction = 0.4f;
+
+        /// <summary>Scar severity on a vital part that had to be rebuilt, as a fraction of its max health.</summary>
+        public const float RebuiltVitalScarFraction = 0.4f;
+
+        /// <summary>A scar lighter than this is not worth creating.</summary>
+        public const float MinScarSeverity = 0.5f;
 
         // ---------------------------------------------------------------- gates
 
@@ -153,14 +223,30 @@ namespace Grandmaster21
         /// <summary>Work ticks for an intervention, scaled by the doctor's MedicalTendSpeed.</summary>
         public static int WorkTicks(Pawn doctor, int baseTicks)
         {
-            float speed = 1f;
-            if (doctor != null)
-            {
-                speed = doctor.GetStatValue(StatDefOf.MedicalTendSpeed);
-                if (float.IsNaN(speed) || float.IsInfinity(speed)) speed = 1f;
-            }
+            float speed = doctor == null ? 1f : doctor.GetStatValue(StatDefOf.MedicalTendSpeed);
+            return WorkTicksForSpeed(baseTicks, speed);
+        }
+
+        /// <summary>
+        /// Pure: base work divided by speed, with only absurd speeds clamped and a small tick floor.
+        /// A non-finite speed counts as 1.
+        /// </summary>
+        public static int WorkTicksForSpeed(int baseTicks, float speed)
+        {
+            if (float.IsNaN(speed) || float.IsInfinity(speed)) speed = 1f;
             speed = Mathf.Clamp(speed, MinWorkSpeed, MaxWorkSpeed);
             return Mathf.Max(MinWorkTicks, Mathf.RoundToInt(baseTicks / speed));
+        }
+
+        /// <summary>
+        /// Whether this Grandmaster can reconstruct their own body: practising, and enough
+        /// Manipulation left to do the work on themselves.
+        /// </summary>
+        public static bool CanSelfReconstruct(Pawn doctor)
+        {
+            if (!CanPractise(doctor)) return false;
+            return doctor.health.capacities.GetLevel(PawnCapacityDefOf.Manipulation)
+                   >= SelfReconstructMinManipulation - CapTolerance;
         }
     }
 }
