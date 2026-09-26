@@ -8,7 +8,8 @@ using Verse.AI;
 
 namespace Grandmaster21.Transcendent
 {
-    public sealed class Building_MagicalWorkstation : Building_WorkTable, IThingHolder
+    // Historical CLR name retained for existing saves; all three benches use this implementation.
+    public sealed partial class Building_MagicalWorkstation : Building_WorkTable, IThingHolder
     {
         private TranscendentProject project;
         private ThingDef pendingStuff;
@@ -19,6 +20,7 @@ namespace Grandmaster21.Transcendent
         internal int nextSearchTick;
 
         public Building_MagicalWorkstation() { contents = new ThingOwner<Thing>(this, false, LookMode.Deep); }
+        internal TranscendentTierConfig Config { get { return TranscendentTierConfig.ForBench(def); } }
         internal TranscendentProject Project { get { return project; } }
         internal ThingDef PendingStuff { get { return pendingStuff; } }
         internal Bill_Production Pending { get { return billStack.Bills.FirstOrDefault() as Bill_Production; } }
@@ -41,7 +43,7 @@ namespace Grandmaster21.Transcendent
             get
             {
                 return Spawned && Faction == Faction.OfPlayer && !this.IsBurning() && CurrentlyUsableForBills()
-                    && TranscendentDefOf.GM21_MagicalCraftsmanship.IsFinished
+                    && Config != null && Config.Catalyst != null && Config.Research != null && Config.Research.IsFinished
                     && Map.designationManager.DesignationOn(this, DesignationDefOf.Deconstruct) == null
                     && Map.designationManager.DesignationOn(this, DesignationDefOf.Uninstall) == null;
             }
@@ -76,11 +78,11 @@ namespace Grandmaster21.Transcendent
             Thing dominant;
             if (!TranscendentIngredients.TryValidatePlaced(this, pawn, job, out selected, out dominant)) return false;
             RecipeDef recipe = Pending.recipe;
-            double total = TranscendentMath.WorkAmount(recipe.WorkAmountForStuff(pendingStuff));
+            double total = Config.Work(recipe.WorkAmountForStuff(pendingStuff));
             if (double.IsNaN(total) || double.IsInfinity(total) || total <= 0) return false;
             TranscendentProject prepared = new TranscendentProject
             {
-                recipe = recipe, product = recipe.products[0].thingDef, stuff = pendingStuff,
+                recipe = recipe, product = recipe.products[0].thingDef, stuff = pendingStuff, ceiling = Config.ceiling,
                 initiatorId = pawn.GetUniqueLoadID(), initiatorName = pawn.LabelShortCap.ToString(),
                 totalWork = total, applyColor = recipe.useIngredientsForColor, color = dominant.DrawColor
             };
@@ -109,12 +111,15 @@ namespace Grandmaster21.Transcendent
                     contents.TryAdd(detached, false);
                 // Uncommitted leftovers remain saved in contents if no drop cell is available.
                 RecoverUncommitted();
-                Log.Error("[Grandmaster 21] Magical commitment rolled back before tier selection: " + ex);
+                Log.Error("[Grandmaster 21] Transcendent commitment rolled back before tier selection: " + ex);
                 return false;
             }
             prepared.id = GetUniqueLoadID() + ":" + (++nextProjectId);
             prepared.seed = Rand.Int;
-            prepared.finalTier = TranscendentMath.RollFromSeed(prepared.seed);
+            prepared.finalTier = ArtifactRolls.Roll(prepared.ceiling, prepared.seed);
+            prepared.phenomenonSeed = unchecked(prepared.seed ^ 0x473231);
+            prepared.phenomenon = ArtifactIdentity.Assign(prepared.product, prepared.finalTier, prepared.phenomenonSeed);
+            ApplyDeveloperOverride(prepared);
             project = prepared; // Persistence boundary; from here onward nothing is refundable.
             job.bill = null; // Remove the job's reference BEFORE deleting its internal bill.
             job.placedThings = null;
@@ -162,11 +167,13 @@ namespace Grandmaster21.Transcendent
                     artifact.tier = p.finalTier;
                     artifact.projectId = p.id;
                     artifact.initiatorName = p.initiatorName;
+                    artifact.phenomenon = p.phenomenon;
+                    artifact.phenomenonSeed = p.phenomenonSeed;
                     if (p.applyColor) result.SetColor(p.color, false);
                     CompIngredients provenance = result.TryGetComp<CompIngredients>();
                     if (provenance != null)
                         foreach (CommittedIngredient ing in p.ingredients)
-                            if (ing.def != null && ing.def != TranscendentDefOf.GM21_MagicalCatalyst) provenance.RegisterIngredient(ing.def);
+                            if (ing.def != null && !TranscendentTierConfig.IsCatalyst(ing.def)) provenance.RegisterIngredient(ing.def);
                     if (pawn.Ideo != null) result.StyleDef = pawn.Ideo.GetStyleFor(result.def);
                     result.TryGetComp<CompArt>()?.JustCreatedBy(pawn);
                     if (!contents.TryAdd(result, false)) throw new InvalidOperationException("Cannot retain completed output");
@@ -211,7 +218,7 @@ namespace Grandmaster21.Transcendent
         private void Fault(string phase, Exception ex)
         {
             if (project != null) project.faulted = true;
-            Log.Error("[Grandmaster 21] Magical project paused after error " + phase + "; state retained, no refund/reroll: " + ex);
+            Log.Error("[Grandmaster 21] Transcendent project paused after error " + phase + "; state retained, no refund/reroll: " + ex);
         }
 
         public override AcceptanceReport DeconstructibleBy(Faction faction)
@@ -236,7 +243,7 @@ namespace Grandmaster21.Transcendent
             if (project != null)
             {
                 text.Append("GM21_TC_Progress".Translate(project.product == null ? "?" : project.product.LabelCap.ToString(),
-                    project.stuff == null ? "GM21_TC_NoStuff".Translate().ToString() : project.stuff.LabelCap.ToString(), project.Progress.ToStringPercent()));
+                    project.stuff == null ? "GM21_TC_NoStuff".Translate().ToString() : project.stuff.LabelCap.ToString(), project.Progress.ToStringPercent(), project.ceiling.ToString()));
                 if (!project.Valid || project.faulted) text.AppendLine().Append("GM21_TC_Faulted".Translate());
                 else if (project.outputCreated) text.AppendLine().Append("GM21_TC_OutputWaiting".Translate());
             }
@@ -250,6 +257,7 @@ namespace Grandmaster21.Transcendent
         {
             foreach (Gizmo g in base.GetGizmos()) yield return g;
             if (Faction != Faction.OfPlayer) yield break;
+            foreach (Gizmo dev in DeveloperGizmos()) yield return dev;
             if (HasRecovery)
                 yield return new Command_Action
                 {
