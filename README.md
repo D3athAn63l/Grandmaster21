@@ -1288,6 +1288,29 @@ because none was tested.
 | `SkillUI.DrawSkill` | Postfix | ★ marker (cosmetic) |
 | `Pawn.ExposeData` | Postfix ×3 | Persists the Grandmaster aim mode, the melee doctrine and the Medicine mode, in separate tables |
 | `Pawn.GetGizmos` | Postfix ×3 | The Grandmaster Aim, Grandmaster Melee and Grandmaster Medicine commands |
+| `Bill.PawnAllowedToStartAnew(Pawn)` | **Transpiler** (one comparison operand), applied after `PatchAll` | A Grandmaster in the recipe's work skill passes a bill whose max is vanilla's 20; see below |
+
+### Vanilla bills and level 21
+
+Every vanilla bill starts with an allowed skill range of 0–20 (the bill dialog's slider cannot go
+higher), and `Bill.PawnAllowedToStartAnew` refuses a worker whose work skill is above the max:
+*"Above allowed skill 20"*. A Grandmaster's skill reads 21, so without a bridge a Medicine
+Grandmaster could not even start "Remove prosthetic", and a Crafting Grandmaster could not take an
+ordinary workbench bill. Every bill type (`Bill_Medical`, `Bill_Production`, `Bill_Mech`,
+`Bill_Autonomous`) calls that base method first, so it is fixed there, once.
+
+The rule is narrow. The upper bound is read as 21 **only** when all of these hold: the bill's max is
+exactly 20, the recipe has a work skill, and the pawn is a stored Grandmaster (`levelInt` 21) in
+**that** skill. Everything else is vanilla: a bill capped below 20 (0–15, 5–10) still refuses a
+Grandmaster, the minimum, pawn, slave, mech and mechanitor restrictions are the original IL, and a
+pawn whose skill some other mod pushes past 20 without Grandmaster storage is still refused. The
+bound only ever becomes 21, so nothing reporting above 21 passes either.
+
+No bill is modified. `allowedSkillRange` is saved with every bill, so rewriting it would leak into
+saves and survive uninstalling; instead a transpiler passes the one `ldfld IntRange::max` that
+feeds the comparison through `Patch_BillSkillCeiling.UpperBoundFor(max, bill, pawn)`. The failure
+message still shows the real max. If the method ever has other than exactly one such comparison,
+it is left untouched, the bridge is off for the session, and one warning is logged.
 
 ### Shooting Grandmaster patches
 
@@ -1388,8 +1411,9 @@ one Medicine feature and logs once. Why each hook sits where it does is in
 
 ### The progression transpiler
 
-Exactly one instruction is changed, in `SkillRecord.Learn`. (Medicine 21's `DoTend` transpiler is
-the only other one; it is described with the Medicine patches above.) Vanilla:
+Exactly one instruction is changed, in `SkillRecord.Learn`. (The only other transpilers are the
+bill skill-ceiling bridge and Medicine 21's `DoTend`, each described with its own patches above.)
+Vanilla:
 
 ```
 ldarg.0
@@ -1524,7 +1548,8 @@ Medicine 21 is excluded from the stub build too, and verified against the real g
 It installs the mod's real Medicine patches on the real vanilla methods and executes them —
 `Hediff.Tended`→`CompTended`, the patched `DoTend` IL and `Hediff_HeartAttack.Tended`,
 `Hediff_Injury.Heal`, `SurgeryOutcomeEffectDef.GetOutcome`, `HediffSet`, real medicine Things in a
-real inventory, and the real Scribe saver/loader — plus, given the game's `Data/` folder, runs the real
+real inventory, the real Scribe saver/loader, and the core bill-ceiling bridge on the real
+`Bill.PawnAllowedToStartAnew` — plus, given the game's `Data/` folder, runs the real
 C# Cure, tier and surgery rules over every vanilla Def in all six content packs. Test-process-only
 shims cover what needs a live game (icon loading, live-pawn re-evaluation, and Steamworks for
 `ParseHelper` via `tools/stubs/SteamworksShim.cs`); none of them ship. Details and results:
@@ -1586,11 +1611,13 @@ hand-written approximations. Only a real build does that. See `tools/stubs/READM
 zero warnings/errors. After the second design pass (tend-quality propagation, medicine cost, work
 time, self-intervention, hostile resuscitation, minimum vital reconstruction, death-trauma scars)
 and the final pre-runtime pass (carried medicine first, no tend-speed ceiling, decay-based
-resuscitation viability, Resuscitation Shock), `tools/verify-medicine.sh` reports **325 PASS, 0 FAIL,
+resuscitation viability, Resuscitation Shock), `tools/verify-medicine.sh` reports **369 PASS, 0 FAIL,
 0 BLOCKED** with the vanilla `Data/`
 folder, including real Scribe save **and load** round trips, real medicine Things consumed in a real
-inventory, and an audit of every vanilla Def. **Medicine 21 has had
-NO runtime gameplay testing** — see the runtime checklist in
+inventory, the real vanilla bill gate, and an audit of every vanilla Def. The owner's first real-game
+session found one bug — vanilla bills refusing a Grandmaster with "Above allowed skill 20" — fixed
+in the core mod (*Vanilla bills and level 21*) and **not yet re-tested in game**. The rest of
+Medicine 21 is still **unverified at runtime** — see the runtime checklist in
 [Docs/Medicine21.md](Docs/Medicine21.md#14-runtime-checklist-not-run--needs-a-real-game).
 Medicine 21 itself does not change the Shooting, Melee or Crafting implementations.
 

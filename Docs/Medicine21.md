@@ -3,8 +3,10 @@
 > **Experimental vertical slice, new in 0.12.0 Beta (second design pass plus the final pre-runtime
 > pass). Not yet verified in a running game.**
 > It builds against the real RimWorld 1.6, Unity and Harmony assemblies. Its logic is checked
-> headlessly, including against every vanilla Def in all six content packs. No gameplay session has
-> exercised it. Every tuning number below is **provisional**.
+> headlessly, including against every vanilla Def in all six content packs. The first real-game
+> session found one bug, a vanilla bill refusing the Grandmaster ("Above allowed skill 20"), now
+> fixed in the core mod (§4) but not yet re-tested in game; the rest is unverified at runtime.
+> Every tuning number below is **provisional**.
 
 *"I do not need miraculous technology to practice miraculous medicine. I am the Grandmaster."*
 
@@ -156,6 +158,13 @@ runs from 3 days at 0% quality to 1 day at 100%, so the Grandmaster gets vanilla
 consumption, the surgery job and its work time, anaesthesia, medical-care restrictions, and every
 successful consequence the recipe worker applies. A Medicine 20 surgeon, and every other surgeon,
 reaches vanilla `GetOutcome` unchanged, including the 98% cap.
+
+**Getting to the operation at all.** Vanilla bills allow skills 0–20, and `Bill.PawnAllowedToStartAnew`
+refused a Medicine 21 surgeon with *"Above allowed skill 20"* before any surgery job existed — the
+first real-game session found this on "Remove prosthetic". That gate belongs to every bill type, not
+to Medicine, so it is bridged in the core mod (`Patch_BillSkillCeiling`, see the README's *Vanilla
+bills and level 21*): a Grandmaster in the recipe's work skill passes a max-20 bill; a bill capped
+below 20 still refuses them; no bill is modified. Nothing above changed.
 
 ## 5. The Grandmaster Medicine command
 
@@ -612,6 +621,9 @@ The brief's hard rules, and how they are met:
 | `SurgeryOutcomeEffectDef.GetOutcome` | Prefix (replaces for a practising Grandmaster only) | No failure outcome is ever evaluated |
 | `Pawn.GetGizmos` / `Pawn.ExposeData` | Postfix (attribute) | Medicine command and mode persistence |
 
+Not a Medicine hook, but what lets a Grandmaster surgeon start a vanilla operation: the core
+`Bill.PawnAllowedToStartAnew` transpiler (one comparison operand; README, *Vanilla bills and level 21*).
+
 ## 12. Dev-mode tools
 
 Category **"Grandmaster 21 - Medicine"**:
@@ -647,8 +659,8 @@ mod's actual patches with `Gm21MedicinePatches.Apply` and then executes the real
 shims (never shipped) cover what needs a live game: icon loading, live-pawn state re-evaluation, and
 Steamworks for `ParseHelper` (`tools/stubs/SteamworksShim.cs`).
 
-**Results in this branch: 325 PASS, 0 FAIL, 0 BLOCKED** with the vanilla `Data/` directory given
-(302 without it). Highlights:
+**Results in this branch: 369 PASS, 0 FAIL, 0 BLOCKED** with the vanilla `Data/` directory given
+(344 without it). Highlights:
 
 * 5,000 real tends per target at 100/130/160/70%: every one exact. Ordinary tends keep vanilla's
   ±25% spread.
@@ -699,10 +711,26 @@ Steamworks for `ParseHelper` (`tools/stubs/SteamworksShim.cs`).
   the real Scribe; untreated hediffs and scars carry no GM21 element; the uninstall cleaner.
 * **Vanilla data audit:** the 28 Cure candidates, 100/130/160% tiers, surgery outcomes, every body's
   consciousness anatomy, every flesh body's vital-organ layout, and the unit cost of each budget.
+* **Bill skill ceiling (core, section 21):** the real `Bill.PawnAllowedToStartAnew` on a real
+  `Bill_Medical` on a patient's bill stack targeting a prosthetic (`Recipe_RemoveBodyPart`, whose
+  added-part label branch runs). Unpatched, the bug reproduces: a Medicine 21 Grandmaster is refused
+  with `AboveAllowedSkill`, and so is a Crafting Grandmaster on a `Bill_Production`. Patched: both
+  allowed; skill 20 / max 20 allowed; Grandmaster on 0–15 and 5–10 refused; below-minimum refused
+  (including a Grandmaster whose aptitude reports 15); another skill's Grandmaster, a non-GM that
+  another mod reports as 21, and a Grandmaster reported as 22 all refused as vanilla; pawn and
+  slave restrictions intact; 252 ordinary attempts (levels 0–20 × 6 ranges × 2 bill types) identical
+  before and after, reasons included; `allowedSkillRange` never written. The rewritten IL is
+  vanilla's plus exactly three instructions; the failure message still reads the real max; zero or
+  two comparison sites leave the method untouched. After eligibility, `Recipe_RemoveBodyPart` →
+  `CheckSurgeryFail` → the patched `GetOutcome` (IL) gives the same Grandmaster 200/200 successes on
+  that recipe, patient, part and bill. The data audit confirms vanilla `RemoveBodyPart` is
+  `Recipe_RemoveBodyPart` with work skill Medicine. One test-only shim for this section: the method's
+  single `ModsConfig.BiotechActive` read answers "off" (ModsConfig cannot initialise headless),
+  installed before the unpatched baseline is measured.
 
 `verify-real.sh` checks every Medicine target, Harmony parameter name and vanilla member the
-Medicine passes rely on, decay and shock members included (252 PASS, 0 FAIL, 1 SKIP), and binds each Medicine patch live, the DoTend
-transpiler included. The two `CompTended` targets are BLOCKED there because their static constructor
+Medicine passes rely on, decay and shock members included, plus the bill-ceiling members (257 PASS, 0 FAIL, 1 SKIP), and binds each Medicine patch live, the DoTend
+transpiler included, and the bill-ceiling transpiler (one site rewritten on the real method). The two `CompTended` targets are BLOCKED there because their static constructor
 needs the Unity player; `verify-medicine.sh` binds and executes them. The finalizer audit (14 PASS)
 and the progression suite (26 PASS) are unchanged.
 
@@ -739,6 +767,11 @@ resuscitation viability* show every number the code decides by. Check the player
 | 24 | Save and reload while Resuscitation Shock is active | shock still there with the same remaining time |
 | 25 | Prepare Save for Uninstall, save, remove the mod, reload | loads cleanly; no GM21 elements, JobDefs or shock hediff remain; scars remain as vanilla scars |
 | 26 | Throughout | no red errors in the player log |
+| 27 | Give a pawn a prosthetic or bionic part (dev tools or an install bill); order vanilla **Remove [part]** on them, with a stored **Medicine 21** Grandmaster as the only capable doctor | the bill shows **no** "Above allowed skill 20"; the Grandmaster takes the operation job |
+| 28 | …let the operation finish | it completes successfully: the part is removed as vanilla does; no failure outcome |
+| 29 | Set that bill's skill range to 0–15, same Grandmaster | refused with "Above allowed skill 15" — an intentional cap is kept |
+| 30 | Same removal with a Medicine 20 doctor instead | unchanged vanilla: allowed at 0–20, vanilla success chance |
+| 31 | *If easy:* a Crafting (or Cooking) Grandmaster on an ordinary workbench bill at the default 0–20 | takes the bill — the bridge is generic, not medical-only |
 
 Also worth a look when convenient: an ordinary Medicine ≤ 20 doctor (vanilla, unchanged); modded
 medicine and a modded race if available; self-Cure and self-Reconstruct with one arm missing.

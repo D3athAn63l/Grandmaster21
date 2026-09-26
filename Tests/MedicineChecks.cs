@@ -4,7 +4,8 @@
 // actual Harmony patches are installed on the actual vanilla methods, and then those vanilla
 // methods are executed -- HediffComp_TendDuration.CompTended (reached through Hediff.Tended),
 // Hediff_Injury.Heal, SurgeryOutcomeEffectDef.GetOutcome, HediffSet.GetMissingPartsCommonAncestors
-// and the real Scribe saver/loader.
+// and the real Scribe saver/loader. Section 21 does the same for the core bill-ceiling bridge on
+// the real Bill.PawnAllowedToStartAnew.
 //
 // Test-process-only environment shims (never shipped, never in the mod):
 //   * ContentFinder<Texture2D>.Get returns null -- HediffComp_TendDuration's static constructor loads
@@ -19,7 +20,9 @@
 //     ReliquaryUtility.IsRelic (which reads the mods config file) answers false -- all
 //     reach for a running game's managers -- so real medicine Things can be added, split and
 //     destroyed in a real inventory ThingOwner;
-//   * Find.ActiveLanguageWorker is vanilla's default worker, so formatted keys can be built.
+//   * Find.ActiveLanguageWorker is vanilla's default worker, so formatted keys can be built;
+//   * section 21 only: Bill.PawnAllowedToStartAnew's single ModsConfig.BiotechActive read answers
+//     "off" (ModsConfig cannot initialise headless), installed before the unpatched baseline.
 //
 // NOT covered: a running map, jobs, pathing, targeting UI, save/reload of a whole game, revival.
 // Those are listed as the runtime checklist in Docs/Medicine21.md.
@@ -90,7 +93,14 @@ internal static class MedicineChecks
     static int nextThingId = 5000;
     public static bool FixtureThingId(Thing t) { t.thingIDNumber = nextThingId++; return false; }
     public static readonly List<string> logged = new List<string>();
-    public static bool ConsoleLog(string text) { logged.Add(text); Console.WriteLine("        [game log] " + text); return false; }
+    public static bool ConsoleLog(string text)
+    {
+        logged.Add(text);
+        if (quietMissingLanguage && text.StartsWith("No active language!")) return false;
+        Console.WriteLine("        [game log] " + text);
+        return false;
+    }
+    static bool quietMissingLanguage;   // section 21 formats hundreds of refusal reasons with no language loaded
 
     static HarmonyMethod Stub(string n) { return new HarmonyMethod(typeof(MedicineChecks).GetMethod(n)); }
 
@@ -2162,6 +2172,382 @@ internal static class MedicineChecks
         };
         Check("vanilla medicine per intervention (herbal / industrial / glitterworld): Cure 2/1/1, Reconstruct 4/2/2, Resuscitate 5/3/2",
               expectedCosts.All(costs.Contains), string.Join(" ", costs.ToArray()));
+
+        // Section 21's fixture is vanilla's own "remove part" operation, which is what the Operations
+        // tab offers for a prosthetic or bionic ("Remove prosthetic arm" is its added-part label).
+        List<XElement> recipes = LoadDefs(data, "RecipeDef").Select(kv => kv.Value).ToList();
+        XElement removeBodyPart = recipes.FirstOrDefault(d => (string)d.Element("defName") == "RemoveBodyPart");
+        Check("vanilla RemoveBodyPart: Recipe_RemoveBodyPart, workSkill Medicine, a surgery outcome effect (section 21's fixture)",
+              removeBodyPart != null && (string)removeBodyPart.Element("workerClass") == "Recipe_RemoveBodyPart"
+              && (string)removeBodyPart.Element("workSkill") == "Medicine" && removeBodyPart.Element("surgeryOutcomeEffect") != null);
+        Dictionary<string, int> bySkill = recipes.Where(d => d.Element("workSkill") != null)
+            .GroupBy(d => (string)d.Element("workSkill")).ToDictionary(g => g.Key, g => g.Count());
+        Console.WriteLine("        vanilla RecipeDefs with a work skill (recipeMaker-generated recipes not counted): "
+                          + string.Join(", ", bySkill.OrderBy(kv => kv.Key).Select(kv => kv.Key + " " + kv.Value).ToArray()));
+        Check("vanilla recipes with a work skill span more than Medicine (the ceiling bug was never medical-only)",
+              bySkill.ContainsKey("Medicine") && bySkill.Keys.Count(k => k != "Medicine") >= 2);
+    }
+
+    // ------------------------------------------------------------------ 21. vanilla bill skill ceiling
+
+    // Test-process-only, this section: Bill.PawnAllowedToStartAnew ends with a ModsConfig.BiotechActive
+    // read (the mechanitor-only recipe check), and ModsConfig's static constructor reads the mods
+    // config file and scans the installed mods -- it cannot run headless, and even patching the
+    // getter runs it. So that one call, inside the method under test, is pointed at "Biotech off".
+    // The shim is installed BEFORE the unpatched baseline is measured, so "before" and "after"
+    // differ by GM21's transpiler alone.
+    public static bool BiotechInactive() { return false; }
+    static int biotechCallsShimmed;
+    public static IEnumerable<CodeInstruction> ShimBiotechActive(IEnumerable<CodeInstruction> instructions)
+    {
+        MethodInfo getter = AccessTools.PropertyGetter(typeof(ModsConfig), "BiotechActive");
+        biotechCallsShimmed = 0;
+        foreach (CodeInstruction i in instructions)
+        {
+            if (Equals(i.operand, getter))
+            {
+                i.operand = AccessTools.Method(typeof(MedicineChecks), "BiotechInactive");
+                biotechCallsShimmed++;
+            }
+            yield return i;
+        }
+    }
+    // Test-process-only: stands in for some OTHER mod that pushes one skill's reported level past 20
+    // without GM21 storage.
+    static SkillRecord externalRecord;
+    static int externalLevel;
+    public static void ExternalLevel(SkillRecord __instance, ref int __result) { if (__instance == externalRecord) __result = externalLevel; }
+
+    static SkillRecord Skill(Pawn p, SkillDef def, int levelInt, int aptitude = 0)
+    {
+        SkillRecord rec = new SkillRecord { def = def, levelInt = levelInt };
+        Set(rec, "pawn", p);
+        // The lazy caches GetLevel reads; computing them needs work tags, genes, traits and ModsConfig.
+        Set(rec, "cachedTotallyDisabled", BoolUnknown.False);
+        Set(rec, "cachedPermanentlyDisabled", BoolUnknown.False);
+        Set(rec, "aptitudeCached", (int?)aptitude);
+        return rec;
+    }
+
+    static Pawn Worker(string name, int medicine, int crafting, int medicineAptitude = 0)
+    {
+        Pawn p = MakePawn(0);
+        p.Name = new NameSingle(name);
+        p.skills.skills = new List<SkillRecord>
+        {
+            Skill(p, SkillDefOf.Medicine, medicine, medicineAptitude),
+            Skill(p, billCrafting, crafting)
+        };
+        return p;
+    }
+
+    static readonly SkillDef billCrafting = new SkillDef { defName = "TestCrafting", label = "crafting" };
+
+    static T BillFor<T>(RecipeDef recipe, int min, int max) where T : Bill, new()
+    {
+        T bill = new T();                 // the parameterless constructor: vanilla's own 0..20 default
+        bill.recipe = recipe;
+        // A 0..20 request keeps the range the constructor made; anything else is the player's edit.
+        if (bill.allowedSkillRange.min != min || bill.allowedSkillRange.max != max)
+            bill.allowedSkillRange = new IntRange(min, max);
+        Bill_Medical medical = bill as Bill_Medical;
+        if (medical != null && billPatient != null)
+        {
+            // On the patient's own bill stack, targeting the prosthetic -- what the Operations tab builds.
+            billPatient.health.surgeryBills.AddBill(medical);
+            medical.Part = billPatientProsthetic;
+        }
+        return bill;
+    }
+    static Pawn billPatient;
+    static BodyPartRecord billPatientProsthetic;
+
+    static string Attempt(Bill bill, Pawn pawn)
+    {
+        IntRange before = bill.allowedSkillRange;
+        Verse.AI.JobFailReason.Clear();
+        bool ok = bill.PawnAllowedToStartAnew(pawn);
+        string reason = Verse.AI.JobFailReason.Reason;
+        lastBillLabel = Verse.AI.JobFailReason.CustomJobString;
+        if (bill.allowedSkillRange.min != before.min || bill.allowedSkillRange.max != before.max) billMutated = true;
+        return ok ? "allowed" : "rejected:" + (reason ?? "(no reason)");
+    }
+    static bool billMutated;
+    static string lastBillLabel;
+
+    static void BillSkillCeiling()
+    {
+        Console.WriteLine("\n=== 21. Vanilla bill skill ceiling (real Bill.PawnAllowedToStartAnew, core GM21 compatibility) ===");
+        Harmony env = new Harmony("gm21.medicine.test-environment.bills");
+        // Bill_Production's field initialisers read these DefOfs; bind them as the game's loader would.
+        FieldInfo binding = typeof(DefOfHelper).GetField("bindingNow", Any);
+        binding.SetValue(null, true);
+        try
+        {
+            foreach (Type t in new[] { typeof(BillRepeatModeDefOf), typeof(BillStoreModeDefOf) })
+                System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(t.TypeHandle);
+        }
+        finally { binding.SetValue(null, false); }
+        MethodInfo target = AccessTools.Method(typeof(Bill), "PawnAllowedToStartAnew", new[] { typeof(Pawn) });
+        env.Patch(target, transpiler: Stub("ShimBiotechActive"));
+        Check("test environment: the one ModsConfig.BiotechActive read in the method answers \"off\"", biotechCallsShimmed == 1,
+              biotechCallsShimmed + " call(s)");
+        // GM21's real reported level (SkillRecord.GetLevel ceiling 21 for stored Grandmasters), which
+        // is what made the bug: the shipped postfix, installed exactly as PatchAll installs it.
+        Harmony gm21 = new Harmony("ared.grandmaster21");
+        gm21.CreateClassProcessor(typeof(Patch_SkillRecord_GetLevel)).Patch();
+        env.Patch(AccessTools.Method(typeof(SkillRecord), "GetLevel"), postfix: Stub("ExternalLevel"));
+
+        MethodInfo transpiler = AccessTools.Method(typeof(Patch_BillSkillCeiling), "Transpiler");
+
+        // Vanilla's own default, from the real constructor, before anything is patched.
+        Check("vanilla: a new Bill_Medical's allowedSkillRange is 0..20",
+              new Bill_Medical().allowedSkillRange.min == 0 && new Bill_Medical().allowedSkillRange.max == 20);
+
+        // "Remove artificial part": a real Bill_Medical on a Medicine recipe whose worker is vanilla's
+        // Recipe_RemoveBodyPart (a Recipe_Surgery). A Crafting workbench bill is the generic case.
+        SurgeryOutcomeSuccess success = new SurgeryOutcomeSuccess();
+        SurgeryOutcome_Failure minor = new SurgeryOutcome_Failure { chance = 1f, failure = true };
+        SurgeryOutcome_Death death = new SurgeryOutcome_Death { failure = true };
+        RecipeDef removePart = new RecipeDef
+        {
+            defName = "TestRemoveBodyPart", label = "remove artificial part", workSkill = SkillDefOf.Medicine,
+            workerClass = typeof(Recipe_RemoveBodyPart),
+            surgeryOutcomeEffect = new SurgeryOutcomeEffectDef
+            {
+                defName = "TestSurgeryOutcomes",
+                comps = new List<SurgeryOutcomeComp> { new SurgeryOutcomeComp_ClampToRange { range = new FloatRange(0f, 0f) } },
+                outcomes = new List<SurgeryOutcome> { minor, death, success }
+            }
+        };
+        RecipeDef workbench = new RecipeDef { defName = "TestMakeSomething", label = "make something", workSkill = billCrafting };
+        Body patientBody = MakeBody();
+        billPatient = MakePawn(0, patientBody);
+        billPatient.health.surgeryBills = new BillStack(billPatient);
+        billPatientProsthetic = patientBody.lArm;
+        Attach<Hediff_AddedPart>(billPatient, new HediffDef
+        {
+            defName = "TestProstheticArm", label = "prosthetic arm", hediffClass = typeof(Hediff_AddedPart), isBad = false,
+            countsAsAddedPartOrImplant = true
+        }, billPatientProsthetic);
+        quietMissingLanguage = true;
+        RecipeDef unskilled = new RecipeDef { defName = "TestUnskilled", label = "unskilled work" };
+
+        Pawn gm = Worker("MedicineGM", 21, 8);
+        Pawn twenty = Worker("Medicine20", 20, 8);
+        Pawn craftGm = Worker("CraftingGM", 12, 21);
+        Pawn novice = Worker("Novice", 5, 5);
+        Pawn gmBadGene = Worker("MedicineGMAptitudeMinus6", 21, 8, -6);   // reports Medicine 15
+        Pawn external = Worker("ExternalMedicine21", 20, 8);              // stored 20, another mod reports 21
+        Pawn externalGm = Worker("GMExternal22", 21, 8);                  // stored GM, another mod reports 22
+        Pawn other = Worker("SomeoneElse", 21, 21);
+
+        var cases = new List<KeyValuePair<string, Func<string>>>();
+        Action<string, Func<string>> add = (n, f) => cases.Add(new KeyValuePair<string, Func<string>>(n, f));
+        add("GM21 Medicine 21, Bill_Medical remove-artificial-part 0..20", () => Attempt(BillFor<Bill_Medical>(removePart, 0, 20), gm));
+        add("Medicine 20, 0..20", () => Attempt(BillFor<Bill_Medical>(removePart, 0, 20), twenty));
+        add("GM21 Medicine 21, 0..15", () => Attempt(BillFor<Bill_Medical>(removePart, 0, 15), gm));
+        add("GM21 Medicine 21, 5..10", () => Attempt(BillFor<Bill_Medical>(removePart, 5, 10), gm));
+        add("GM21 Medicine 21, 20..20", () => Attempt(BillFor<Bill_Medical>(removePart, 20, 20), gm));
+        add("Medicine 20, 0..15", () => Attempt(BillFor<Bill_Medical>(removePart, 0, 15), twenty));
+        add("Medicine 5, 10..20 (below minimum)", () => Attempt(BillFor<Bill_Medical>(removePart, 10, 20), novice));
+        add("GM21 reporting 15 (aptitude -6), 18..20 (below minimum)", () => Attempt(BillFor<Bill_Medical>(removePart, 18, 20), gmBadGene));
+        add("GM21 Crafting 21, Bill_Production 0..20", () => Attempt(BillFor<Bill_Production>(workbench, 0, 20), craftGm));
+        add("GM21 Crafting 21, Bill_Production 0..15", () => Attempt(BillFor<Bill_Production>(workbench, 0, 15), craftGm));
+        add("Crafting GM (Medicine 12) on the Medicine bill 0..10", () => Attempt(BillFor<Bill_Medical>(removePart, 0, 10), craftGm));
+        add("Medicine GM (Crafting 8) on the Crafting bill 0..5", () => Attempt(BillFor<Bill_Production>(workbench, 0, 5), gm));
+        add("no work skill, GM21 pawn", () => Attempt(BillFor<Bill_Production>(unskilled, 0, 20), gm));
+        add("external non-GM Medicine 21 (stored 20), 0..20", () =>
+        {
+            externalRecord = external.skills.GetSkill(SkillDefOf.Medicine); externalLevel = 21;
+            try { return Attempt(BillFor<Bill_Medical>(removePart, 0, 20), external); } finally { externalRecord = null; }
+        });
+        add("GM21 that another mod reports as 22, 0..20", () =>
+        {
+            externalRecord = externalGm.skills.GetSkill(SkillDefOf.Medicine); externalLevel = 22;
+            try { return Attempt(BillFor<Bill_Medical>(removePart, 0, 20), externalGm); } finally { externalRecord = null; }
+        });
+        add("GM21, bill restricted to another pawn", () =>
+        {
+            Bill_Medical b = BillFor<Bill_Medical>(removePart, 0, 20);
+            Set(b, "pawnRestriction", other);
+            return Attempt(b, gm);
+        });
+        add("GM21, slaves-only bill (GM is not a slave)", () =>
+        {
+            Bill_Medical b = BillFor<Bill_Medical>(removePart, 0, 20);
+            Set(b, "slavesOnly", true);
+            return Attempt(b, gm);
+        });
+
+        // Every ordinary level against every range the dialog can produce a sample of.
+        IntRange[] ranges = { new IntRange(0, 20), new IntRange(0, 15), new IntRange(5, 10), new IntRange(10, 20), new IntRange(20, 20), new IntRange(0, 0) };
+        Func<string> ordinary = () =>
+        {
+            List<string> r = new List<string>();
+            for (int level = 0; level <= 20; level++)
+                foreach (IntRange range in ranges)
+                {
+                    Pawn p = Worker("Ordinary" + level, level, level);
+                    r.Add(level + "@" + range.min + ".." + range.max + "=" + Attempt(BillFor<Bill_Medical>(removePart, range.min, range.max), p)
+                          + "|" + Attempt(BillFor<Bill_Production>(workbench, range.min, range.max), p));
+                }
+            return string.Join(";", r.ToArray());
+        };
+
+        // ---- before the fix: the runtime bug, reproduced on the real method
+        Check("before Apply: the bridge reports not applied", !Patch_BillSkillCeiling.Applied);
+        Dictionary<string, string> before = new Dictionary<string, string>();
+        try
+        {
+            foreach (var c in cases) before[c.Key] = c.Value();
+            before["ordinary"] = ordinary();
+        }
+        catch (Exception e) { Blocked("vanilla Bill.PawnAllowedToStartAnew headless", e); return; }
+        cases[0].Value();
+        string removalLabel = lastBillLabel;
+        Console.WriteLine("        vanilla (unpatched): GM21 on \"" + removalLabel + "\" -> " + before[cases[0].Key]);
+        Check("the Bill_Medical is vanilla's remove-artificial-part bill: its label comes from Recipe_RemoveBodyPart's "
+              + "added-part branch (\"RemovePart\" + the prosthetic)", removalLabel != null && removalLabel.StartsWith("RemovePart"),
+              removalLabel ?? "null");
+        Check("BUG REPRODUCED (unpatched vanilla): GM21 Medicine 21 refused a 0..20 Bill_Medical, \"Above allowed skill 20\"",
+              before[cases[0].Key].StartsWith("rejected:") && before[cases[0].Key].Contains("AboveAllowedSkill"),
+              before[cases[0].Key]);
+        Check("  ...and the Crafting Grandmaster refused a 0..20 Bill_Production the same way (not medical-only)",
+              before["GM21 Crafting 21, Bill_Production 0..20"].Contains("AboveAllowedSkill"));
+
+        // ---- the fix, exactly as Gm21Startup applies it
+        Patch_BillSkillCeiling.Apply(gm21);
+        Patches info = Harmony.GetPatchInfo(target);
+        Check("Patch_BillSkillCeiling applied (re-run by Harmony after the environment's shim, still exactly one site)",
+              Patch_BillSkillCeiling.Applied && biotechCallsShimmed == 1);
+        Check("  one transpiler on Bill.PawnAllowedToStartAnew(Pawn) owned by GM21, no prefix or postfix",
+              Patch_BillSkillCeiling.Applied && info != null && info.Transpilers.Count(t => t.owner == "ared.grandmaster21") == 1
+              && info.Prefixes.All(t => t.owner != "ared.grandmaster21") && info.Postfixes.All(t => t.owner != "ared.grandmaster21"));
+        Check("no subclass override is patched (Bill_Medical / Bill_Production reach it through base)",
+              Harmony.GetPatchInfo(AccessTools.Method(typeof(Bill_Medical), "PawnAllowedToStartAnew")) == null);
+
+        Dictionary<string, string> after = new Dictionary<string, string>();
+        foreach (var c in cases) after[c.Key] = c.Value();
+        after["ordinary"] = ordinary();
+        foreach (var c in cases) Console.WriteLine("        " + c.Key + ": " + before[c.Key] + " -> " + after[c.Key]);
+
+        Func<string, string> a = k => after[k];
+        Check("FIXED: GM21 Medicine 21 + real Bill_Medical (Recipe_RemoveBodyPart) 0..20 -> allowed",
+              a("GM21 Medicine 21, Bill_Medical remove-artificial-part 0..20") == "allowed");
+        Check("generic: GM21 Crafting 21 + Bill_Production 0..20 -> allowed", a("GM21 Crafting 21, Bill_Production 0..20") == "allowed");
+        Check("skill 20, max 20 -> allowed (unchanged)", a("Medicine 20, 0..20") == "allowed" && before["Medicine 20, 0..20"] == "allowed");
+        Check("intentional cap: GM21 on 0..15 -> rejected, \"Above allowed skill 15\"",
+              a("GM21 Medicine 21, 0..15").Contains("AboveAllowedSkill") && a("GM21 Medicine 21, 0..15") == before["GM21 Medicine 21, 0..15"]);
+        Check("intentional cap: GM21 on 5..10 -> rejected", a("GM21 Medicine 21, 5..10").Contains("AboveAllowedSkill"));
+        Check("intentional cap: Crafting GM21 on a 0..15 production bill -> rejected",
+              a("GM21 Crafting 21, Bill_Production 0..15").Contains("AboveAllowedSkill"));
+        Check("GM21 on 20..20 -> allowed (the minimum is met; the max is vanilla's own)", a("GM21 Medicine 21, 20..20") == "allowed");
+        Check("minimum: Medicine 5 on 10..20 -> rejected \"Under allowed skill\", as vanilla",
+              a("Medicine 5, 10..20 (below minimum)").Contains("UnderAllowedSkill")
+              && a("Medicine 5, 10..20 (below minimum)") == before["Medicine 5, 10..20 (below minimum)"]);
+        Check("minimum: a Grandmaster whose aptitude reports 15 is still refused a 18..20 bill",
+              a("GM21 reporting 15 (aptitude -6), 18..20 (below minimum)").Contains("UnderAllowedSkill"));
+        Check("exact work skill: a Crafting GM on a Medicine bill and a Medicine GM on a Crafting bill are pure vanilla",
+              a("Crafting GM (Medicine 12) on the Medicine bill 0..10") == before["Crafting GM (Medicine 12) on the Medicine bill 0..10"]
+              && a("Crafting GM (Medicine 12) on the Medicine bill 0..10").Contains("AboveAllowedSkill")
+              && a("Medicine GM (Crafting 8) on the Crafting bill 0..5") == before["Medicine GM (Crafting 8) on the Crafting bill 0..5"]
+              && a("Medicine GM (Crafting 8) on the Crafting bill 0..5").Contains("AboveAllowedSkill"));
+        Check("no work skill: unchanged", a("no work skill, GM21 pawn") == "allowed" && before["no work skill, GM21 pawn"] == "allowed");
+        Check("external non-GM skill 21 (stored 20, raised by another mod) -> still rejected, vanilla",
+              a("external non-GM Medicine 21 (stored 20), 0..20").Contains("AboveAllowedSkill")
+              && a("external non-GM Medicine 21 (stored 20), 0..20") == before["external non-GM Medicine 21 (stored 20), 0..20"]);
+        Check("the bound only becomes 21: a Grandmaster some other mod reports as 22 -> still rejected",
+              a("GM21 that another mod reports as 22, 0..20").Contains("AboveAllowedSkill"));
+        Check("pawn restriction still refuses the Grandmaster", a("GM21, bill restricted to another pawn") == "rejected:(no reason)");
+        Check("slaves-only still refuses the Grandmaster", a("GM21, slaves-only bill (GM is not a slave)") == "rejected:(no reason)");
+        Check("ordinary pawns 0-20 x 6 ranges x Bill_Medical/Bill_Production: identical results and reasons, before and after",
+              after["ordinary"] == before["ordinary"], before["ordinary"] == after["ordinary"] ? (21 * ranges.Length * 2) + " attempts" : "DIFFERENT");
+        string[] changed = { cases[0].Key, "GM21 Crafting 21, Bill_Production 0..20", "GM21 Medicine 21, 20..20" };
+        Check("only the three Grandmaster-in-the-recipe-skill-at-max-20 cases changed; every other case is identical to vanilla",
+              cases.Where(c => !changed.Contains(c.Key)).All(c => before[c.Key] == after[c.Key])
+              && changed.All(k => before[k].Contains("AboveAllowedSkill") && after[k] == "allowed"));
+        Check("Bill state never mutated: allowedSkillRange identical after every one of the attempts", !billMutated);
+
+        // The rule itself, pure.
+        Bill_Medical probe = BillFor<Bill_Medical>(removePart, 0, 20);
+        Check("UpperBoundFor: GM21 in the recipe skill at max 20 -> 21", Patch_BillSkillCeiling.UpperBoundFor(20, probe, gm) == 21);
+        Check("UpperBoundFor: max 15 / 19 / 21 are returned untouched",
+              Patch_BillSkillCeiling.UpperBoundFor(15, probe, gm) == 15 && Patch_BillSkillCeiling.UpperBoundFor(19, probe, gm) == 19
+              && Patch_BillSkillCeiling.UpperBoundFor(21, probe, gm) == 21);
+        Check("UpperBoundFor: Medicine 20 / external / Crafting-only GM -> 20",
+              Patch_BillSkillCeiling.UpperBoundFor(20, probe, twenty) == 20 && Patch_BillSkillCeiling.UpperBoundFor(20, probe, external) == 20
+              && Patch_BillSkillCeiling.UpperBoundFor(20, probe, craftGm) == 20);
+        Check("UpperBoundFor: null bill / null recipe / no work skill / null pawn -> max",
+              Patch_BillSkillCeiling.UpperBoundFor(20, null, gm) == 20 && Patch_BillSkillCeiling.UpperBoundFor(20, new Bill_Medical(), gm) == 20
+              && Patch_BillSkillCeiling.UpperBoundFor(20, BillFor<Bill_Production>(unskilled, 0, 20), gm) == 20
+              && Patch_BillSkillCeiling.UpperBoundFor(20, probe, null) == 20);
+        Check("UpperBoundFor never writes the bill", probe.allowedSkillRange.min == 0 && probe.allowedSkillRange.max == 20);
+
+        // The rewrite, instruction for instruction: vanilla's IL plus exactly three inserted
+        // instructions, right after the one ldfld IntRange::max that feeds the comparison.
+        List<CodeInstruction> original = PatchProcessor.GetOriginalInstructions(target);
+        List<CodeInstruction> rewritten = ((IEnumerable<CodeInstruction>)transpiler.Invoke(null, new object[] { original.Select(i => i.Clone()) })).ToList();
+        int at = rewritten.FindIndex(i => i.opcode == System.Reflection.Emit.OpCodes.Call && Equals(i.operand, AccessTools.Method(typeof(Patch_BillSkillCeiling), "UpperBoundFor")));
+        bool sameElsewhere = rewritten.Count == original.Count + 3 && at >= 3;
+        for (int i = 0; sameElsewhere && i < original.Count; i++)
+        {
+            CodeInstruction o = original[i], r = rewritten[i < at - 2 ? i : i + 3];
+            sameElsewhere = o.opcode == r.opcode && Equals(o.operand, r.operand);
+        }
+        Check("transpiler: vanilla IL + exactly [ldarg.0, ldarg.1, call UpperBoundFor], after the comparison's ldfld max",
+              sameElsewhere && rewritten[at - 2].opcode == System.Reflection.Emit.OpCodes.Ldarg_0
+              && rewritten[at - 1].opcode == System.Reflection.Emit.OpCodes.Ldarg_1
+              && rewritten[at - 3].opcode == System.Reflection.Emit.OpCodes.Ldfld
+              && rewritten[at + 1].opcode.FlowControl == System.Reflection.Emit.FlowControl.Cond_Branch,
+              "original=" + original.Count + " rewritten=" + rewritten.Count + " at=" + at);
+        Check("  ...so the min check, pawn/slave/mech restrictions and the mechanitor check are the original instructions",
+              sameElsewhere);
+        FieldInfo maxField = AccessTools.Field(typeof(IntRange), "max");
+        List<int> maxLoads = Enumerable.Range(0, rewritten.Count)
+            .Where(i => rewritten[i].opcode == System.Reflection.Emit.OpCodes.Ldfld && Equals(rewritten[i].operand, maxField)).ToList();
+        Check("  ...and the \"Above allowed skill {max}\" message still boxes the bill's REAL max (second ldfld max untouched)",
+              maxLoads.Count == 2 && maxLoads[0] == at - 3 && rewritten[maxLoads[1] + 1].operand is MethodInfo
+              && ((MethodInfo)rewritten[maxLoads[1] + 1].operand).Name == "op_Implicit"
+              && ((MethodInfo)rewritten[maxLoads[1] + 1].operand).DeclaringType == typeof(NamedArgument),
+              maxLoads.Count == 2 ? rewritten[maxLoads[1] + 1].ToString() : maxLoads.Count + " loads");
+
+        // Fail-safe: a method with no such comparison, or two, is returned unchanged.
+        List<CodeInstruction> none = original.Where(i => !(i.opcode == System.Reflection.Emit.OpCodes.Ldfld
+                                                            && Equals(i.operand, AccessTools.Field(typeof(IntRange), "max")))).Select(i => i.Clone()).ToList();
+        List<CodeInstruction> noneOut = ((IEnumerable<CodeInstruction>)transpiler.Invoke(null, new object[] { none })).ToList();
+        bool noneApplied = Patch_BillSkillCeiling.Applied;
+        List<CodeInstruction> two = original.Select(i => i.Clone()).Concat(original.Select(i => i.Clone())).ToList();
+        List<CodeInstruction> twoOut = ((IEnumerable<CodeInstruction>)transpiler.Invoke(null, new object[] { two })).ToList();
+        bool twoApplied = Patch_BillSkillCeiling.Applied;
+        Check("fail-safe: zero or two upper-bound comparisons -> IL returned unchanged, bridge reported off",
+              noneOut.Count == none.Count && twoOut.Count == two.Count && !noneApplied && !twoApplied);
+        transpiler.Invoke(null, new object[] { original.Select(i => i.Clone()) });   // restore the flag for the live method
+        Check("  (flag restored by re-running on the real IL)", Patch_BillSkillCeiling.Applied);
+
+        // After eligibility: the job the bill starts is vanilla's Recipe_RemoveBodyPart, whose failure
+        // roll is Recipe_Surgery.CheckSurgeryFail -> SurgeryOutcomeEffectDef.GetOutcome -- the method
+        // Grandmaster Surgery patches. Nothing about that chain was touched.
+        Check("Perfect Surgery still installed: SurgeryOutcomeEffectDef.GetOutcome carries GM21's prefix",
+              Harmony.GetPatchInfo(AccessTools.Method(typeof(SurgeryOutcomeEffectDef), "GetOutcome")) != null
+              && Harmony.GetPatchInfo(AccessTools.Method(typeof(SurgeryOutcomeEffectDef), "GetOutcome")).Prefixes.Any(p => p.owner == "ared.grandmaster21"));
+        Check("the eligible bill's worker is vanilla's Recipe_RemoveBodyPart, a Recipe_Surgery",
+              removePart.Worker is Recipe_RemoveBodyPart && removePart.Worker is Recipe_Surgery);
+        List<CodeInstruction> checkFail = PatchProcessor.GetOriginalInstructions(AccessTools.Method(typeof(Recipe_Surgery), "CheckSurgeryFail"));
+        List<CodeInstruction> apply = PatchProcessor.GetOriginalInstructions(AccessTools.Method(typeof(Recipe_RemoveBodyPart), "ApplyOnPawn"));
+        Check("Recipe_RemoveBodyPart.ApplyOnPawn -> CheckSurgeryFail -> SurgeryOutcomeEffectDef.GetOutcome (real IL)",
+              apply.Any(i => i.operand is MethodInfo && ((MethodInfo)i.operand).Name == "CheckSurgeryFail")
+              && checkFail.Any(i => i.operand is MethodInfo && ((MethodInfo)i.operand).Name == "GetOutcome"
+                                    && ((MethodInfo)i.operand).DeclaringType == typeof(SurgeryOutcomeEffectDef)));
+        int ok = 0;
+        for (int i = 0; i < 200; i++)
+            if (removePart.surgeryOutcomeEffect.GetOutcome(removePart, gm, billPatient, null, billPatientProsthetic, probe) == success) ok++;
+        Check("the Grandmaster who passed eligibility gets Perfect Surgery on that same recipe, patient, part and bill (200/200)",
+              ok == 200, ok + "/200");
+        Check("  ...and Medicine 20 still takes vanilla's failure branch there",
+              removePart.surgeryOutcomeEffect.GetOutcome(removePart, twenty, billPatient, null, billPatientProsthetic, probe) == minor);
+        quietMissingLanguage = false;
+        billPatient = null;
     }
 
     static int Main(string[] args)
@@ -2194,6 +2580,7 @@ internal static class MedicineChecks
             Trauma();
             DriverSave(xml);
             CommitAndShock(root, xml);
+            BillSkillCeiling();
             VanillaData(args.Length > 4 ? args[4] : null);
         }
         catch (Exception e) { Console.WriteLine("FAIL  unhandled: " + e); fail++; }

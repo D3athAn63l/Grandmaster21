@@ -551,6 +551,24 @@ static class VerifyRuntimeTargets
            && AccessTools.Method(typeof(Command), "ProcessInput").IsVirtual);
         Ok("Command.groupable is a public bool", typeof(Command).GetField("groupable") != null);
 
+        Console.WriteLine("\n=== Core: vanilla bill skill ceiling (Patch_BillSkillCeiling) ===");
+        MethodInfo allowed = AccessTools.Method(typeof(Bill), "PawnAllowedToStartAnew", new[] { typeof(Pawn) });
+        Ok("Bill.PawnAllowedToStartAnew(Pawn) resolves, declared on Bill, virtual (subclasses call base first)",
+           allowed != null && allowed.DeclaringType == typeof(Bill) && allowed.IsVirtual && allowed.ReturnType == typeof(bool), Params(allowed));
+        FieldInfo range = typeof(Bill).GetField("allowedSkillRange");
+        Ok("Bill.allowedSkillRange is a public instance IntRange (read by the comparison, never written by GM21)",
+           range != null && !range.IsStatic && range.FieldType == typeof(IntRange));
+        Ok("IntRange.max is an int field (the transpiler's anchor operand)",
+           typeof(IntRange).GetField("max") != null && typeof(IntRange).GetField("max").FieldType == typeof(int));
+        Ok("Bill.recipe (RecipeDef) and RecipeDef.workSkill (SkillDef) resolve",
+           typeof(Bill).GetField("recipe") != null && typeof(Bill).GetField("recipe").FieldType == typeof(RecipeDef)
+           && typeof(RecipeDef).GetField("workSkill") != null && typeof(RecipeDef).GetField("workSkill").FieldType == typeof(SkillDef));
+        Ok("Patch_BillSkillCeiling.UpperBoundFor(int, Bill, Pawn) -> int (the inserted call's stack shape)",
+           AccessTools.Method(typeof(Patch_BillSkillCeiling), "UpperBoundFor") != null
+           && AccessTools.Method(typeof(Patch_BillSkillCeiling), "UpperBoundFor").ReturnType == typeof(int)
+           && AccessTools.Method(typeof(Patch_BillSkillCeiling), "UpperBoundFor").GetParameters().Select(p => p.ParameterType)
+                  .SequenceEqual(new[] { typeof(int), typeof(Bill), typeof(Pawn) }));
+
         Console.WriteLine("\n================================");
         Console.WriteLine("PASS: " + pass + "   FAIL: " + fail + "   SKIP: " + skipped);
         Environment.Exit(fail == 0 ? 0 : 1);

@@ -196,6 +196,18 @@ class PatchAllTest
             () => harmony.Patch(AccessTools.Method(typeof(SurgeryOutcomeEffectDef), "GetOutcome"),
                                 med(surgery, "Prefix_GetOutcome")));
 
+        Console.WriteLine("\n=== Core bill compatibility patch ===");
+        // Patch_BillSkillCeiling.Apply is driven for real: on success it logs nothing, and on
+        // failure its Log.Warning would bottom out in Unity -- either way the outcome is reported.
+        Type bill = modAsm.GetType("Grandmaster21.Patch_BillSkillCeiling");
+        Bind("Bill.PawnAllowedToStartAnew  [transpiler: the one upper skill-range comparison -> UpperBoundFor]", ref okCount, ref failCount, ref blockedCount,
+            () =>
+            {
+                bill.GetMethod("Apply").Invoke(null, new object[] { harmony });
+                if (!(bool)AccessTools.Property(bill, "Applied").GetValue(null, null))
+                    throw new InvalidOperationException("Bill.PawnAllowedToStartAnew: the upper skill-range comparison was not rewritten");
+            });
+
         Console.WriteLine("\n=== Transpiler ===");
         // Gm21.LearnPatchApplied is the authoritative flag: Gm21.Promote is gated on it, so false
         // here means no Grandmaster could be created this session.
