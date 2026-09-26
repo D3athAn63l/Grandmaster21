@@ -41,7 +41,7 @@ On Linux/Mono the `netstandard 2.1` facade is required (`mono-devel` provides it
 
 `CSC` may point to a compiler executable/wrapper and `FRAMEWORK_REFS` to a real framework
 reference-assembly directory (including `Facades/netstandard.dll`). Defaults remain `mcs` and
-`/usr/lib/mono/4.5`. The Magical slice was also built with Roslyn and .NET Framework 4.7.2
+`/usr/lib/mono/4.5`. Transcendent Crafting was also built with Roslyn and .NET Framework 4.7.2
 reference assemblies; the game references must still be the real RimWorld/Unity/Harmony DLLs.
 
 ## Verifying a build
@@ -53,7 +53,7 @@ reference assemblies; the game references must still be the real RimWorld/Unity/
 Checks every reflectively-resolved member, every Harmony injection parameter name, the `Learn`
 transpiler's IL pattern, and the progression suite against the real `SkillRecord`.
 
-For Magical craftsmanship, after building the mod:
+For all Transcendent Crafting tiers, after building the mod:
 
 ```bash
 ./tools/verify-transcendent.sh /path/to/Managed /path/to/0Harmony.dll /path/to/Mono.Cecil.dll
@@ -63,7 +63,7 @@ This additional suite requires Mono.Cecil 0.11.x. It accepts the same `CSC`/`FRA
 overrides and a `RUNNER` executable (default `mono`, also supports .NET 8+ `dotnet`). It checks
 policy, real API signatures/ingredient selection, XML and save-writing. It does not launch the
 game or verify reload, hauling, needs, output placement or item transfers. See
-[Magical craftsmanship](../Docs/MagicalCrafting.md) for results and the remaining runtime gate.
+[Transcendent craftsmanship](../Docs/MagicalCrafting.md) for results and the remaining runtime gate.
 
 For Medicine 21, after building the mod:
 
@@ -80,4 +80,4 @@ Cure, tier and surgery rules against every vanilla Def. It does not launch the g
 
 `./tools/build-stubs.sh` compile-checks the older source groups and runs their offline logic suites
 against reference stubs. It excludes `Source/Transcendent` and `Source/Medicine` and does **not**
-validate Magical craftsmanship or Medicine 21, or produce a usable assembly — see `tools/stubs/README.md`.
+validate Transcendent craftsmanship or Medicine 21, or produce a usable assembly — see `tools/stubs/README.md`.

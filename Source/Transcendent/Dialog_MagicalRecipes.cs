@@ -23,7 +23,7 @@ namespace Grandmaster21.Transcendent
             Text.Font = GameFont.Medium;
             Widgets.Label(new Rect(0, 0, rect.width - 30, 35), "GM21_TC_Choose".Translate());
             Text.Font = GameFont.Small;
-            Widgets.Label(new Rect(0, 40, rect.width, 72), "GM21_TC_DialogHelp".Translate());
+            Widgets.Label(new Rect(0, 40, rect.width, 72), "GM21_TC_DialogHelpTiers".Translate(bench.Config.label, bench.Config.Catalyst.LabelCap));
             search = Widgets.TextField(new Rect(0, 114, rect.width, 30), search);
             List<RecipeDef> recipes = TranscendentRecipes.Eligible.Where(r => r.AvailableNow
                 && (search.Length == 0 || r.label.IndexOf(search, StringComparison.CurrentCultureIgnoreCase) >= 0)).ToList();
@@ -36,7 +36,7 @@ namespace Grandmaster21.Transcendent
                 Rect row = new Rect(0, i * 38f, inner.width, 34);
                 if (Widgets.ButtonText(row, recipe.LabelCap)) Select(recipe);
                 TooltipHandler.TipRegion(row, string.Join("\n", recipe.ingredients.Select(x => x.SummaryFor(recipe)).ToArray())
-                    + "\n+ 1 " + TranscendentDefOf.GM21_MagicalCatalyst.LabelCap);
+                    + "\n+ 1 " + bench.Config.Catalyst.LabelCap);
             }
             Widgets.EndScrollView();
         }

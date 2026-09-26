@@ -8,7 +8,15 @@ namespace Grandmaster21.Transcendent
 {
     public sealed class WorkGiver_TranscendentCraft : WorkGiver_Scanner
     {
-        public override ThingRequest PotentialWorkThingRequest { get { return ThingRequest.ForDef(TranscendentDefOf.GM21_MagicalWorkstation); } }
+        public override ThingRequest PotentialWorkThingRequest { get { return ThingRequest.ForGroup(ThingRequestGroup.BuildingArtificial); } }
+        public override IEnumerable<Thing> PotentialWorkThingsGlobal(Pawn pawn)
+        {
+            foreach (var config in TranscendentTierConfig.All)
+            {
+                ThingDef def = DefDatabase<ThingDef>.GetNamedSilentFail("GM21_" + config.label + "Workstation");
+                if (def != null) foreach (Thing thing in pawn.Map.listerThings.ThingsOfDef(def)) yield return thing;
+            }
+        }
         public override PathEndMode PathEndMode { get { return PathEndMode.InteractionCell; } }
         public override bool ShouldSkip(Pawn pawn, bool forced = false) { return !TranscendentRecipes.CanCraft(pawn); }
 

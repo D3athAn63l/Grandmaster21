@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+  <RulePackDef>
+    <defName>GM21_Log_ChainLightning</defName>
+    <rulePack><rulesStrings><li>r_logentry->[RECIPIENT_nameDef] is seared by Chain lightning.</li></rulesStrings></rulePack>
+  </RulePackDef>
+  <RulePackDef>
+    <defName>GM21_Log_Smite</defName>
+    <rulePack><rulesStrings><li>r_logentry->[RECIPIENT_nameDef] suffers divine impact from Smite.</li></rulesStrings></rulePack>
+  </RulePackDef>
+  <RulePackDef>
+    <defName>GM21_Log_FlameWave</defName>
+    <rulePack><rulesStrings><li>r_logentry->[RECIPIENT_nameDef] is burned by an artifact Flame wave.</li></rulesStrings></rulePack>
+  </RulePackDef>
+  <RulePackDef>
+    <defName>GM21_Log_GravityCrush</defName>
+    <rulePack><rulesStrings><li>r_logentry->[RECIPIENT_nameDef] suffers crushing trauma from Gravity crush.</li></rulesStrings></rulePack>
+  </RulePackDef>
+  <RulePackDef>
+    <defName>GM21_Log_VampiricStrike</defName>
+    <rulePack><rulesStrings><li>r_logentry->[RECIPIENT_nameDef] receives a Vampiric wound.</li></rulesStrings></rulePack>
+  </RulePackDef>
+  <RulePackDef>
+    <defName>GM21_Log_SpatialSlash</defName>
+    <rulePack><rulesStrings><li>r_logentry->[RECIPIENT_nameDef] is cut by Spatial slash.</li></rulesStrings></rulePack>
+  </RulePackDef>
+  <RulePackDef>
+    <defName>GM21_Log_FrostNova</defName>
+    <rulePack><rulesStrings><li>r_logentry->[SUBJECT_nameDef] is chilled by [INITIATOR_nameDef]’s Frost nova.</li></rulesStrings></rulePack>
+  </RulePackDef>
+  <RulePackDef>
+    <defName>GM21_Log_VampiricRecovery</defName>
+    <rulePack><rulesStrings><li>r_logentry->[SUBJECT_nameDef] draws life from [INITIATOR_nameDef] with Vampiric strike.</li></rulesStrings></rulePack>
+  </RulePackDef>
+</Defs>

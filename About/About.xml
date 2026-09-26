@@ -52,13 +52,15 @@ Melee Grandmasters also get their own Normal/Killer/Downed doctrine, separate fr
 
 Incompatible with combat overhauls, which disable the melee package automatically.
 
-CRAFTING 21 - MAGICAL CRAFTSMANSHIP
+CRAFTING 21 - TRANSCENDENT CRAFTSMANSHIP
 
-Research Magical Craftsmanship after Fabrication, build a magical workstation, and choose an eligible existing equipment recipe. A Crafting Grandmaster gathers the real ingredients and one Magical Catalyst, then permanently commits a workstation-owned project. Work can pause and another Crafting Grandmaster can continue it. A normal-speed project takes at least 18 working hours; higher crafting speeds receive diminishing returns.
+Research Magical, Mythical and Divine Craftsmanship in sequence after Fabrication. Manufacture their catalysts at a fabrication bench, construct the tier's workstation and select an eligible equipment recipe. A stored Crafting Grandmaster (21) gathers its ingredients and catalyst, then permanently commits the project. Another Crafting Grandmaster may resume it.
 
-The result is always vanilla Legendary equipment in its selected material. Its separate craftsmanship has a 50% chance of being Magical, locked once at commitment. Magical currently adds a persistent label, not combat powers. Committed projects cannot be cancelled or refunded. Destroying the workstation loses its project; active workstations cannot be deconstructed or uninstalled.
+All outputs remain vanilla Legendary equipment in the selected material. Separate craftsmanship and a weapon phenomenon are fixed at commitment. Lower-tier and ordinary Legendary fallback outcomes are possible. New weapon phenomena include chain lightning, smite, flame wave, frost nova, gravity crush, vampiric strike and spatial slash. Apparel has craftsmanship metadata without offensive phenomena.
 
-This is an experimental foundation: catalysts are obtained through Development mode's Spawn thing menu. The feature builds against real RimWorld 1.6 DLLs and has headless checks, but full save/reload and gameplay have not yet been verified in RimWorld.
+Minimum work is 18, 48 or 108 working hours at speed 1; costly recipes take longer and high speeds receive diminishing returns. Committed projects cannot be cancelled or refunded. Destroying a workstation loses its project; active workstations cannot be deconstructed or uninstalled.
+
+The original Magical foundation passed active-work save/reload testing. The expanded progression and phenomena compile against real game assemblies and have headless checks; they still need in-game playtesting.
 
 MEDICINE 21 - GRANDMASTER PHYSICIAN (EXPERIMENTAL)
 
@@ -70,7 +72,7 @@ Medicine 21 builds against the real RimWorld 1.6 assemblies and has headless che
 
 Other skills do not have Level 21 abilities yet.
 
-Before removing this mod, remove all magical workstations and catalysts from your save, then use "Prepare Save for Uninstall" at the bottom of Mod Settings. That action reduces every level 21 skill to 20, clears stored Grandmaster progression, and removes Medicine 21 treatments, modes, resuscitation shock and interventions in progress; it does not remove crafting objects or artifact metadata. Destroying active workstations loses their projects. Then save, exit, disable the mod and reload the cleaned save. Keep a backup: the full remove-and-reload sequence has not yet been verified in gameplay testing.
+Before removing this mod, remove all transcendent workstations and catalysts from your save, then use "Prepare Save for Uninstall" at the bottom of Mod Settings. That action reduces every level 21 skill to 20, clears stored Grandmaster progression, and removes Medicine 21 treatments, modes, resuscitation shock and interventions in progress; it does not remove crafting objects or artifact metadata. Destroying active workstations loses their projects. Then save, exit, disable the mod and reload the cleaned save. Keep a backup: the full remove-and-reload sequence has not yet been verified in gameplay testing.
 
 Incompatible with mods that also remove or replace the skill cap, such as unlimited-skill mods.</description>
 </ModMetaData>
