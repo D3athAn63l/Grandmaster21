@@ -5,7 +5,9 @@
 **Version 0.12.0 Beta.** Crafting 21 now includes Magical, Mythical and Divine progression. The original Magical
 foundation has passed real gameplay, including active-work save/reload and completion. This
 continuation adds catalyst manufacturing and weapon phenomena; these additions still need
-in-game playtesting. See [Release status](#release-status).
+in-game playtesting. This version also adds the experimental **Medicine 21 — Grandmaster
+Physician** vertical slice, which has **not** been tested in gameplay. The Shooting capstone has
+been verified in real RimWorld 1.6 gameplay; Melee has not. See [Release status](#release-status).
 
 Level 21 cannot be randomly generated. It must be earned by accumulating an enormous amount of
 experience *after* a pawn has already reached level 20. Level 21 represents Grandmaster mastery
@@ -1069,6 +1071,63 @@ Dev Mode testing and the remaining gameplay checklist.
 
 ---
 
+## Medicine 21 — Grandmaster Physician
+
+New in **0.12.0 Beta**, **experimental**, and **not yet verified in a running game**. Every tuning
+number is provisional. Full reference: [Docs/Medicine21.md](Docs/Medicine21.md).
+
+*"I do not need miraculous technology to practice miraculous medicine. I am the Grandmaster."*
+No research, items, buildings, implants or special consumables are added — only three JobDefs for
+the Grandmaster's own interventions, which cost ordinary medicine and the Grandmaster's time. Status is stored Medicine 21, read like every other capstone, and
+a Grandmaster who cannot use their hands or is unconscious falls back to vanilla medicine.
+
+* **Grandmaster Medicine Utilization.** Medicine tiers are discovered once at startup from every
+  loaded medicine's `MedicalQualityMax` — no DefNames. A medicine of cap `C` is promoted to the
+  lowest loaded cap ≥ `C × 1.30`, else `C + 0.30`: herbal 70% → **100%**, industrial 100% →
+  **130%**, glitterworld 130% → **160%**. A small bridge tier cannot consume the bonus; a genuinely
+  qualifying modded tier is used.
+* **Deterministic tending.** A Grandmaster tend with medicine lands exactly on that target, every
+  time — vanilla's own clamp does it, so the mote, tooltip and tend state all agree. The same
+  effective quality reaches the condition itself, so condition-specific treatment such as a heart
+  attack's success roll sees 100 / 130 / 160%. Ordinary doctors keep vanilla's roll. Without
+  medicine, a Grandmaster tends by vanilla rules.
+* **Grandmaster Treatment.** Each condition the Grandmaster actually tends carries its own regimen:
+  that injury recovers faster, or immunity to that disease builds faster (100% → ×1.25, 130% →
+  ×1.50, 160% → ×1.75). It refreshes, never stacks, lapses with the tend, and is replaced by
+  anyone else's tend. Unrelated conditions get nothing.
+* **Perfect surgery.** A Medicine Grandmaster's surgery never evaluates a failure or death outcome.
+  Every requirement of the operation — bills, parts, ingredients, work, anaesthesia — is untouched.
+* **Grandmaster Medicine command.** Left-click chooses **Cure / Reconstruct / Resuscitate**;
+  right-click performs it through vanilla targeting and a medical job the Grandmaster carries out
+  personally. **The price is time and ordinary medicine — no cooldowns, no charges.** Each
+  intervention needs a medicine-potency budget (Cure 1.0, Reconstruct 2.0, Resuscitate 3.0: one,
+  two, three industrial medicine, or herbal/glitterworld/modded medicine by potency) — taken from
+  what the Grandmaster already carries whenever that is enough, otherwise completed from the map
+  with vanilla hauling, under the patient's medical-care setting, and consumed only when the
+  intervention succeeds; and hours of work (Cure 1 h, Reconstruct 2.4 h, Resuscitate 3 h at tend
+  speed 1, divided by the Grandmaster's tend speed with no upper limit, down to a 60-tick floor). Interruption applies and consumes nothing. Self-Cure is
+  allowed; self-Reconstruct needs at least 50% manipulation.
+  * **Cure** one pathological condition ordinary medicine cannot properly address — immunizable
+    diseases, chronic illness, tendable sicknesses and food poisoning. Wounds, missing parts,
+    implants, addictions, pregnancy, supernatural and unknown modded states are never offered.
+    Against the full vanilla data set that is exactly 28 conditions.
+  * **Reconstruct** one missing natural body part, found structurally; a location already
+    replaced by a bionic or prosthetic is never offered.
+  * **Resuscitate** a corpse whose brain is intact while the body is still **biologically
+    recoverable**: judged by the corpse's own rot progress, not a clock — about four in-game hours
+    unpreserved, longer refrigerated, indefinitely frozen. The Grandmaster works wherever the body
+    lies. Destroyed vital organs are rebuilt only as far as life requires; lost limbs stay lost.
+    Wounds are preserved and bandaged, not erased, and up to **three** of the worst traumatic
+    locations become permanent scars. The revived pawn then lies unconscious in **Resuscitation
+    Shock** for six hours. No resurrection-sickness lottery. A hostile pawn can be saved — after a
+    confirmation — and stays hostile. The resurrector mech serum is untouched and remains a
+    different tool.
+
+Before uninstalling, run **Prepare Save for Uninstall** — it now also removes Medicine treatments,
+modes and Resuscitation Shock and stops interventions in progress.
+
+---
+
 ## Removing Grandmaster 21 safely
 
 > **Do not remove the mod while a save still contains level 21 skills or transcendent crafting objects.**
@@ -1114,7 +1173,11 @@ For every skill record on every relevant pawn in the currently loaded game:
   21. The weak-table entry is removed rather than zeroed, so `SkillRecord.ExposeData` omits the
   `grandmasterXp` element from the save entirely rather than writing a `0`;
 * **the Grandmaster aim mode is cleared**, for the same reason — a cleaned save should contain no
-  `gm21AimMode` element either.
+  `gm21AimMode` element either;
+* **Medicine 21 state is removed** from every collected pawn, animals and corpses included: each
+  hediff's Grandmaster Treatment, the Medicine mode, and any Grandmaster intervention in progress or
+  queued — so no `gm21Treatment*` / `gm21MedicineMode` element and no `GM21_Medicine*` JobDef is
+  left in the save. The result dialog reports the count.
 
 Afterwards the scanned pawns contain no meaningful Grandmaster skill/progression state. The operation is idempotent:
 running it twice reports zero on the second pass.
@@ -1223,8 +1286,31 @@ because none was tested.
 | `QualityUtility.GenerateQualityCreatedByPawn(Pawn, SkillDef, bool)` | Postfix | Re-clamps after the Production Specialist offset |
 | `SkillUI.GetSkillDescription` | Postfix | Progress / per-skill achieved text |
 | `SkillUI.DrawSkill` | Postfix | ★ marker (cosmetic) |
-| `Pawn.ExposeData` | Postfix ×2 | Persists the Grandmaster aim mode and the melee doctrine, in separate tables |
-| `Pawn.GetGizmos` | Postfix ×2 | The Grandmaster Aim gizmo and the Grandmaster Melee gizmo |
+| `Pawn.ExposeData` | Postfix ×3 | Persists the Grandmaster aim mode, the melee doctrine and the Medicine mode, in separate tables |
+| `Pawn.GetGizmos` | Postfix ×3 | The Grandmaster Aim, Grandmaster Melee and Grandmaster Medicine commands |
+| `Bill.PawnAllowedToStartAnew(Pawn)` | **Transpiler** (one comparison operand), applied after `PatchAll` | A Grandmaster in the recipe's work skill passes a bill whose max is vanilla's 20; see below |
+
+### Vanilla bills and level 21
+
+Every vanilla bill starts with an allowed skill range of 0–20 (the bill dialog's slider cannot go
+higher), and `Bill.PawnAllowedToStartAnew` refuses a worker whose work skill is above the max:
+*"Above allowed skill 20"*. A Grandmaster's skill reads 21, so without a bridge a Medicine
+Grandmaster could not even start "Remove prosthetic", and a Crafting Grandmaster could not take an
+ordinary workbench bill. Every bill type (`Bill_Medical`, `Bill_Production`, `Bill_Mech`,
+`Bill_Autonomous`) calls that base method first, so it is fixed there, once.
+
+The rule is narrow. The upper bound is read as 21 **only** when all of these hold: the bill's max is
+exactly 20, the recipe has a work skill, and the pawn is a stored Grandmaster (`levelInt` 21) in
+**that** skill. Everything else is vanilla: a bill capped below 20 (0–15, 5–10) still refuses a
+Grandmaster, the minimum, pawn, slave, mech and mechanitor restrictions are the original IL, and a
+pawn whose skill some other mod pushes past 20 without Grandmaster storage is still refused. The
+bound only ever becomes 21, so nothing reporting above 21 passes either.
+
+No bill is modified. `allowedSkillRange` is saved with every bill, so rewriting it would leak into
+saves and survive uninstalling; instead a transpiler passes the one `ldfld IntRange::max` that
+feeds the comparison through `Patch_BillSkillCeiling.UpperBoundFor(max, bill, pawn)`. The failure
+message still shows the real max. If the method ever has other than exactly one such comparison,
+it is left untouched, the bridge is off for the session, and one warning is logged.
 
 ### Shooting Grandmaster patches
 
@@ -1305,9 +1391,29 @@ through, modded ones included. A hypothetical subclass that reimplements flight 
 simply not be interceptable — graceful degradation, not a crash. A once-only weak-table mark makes a
 duplicate call harmless in any case.
 
-### The single transpiler
+### Medicine Grandmaster patches
 
-Exactly one instruction is changed, in `SkillRecord.Learn`. Vanilla:
+Applied **manually**, in independent groups, by `Gm21MedicinePatches` — a missing target disables
+one Medicine feature and logs once. Why each hook sits where it does is in
+[Docs/Medicine21.md](Docs/Medicine21.md#11-harmony-hooks).
+
+| Target | Kind | Why |
+|---|---|---|
+| `TendUtility.DoTend` | Prefix + **void Finalizer** | Opens/closes the Grandmaster tend frame (doctor + medicine), nesting-safe |
+| `TendUtility.DoTend` | **Transpiler** (one call site) | Its single `Hediff.Tended` call goes through `TendedEffective`, so condition-specific overrides see the Grandmaster quality; any other IL shape is left untouched and the feature disables itself |
+| `HediffComp_TendDuration.CompTended` | Prefix (`ref quality`, `ref maxQuality`) + Postfix | Exact tend quality through vanilla's own clamp; starts, refreshes or clears the condition's regimen |
+| `HediffComp_TendDuration.CompTipStringExtra` | Postfix | Cosmetic treatment line |
+| `Hediff.ExposeData` | Postfix | Persists an active regimen inside that hediff's own node |
+| `Pawn_HealthTracker.HealthTickInterval` | Prefix + **void Finalizer** | Scopes "natural recovery" |
+| `Hediff_Injury.Heal` | Prefix (`ref amount`) | A treated injury recovers faster inside the health tick |
+| `ImmunityRecord.ImmunityChangePerTick` | Postfix | A treated disease instance builds immunity faster |
+| `SurgeryOutcomeEffectDef.GetOutcome` | Prefix (replaces for a practising Grandmaster only) | No failure/death outcome is ever evaluated |
+
+### The progression transpiler
+
+Exactly one instruction is changed, in `SkillRecord.Learn`. (The only other transpilers are the
+bill skill-ceiling bridge and Medicine 21's `DoTend`, each described with its own patches above.)
+Vanilla:
 
 ```
 ldarg.0
@@ -1433,6 +1539,22 @@ authorised scope's exception safety, the accuracy and delay maths, aim-mode stor
 part selection across several anatomies, the targeting patch's gating, and that every translation
 key the code looks up is actually shipped.
 
+Medicine 21 is excluded from the stub build too, and verified against the real game DLLs instead:
+
+```bash
+./tools/verify-medicine.sh /path/to/Managed /path/to/0Harmony.dll /path/to/Mono.Cecil.dll [/path/to/RimWorld/Data]
+```
+
+It installs the mod's real Medicine patches on the real vanilla methods and executes them —
+`Hediff.Tended`→`CompTended`, the patched `DoTend` IL and `Hediff_HeartAttack.Tended`,
+`Hediff_Injury.Heal`, `SurgeryOutcomeEffectDef.GetOutcome`, `HediffSet`, real medicine Things in a
+real inventory, the real Scribe saver/loader, and the core bill-ceiling bridge on the real
+`Bill.PawnAllowedToStartAnew` — plus, given the game's `Data/` folder, runs the real
+C# Cure, tier and surgery rules over every vanilla Def in all six content packs. Test-process-only
+shims cover what needs a live game (icon loading, live-pawn re-evaluation, and Steamworks for
+`ParseHelper` via `tools/stubs/SteamworksShim.cs`); none of them ship. Details and results:
+[Docs/Medicine21.md](Docs/Medicine21.md#13-tests).
+
 The Magical crafting source is excluded from the stub build. Build it against the real game DLLs
 and run `tools/verify-transcendent.sh`; setup and overrides are documented in
 [Assemblies/README.md](Assemblies/README.md).
@@ -1484,6 +1606,20 @@ hand-written approximations. Only a real build does that. See `tools/stubs/READM
 ---
 
 ## Release status
+
+**0.12.0 Beta.** Medicine 21 builds against the real RimWorld 1.6/Unity/Harmony assemblies with
+zero warnings/errors. After the second design pass (tend-quality propagation, medicine cost, work
+time, self-intervention, hostile resuscitation, minimum vital reconstruction, death-trauma scars)
+and the final pre-runtime pass (carried medicine first, no tend-speed ceiling, decay-based
+resuscitation viability, Resuscitation Shock), `tools/verify-medicine.sh` reports **369 PASS, 0 FAIL,
+0 BLOCKED** with the vanilla `Data/`
+folder, including real Scribe save **and load** round trips, real medicine Things consumed in a real
+inventory, the real vanilla bill gate, and an audit of every vanilla Def. The owner's first real-game
+session found one bug — vanilla bills refusing a Grandmaster with "Above allowed skill 20" — fixed
+in the core mod (*Vanilla bills and level 21*) and **not yet re-tested in game**. The rest of
+Medicine 21 is still **unverified at runtime** — see the runtime checklist in
+[Docs/Medicine21.md](Docs/Medicine21.md#14-runtime-checklist-not-run--needs-a-real-game).
+Medicine 21 itself does not change the Shooting, Melee or Crafting implementations.
 
 The Magical foundation was runtime-tested by the owner in a heavily modded game: 1,600 recipes
 scanned, 217 supported; ingredients and catalyst consumed; active project saved/reloaded/resumed;
@@ -1617,7 +1753,10 @@ void or returns `__exception` unchanged.
 The melee package adds two more finalizers, for closing the melee frame and restoring the melee
 `forceDowned` guard, and both are void for the same reason. The audit **discovers** finalizers by
 name rather than reading from a list, because a hardcoded list quietly stops covering the mod the
-moment a new one is added — which is exactly what would have happened here. All four are covered.
+moment a new one is added — which is exactly what would have happened here. Medicine 21 adds two
+more — closing the Grandmaster tend frame around `TendUtility.DoTend` and the natural-recovery
+counter around `HealthTickInterval` — both void, and the audit picked them up without being told.
+All six are covered.
 
 ### Two patch targets cannot be bound outside the game
 

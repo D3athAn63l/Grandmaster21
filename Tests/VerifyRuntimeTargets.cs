@@ -406,6 +406,169 @@ static class VerifyRuntimeTargets
         Ok("BodyPartRecord.coverageAbsWithChildren exists",
            typeof(BodyPartRecord).GetField("coverageAbsWithChildren") != null);
 
+        Console.WriteLine("\n=== Medicine 21: patch targets and Harmony parameter names ===");
+        MethodInfo doTend = AccessTools.Method(typeof(TendUtility), "DoTend");
+        Ok("TendUtility.DoTend resolves", doTend != null, Params(doTend));
+        NeedParam("TendUtility.DoTend", doTend, "doctor", "Pawn");
+        NeedParam("TendUtility.DoTend", doTend, "patient", "Pawn");
+        NeedParam("TendUtility.DoTend", doTend, "medicine", "Medicine");
+
+        MethodInfo hediffTended = AccessTools.Method(typeof(Hediff), "Tended", new[] { typeof(float), typeof(float), typeof(int) });
+        Ok("Hediff.Tended(float, float, int) resolves and is virtual (condition-specific overrides)",
+           hediffTended != null && hediffTended.IsVirtual, Params(hediffTended));
+        int tendedCalls = 0;
+        try
+        {
+            tendedCalls = PatchProcessor.GetOriginalInstructions(doTend)
+                .Count(i => (i.opcode == System.Reflection.Emit.OpCodes.Callvirt || i.opcode == System.Reflection.Emit.OpCodes.Call)
+                            && Equals(i.operand, hediffTended));
+        }
+        catch (Exception) { tendedCalls = -1; }
+        Ok("TendUtility.DoTend calls Hediff.Tended at exactly one site (the propagation transpiler's premise)",
+           tendedCalls == 1, "sites=" + tendedCalls);
+        Ok("Hediff_HeartAttack overrides Tended (the propagation regression case)",
+           AccessTools.DeclaredMethod(typeof(Hediff_HeartAttack), "Tended") != null);
+
+        MethodInfo compTended = AccessTools.Method(typeof(HediffComp_TendDuration), "CompTended");
+        Ok("HediffComp_TendDuration.CompTended resolves", compTended != null, Params(compTended));
+        NeedParam("HediffComp_TendDuration.CompTended", compTended, "quality", "Single");
+        NeedParam("HediffComp_TendDuration.CompTended", compTended, "maxQuality", "Single");
+        Ok("HediffComp_TendDuration.tendQuality is a public float",
+           typeof(HediffComp_TendDuration).GetField("tendQuality") != null
+           && typeof(HediffComp_TendDuration).GetField("tendQuality").FieldType == typeof(float));
+        Ok("HediffComp_TendDuration.tendTicksLeft is a public int",
+           typeof(HediffComp_TendDuration).GetField("tendTicksLeft") != null
+           && typeof(HediffComp_TendDuration).GetField("tendTicksLeft").FieldType == typeof(int));
+        Ok("HediffComp_TendDuration.TendQualityRandomVariance == 0.25",
+           HediffComp_TendDuration.TendQualityRandomVariance == 0.25f);
+        Ok("HediffComp_TendDuration.CompTipStringExtra getter resolves",
+           AccessTools.PropertyGetter(typeof(HediffComp_TendDuration), "CompTipStringExtra") != null);
+
+        Ok("Hediff.ExposeData resolves (virtual; every subclass calls base)",
+           AccessTools.Method(typeof(Hediff), "ExposeData") != null);
+        MethodInfo healthInterval = AccessTools.Method(typeof(Pawn_HealthTracker), "HealthTickInterval");
+        Ok("Pawn_HealthTracker.HealthTickInterval resolves", healthInterval != null, Params(healthInterval));
+        MethodInfo heal = AccessTools.DeclaredMethod(typeof(Hediff_Injury), "Heal");
+        Ok("Hediff_Injury.Heal is declared on Hediff_Injury", heal != null, Params(heal));
+        NeedParam("Hediff_Injury.Heal", heal, "amount", "Single");
+        MethodInfo immunity = AccessTools.Method(typeof(ImmunityRecord), "ImmunityChangePerTick");
+        Ok("ImmunityRecord.ImmunityChangePerTick resolves", immunity != null, Params(immunity));
+        NeedParam("ImmunityRecord.ImmunityChangePerTick", immunity, "sick", "Boolean");
+        NeedParam("ImmunityRecord.ImmunityChangePerTick", immunity, "diseaseInstance", "Hediff");
+        Ok("  ...and returns float", immunity != null && immunity.ReturnType == typeof(float));
+
+        MethodInfo outcome = AccessTools.Method(typeof(SurgeryOutcomeEffectDef), "GetOutcome");
+        Ok("SurgeryOutcomeEffectDef.GetOutcome resolves", outcome != null, Params(outcome));
+        foreach (string p in new[] { "recipe", "surgeon", "patient", "ingredients", "part", "bill" })
+            NeedParam("SurgeryOutcomeEffectDef.GetOutcome", outcome, p);
+        Ok("  ...and returns SurgeryOutcome", outcome != null && outcome.ReturnType == typeof(SurgeryOutcome));
+        Ok("SurgeryOutcome.failure is a public bool", typeof(SurgeryOutcome).GetField("failure") != null);
+        Ok("Recipe_Surgery.CheckSurgeryFail still asks surgeryOutcomeEffect.GetOutcome",
+           AccessTools.Method(typeof(Recipe_Surgery), "CheckSurgeryFail") != null);
+
+        Console.WriteLine("\n=== Medicine 21: save identity and revival ===");
+        Ok("Job.source is ILoadReferenceable (carries the selected Hediff)",
+           typeof(Verse.AI.Job).GetField("source") != null
+           && typeof(Verse.AI.Job).GetField("source").FieldType == typeof(ILoadReferenceable));
+        Ok("Hediff implements ILoadReferenceable", typeof(ILoadReferenceable).IsAssignableFrom(typeof(Hediff)));
+        Ok("Corpse.timeOfDeath is a public int", typeof(Corpse).GetField("timeOfDeath") != null);
+        Ok("ResurrectionUtility.TryResurrect(Pawn, ResurrectionParams) resolves",
+           AccessTools.Method(typeof(ResurrectionUtility), "TryResurrect", new[] { typeof(Pawn), typeof(ResurrectionParams) }) != null);
+        Ok("ResurrectionParams.restoreMissingParts / gettingScarsChance exist",
+           typeof(ResurrectionParams).GetField("restoreMissingParts") != null
+           && typeof(ResurrectionParams).GetField("gettingScarsChance") != null);
+        Ok("Pawn_HealthTracker.RestorePart(BodyPartRecord, Hediff, bool) resolves",
+           AccessTools.Method(typeof(Pawn_HealthTracker), "RestorePart",
+               new[] { typeof(BodyPartRecord), typeof(Hediff), typeof(bool) }) != null);
+        Ok("HediffSet.GetMissingPartsCommonAncestors resolves",
+           AccessTools.Method(typeof(HediffSet), "GetMissingPartsCommonAncestors") != null);
+        Ok("HediffDef.chronic / everCurableByItem / cureAllAtOnceIfCuredByItem exist",
+           typeof(HediffDef).GetField("chronic") != null && typeof(HediffDef).GetField("everCurableByItem") != null
+           && typeof(HediffDef).GetField("cureAllAtOnceIfCuredByItem") != null);
+        Ok("HediffDefOf.FoodPoisoning exists (the one vanilla Cure adapter)",
+           typeof(HediffDefOf).GetField("FoodPoisoning") != null);
+        foreach (string tag in new[] { "BloodFiltrationKidney", "BloodFiltrationLiver", "BreathingSourceCage", "MetabolismSource" })
+            Ok("  tag defName '" + tag + "' (resuscitation vital anatomy)",
+               tagDefOf != null && tagDefOf.GetField(tag) != null);
+        Console.WriteLine("\n=== Medicine 21: intervention medicine, trauma and hostile revival ===");
+        Ok("StatDefOf.MedicalPotency exists (the budget's currency)", typeof(StatDefOf).GetField("MedicalPotency") != null);
+        Ok("ThingDef.IsMedicine exists", AccessTools.PropertyGetter(typeof(ThingDef), "IsMedicine") != null);
+        Ok("MedicalCareUtility.AllowsMedicine(MedicalCareCategory, ThingDef) resolves",
+           AccessTools.Method(typeof(MedicalCareUtility), "AllowsMedicine") != null);
+        foreach (string f in new[] { "defaultCareForColonist", "defaultCareForSlave", "defaultCareForPrisoner", "defaultCareForTamedAnimal",
+                                     "defaultCareForFriendlyFaction", "defaultCareForNeutralFaction", "defaultCareForHostileFaction",
+                                     "defaultCareForNoFaction", "defaultCareForWildlife" })
+            Ok("  PlaySettings." + f + " exists", typeof(PlaySettings).GetField(f) != null);
+        Ok("ReservationManager.CanReserveStack resolves", AccessTools.Method(typeof(Verse.AI.ReservationManager), "CanReserveStack") != null);
+        Ok("Job.targetQueueB / countQueue are public lists (the collection plan, saved by Job)",
+           typeof(Verse.AI.Job).GetField("targetQueueB") != null && typeof(Verse.AI.Job).GetField("countQueue") != null);
+        Ok("Toils_JobTransforms.ExtractNextTargetFromQueue(TargetIndex, bool) resolves",
+           AccessTools.Method(typeof(Verse.AI.Toils_JobTransforms), "ExtractNextTargetFromQueue",
+               new[] { typeof(Verse.AI.TargetIndex), typeof(bool) }) != null);
+        Ok("Toils_Haul.TakeToInventory(TargetIndex, Func<int>) resolves",
+           AccessTools.Method(typeof(Verse.AI.Toils_Haul), "TakeToInventory",
+               new[] { typeof(Verse.AI.TargetIndex), typeof(Func<int>) }) != null);
+        Ok("Toils_Jump.JumpIfHaveTargetInQueue resolves",
+           AccessTools.Method(typeof(Verse.AI.Toils_Jump), "JumpIfHaveTargetInQueue") != null);
+        Ok("Thing.SplitOff(int) resolves", AccessTools.Method(typeof(Thing), "SplitOff", new[] { typeof(int) }) != null);
+        Ok("HediffComp_GetsPermanent.isPermanentInt is public, SetPainCategory resolves",
+           typeof(HediffComp_GetsPermanent).GetField("isPermanentInt") != null
+           && AccessTools.Method(typeof(HediffComp_GetsPermanent), "SetPainCategory") != null);
+        Ok("HealthTuning.InjuryPainCategories is public", typeof(HealthTuning).GetField("InjuryPainCategories") != null);
+        Ok("Pawn_HealthTracker.WouldLosePartAfterAddingHediff(HediffDef, BodyPartRecord, float) resolves",
+           AccessTools.Method(typeof(Pawn_HealthTracker), "WouldLosePartAfterAddingHediff",
+               new[] { typeof(HediffDef), typeof(BodyPartRecord), typeof(float) }) != null);
+        Ok("Hediff_MissingPart.lastInjury is public", typeof(Hediff_MissingPart).GetField("lastInjury") != null);
+        Ok("Hediff.combatLogEntry / combatLogText are public (scar provenance)",
+           typeof(Hediff).GetField("combatLogEntry") != null && typeof(Hediff).GetField("combatLogText") != null);
+        Ok("GeneDef.preventPermanentWounds exists", typeof(GeneDef).GetField("preventPermanentWounds") != null);
+        foreach (string f in new[] { "subjectPawn", "culpritTargetPart", "culpritHediffTargetPart" })
+            Ok("  BattleLogEntry_StateTransition." + f + " exists (death-blow corroboration only)",
+               AccessTools.Field(typeof(BattleLogEntry_StateTransition), f) != null);
+        Ok("ResurrectionParams.noLord exists (deliberately NOT set: a hostile revives hostile)",
+           typeof(ResurrectionParams).GetField("noLord") != null);
+        Ok("Dialog_MessageBox.CreateConfirmation(TaggedString, Action, bool, ...) resolves (hostile-corpse confirmation)",
+           typeof(Dialog_MessageBox).GetMethods().Any(m => m.Name == "CreateConfirmation" && m.GetParameters().Length >= 3
+               && m.GetParameters()[0].ParameterType == typeof(TaggedString) && m.GetParameters()[1].ParameterType == typeof(Action)
+               && m.GetParameters()[2].ParameterType == typeof(bool)));
+        Console.WriteLine("\n=== Medicine 21: decay viability and resuscitation shock ===");
+        Ok("CompRottable.RotProgress (float) and Stage resolve",
+           AccessTools.PropertyGetter(typeof(CompRottable), "RotProgress") != null
+           && AccessTools.PropertyGetter(typeof(CompRottable), "RotProgress").ReturnType == typeof(float)
+           && AccessTools.PropertyGetter(typeof(CompRottable), "Stage") != null);
+        Ok("GenTemperature.RotRateAtTemperature(float) resolves",
+           AccessTools.Method(typeof(GenTemperature), "RotRateAtTemperature", new[] { typeof(float) }) != null);
+        Ok("HediffComp_Disappears.SetDuration(int) and ticksToDisappear resolve",
+           AccessTools.Method(typeof(HediffComp_Disappears), "SetDuration", new[] { typeof(int) }) != null
+           && typeof(HediffComp_Disappears).GetField("ticksToDisappear") != null);
+        foreach (string f in new[] { "disappearsAfterTicks", "showRemainingTime", "messageOnDisappear" })
+            Ok("  HediffCompProperties_Disappears." + f + " exists (shipped shock XML)", typeof(HediffCompProperties_Disappears).GetField(f) != null);
+        Ok("PawnCapacitiesHandler.CanBeAwake resolves", AccessTools.PropertyGetter(typeof(PawnCapacitiesHandler), "CanBeAwake") != null);
+        Ok("HediffSet.GetFirstHediffOfDef(HediffDef, bool) resolves",
+           AccessTools.Method(typeof(HediffSet), "GetFirstHediffOfDef") != null);
+        Ok("Command.ProcessInput(Event) is virtual (right-click activation)",
+           AccessTools.Method(typeof(Command), "ProcessInput") != null
+           && AccessTools.Method(typeof(Command), "ProcessInput").IsVirtual);
+        Ok("Command.groupable is a public bool", typeof(Command).GetField("groupable") != null);
+
+        Console.WriteLine("\n=== Core: vanilla bill skill ceiling (Patch_BillSkillCeiling) ===");
+        MethodInfo allowed = AccessTools.Method(typeof(Bill), "PawnAllowedToStartAnew", new[] { typeof(Pawn) });
+        Ok("Bill.PawnAllowedToStartAnew(Pawn) resolves, declared on Bill, virtual (subclasses call base first)",
+           allowed != null && allowed.DeclaringType == typeof(Bill) && allowed.IsVirtual && allowed.ReturnType == typeof(bool), Params(allowed));
+        FieldInfo range = typeof(Bill).GetField("allowedSkillRange");
+        Ok("Bill.allowedSkillRange is a public instance IntRange (read by the comparison, never written by GM21)",
+           range != null && !range.IsStatic && range.FieldType == typeof(IntRange));
+        Ok("IntRange.max is an int field (the transpiler's anchor operand)",
+           typeof(IntRange).GetField("max") != null && typeof(IntRange).GetField("max").FieldType == typeof(int));
+        Ok("Bill.recipe (RecipeDef) and RecipeDef.workSkill (SkillDef) resolve",
+           typeof(Bill).GetField("recipe") != null && typeof(Bill).GetField("recipe").FieldType == typeof(RecipeDef)
+           && typeof(RecipeDef).GetField("workSkill") != null && typeof(RecipeDef).GetField("workSkill").FieldType == typeof(SkillDef));
+        Ok("Patch_BillSkillCeiling.UpperBoundFor(int, Bill, Pawn) -> int (the inserted call's stack shape)",
+           AccessTools.Method(typeof(Patch_BillSkillCeiling), "UpperBoundFor") != null
+           && AccessTools.Method(typeof(Patch_BillSkillCeiling), "UpperBoundFor").ReturnType == typeof(int)
+           && AccessTools.Method(typeof(Patch_BillSkillCeiling), "UpperBoundFor").GetParameters().Select(p => p.ParameterType)
+                  .SequenceEqual(new[] { typeof(int), typeof(Bill), typeof(Pawn) }));
+
         Console.WriteLine("\n================================");
         Console.WriteLine("PASS: " + pass + "   FAIL: " + fail + "   SKIP: " + skipped);
         Environment.Exit(fail == 0 ? 0 : 1);

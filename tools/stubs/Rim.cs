@@ -40,6 +40,14 @@ namespace Verse
 
     public class Def { public string defName; public string label; public TaggedString LabelCap { get { return label; } } }
 
+    public struct IntRange
+    {
+        public int min;
+        public int max;
+        public IntRange(int min, int max) { this.min = min; this.max = max; }
+    }
+    public class RecipeDef : Def { public RimWorld.SkillDef workSkill; }
+
     public class Thing
     {
         public ThingDef def; public bool Destroyed;
@@ -378,6 +386,12 @@ namespace RimWorld
     using Verse;
 
     public class SkillDef : Def { }
+    public abstract class Bill
+    {
+        public RecipeDef recipe;
+        public IntRange allowedSkillRange = new IntRange(0, 20);
+        public virtual bool PawnAllowedToStartAnew(Pawn p) { return true; }
+    }
     public static class SkillDefOf
     {
         public static SkillDef Shooting = new SkillDef { defName = "Shooting" };

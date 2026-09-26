@@ -136,8 +136,9 @@ static class VerifyFinalizerSemantics
             }
         }
 
-        // Four are expected today: the shooting shot context and downed guard, and the melee
-        // frame and downed guard. Fewer means discovery broke, not that the mod got safer.
-        Check("all four shipped finalizers were discovered", found >= 4, "found=" + found);
+        // Six are expected today: the shooting shot context and downed guard, the melee frame and
+        // downed guard, and Medicine's DoTend frame and health-tick counter. Fewer means discovery
+        // broke, not that the mod got safer.
+        Check("all six shipped finalizers were discovered", found >= 6, "found=" + found);
     }
 }

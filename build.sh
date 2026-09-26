@@ -46,6 +46,6 @@ mkdir -p Assemblies
   -r:"$MANAGED/UnityEngine.dll" -r:"$MANAGED/UnityEngine.CoreModule.dll" \
   -r:"$MANAGED/UnityEngine.IMGUIModule.dll" -r:"$MANAGED/UnityEngine.TextRenderingModule.dll" \
   -r:"$HARMONY" \
-  Source/*.cs Source/Shooting/*.cs Source/Melee/*.cs Source/Transcendent/*.cs
+  Source/*.cs Source/Shooting/*.cs Source/Melee/*.cs Source/Medicine/*.cs Source/Transcendent/*.cs
 
 echo "Built Assemblies/Grandmaster21.dll  ($STAMP, commit $COMMIT)"
