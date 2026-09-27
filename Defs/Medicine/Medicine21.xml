@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+  <!--
+    Medicine 21 adds NO research, items, buildings, implants or recipes. It ships three JobDefs -
+    the Grandmaster's personal medical interventions, ordered from the Grandmaster Medicine gizmo -
+    and one HediffDef, the shock a resuscitated pawn wakes from. There is deliberately no
+    WorkGiver: ordinary doctors never receive these jobs, and a Grandmaster only performs them when
+    the player orders it.
+  -->
+
+  <JobDef>
+    <defName>GM21_MedicineCure</defName>
+    <driverClass>Grandmaster21.JobDriver_Gm21Cure</driverClass>
+    <reportString>performing a Grandmaster cure on TargetA.</reportString>
+    <casualInterruptible>false</casualInterruptible>
+    <suspendable>false</suspendable>
+    <allowOpportunisticPrefix>false</allowOpportunisticPrefix>
+  </JobDef>
+
+  <JobDef>
+    <defName>GM21_MedicineReconstruct</defName>
+    <driverClass>Grandmaster21.JobDriver_Gm21Reconstruct</driverClass>
+    <reportString>reconstructing anatomy on TargetA.</reportString>
+    <casualInterruptible>false</casualInterruptible>
+    <suspendable>false</suspendable>
+    <allowOpportunisticPrefix>false</allowOpportunisticPrefix>
+  </JobDef>
+
+  <JobDef>
+    <defName>GM21_MedicineResuscitate</defName>
+    <driverClass>Grandmaster21.JobDriver_Gm21Resuscitate</driverClass>
+    <reportString>resuscitating TargetA.</reportString>
+    <casualInterruptible>false</casualInterruptible>
+    <suspendable>false</suspendable>
+    <allowOpportunisticPrefix>false</allowOpportunisticPrefix>
+  </JobDef>
+
+  <!--
+    Grandmaster Resuscitation Shock. The same vanilla-safe mechanism as vanilla's psychic coma: a
+    Consciousness ceiling of 0.1 keeps the pawn below vanilla's 0.3 "can be awake" line, so they are
+    downed, unconscious, cannot move, work or fight, can be carried and rest in bed - while 0.1 stays
+    above the 0 at which lethal Consciousness kills. A ceiling never lowers an already living level
+    to 0, so the shock cannot kill. The duration is fixed (Gm21Medicine.ResuscitationShockTicks,
+    6 in-game hours; the code sets it exactly) - no random range, no side-effect lottery. It is
+    not curable by items. Prepare Save for Uninstall removes it from every pawn.
+  -->
+  <HediffDef>
+    <defName>GM21_ResuscitationShock</defName>
+    <label>resuscitation shock</label>
+    <labelNoun>resuscitation shock</labelNoun>
+    <description>A Grandmaster brought this body back from death. It lives, stabilised, but will not wake until the shock of the return has passed.</description>
+    <hediffClass>HediffWithComps</hediffClass>
+    <isBad>true</isBad>
+    <everCurableByItem>false</everCurableByItem>
+    <scenarioCanAdd>false</scenarioCanAdd>
+    <comps>
+      <li Class="HediffCompProperties_Disappears">
+        <disappearsAfterTicks>15000~15000</disappearsAfterTicks>
+        <showRemainingTime>true</showRemainingTime>
+        <messageOnDisappear>{PAWN_nameDef} has recovered from resuscitation shock.</messageOnDisappear>
+      </li>
+    </comps>
+    <stages>
+      <li>
+        <capMods>
+          <li>
+            <capacity>Consciousness</capacity>
+            <setMax>0.1</setMax>
+          </li>
+        </capMods>
+      </li>
+    </stages>
+  </HediffDef>
+</Defs>

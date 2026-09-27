@@ -12,6 +12,12 @@ namespace Grandmaster21
         public int pawnsProcessed;
         public int skillsDemoted;
         public int progressCleared;
+
+        /// <summary>
+        /// State removed by capstone packages that registered a pawn cleaner (Medicine 21's
+        /// per-condition treatments, its mode, and any intervention job in progress).
+        /// </summary>
+        public int capstoneStateCleared;
     }
 
     /// <summary>
@@ -39,6 +45,22 @@ namespace Grandmaster21
         // keeps playing, a pawn can bank new Grandmaster XP or earn a new level 21, and any stored
         // "prepared" marker becomes a lie. The result dialog reports what was done and tells the
         // player to save and quit; that is the whole contract.
+
+        /// <summary>
+        /// Per-pawn cleaners registered by capstone packages that keep their own state, each
+        /// returning how many entries it removed from that pawn.
+        ///
+        /// WHY A REGISTRY RATHER THAN A DIRECT CALL: Medicine 21 is compiled only against the real
+        /// game assemblies -- like Crafting 21 it is left out of the reference-stub build -- so the
+        /// core cannot name its types without breaking that build. The package registers here from
+        /// its own startup class instead. Shooting and Melee state is still cleared directly below.
+        /// </summary>
+        private static readonly List<Func<Pawn, int>> PawnCleaners = new List<Func<Pawn, int>>();
+
+        internal static void RegisterPawnCleaner(Func<Pawn, int> cleaner)
+        {
+            if (cleaner != null && !PawnCleaners.Contains(cleaner)) PawnCleaners.Add(cleaner);
+        }
 
         /// <summary>A playable save is loaded, so there is something to clean.</summary>
         public static bool GameIsLoaded
@@ -86,11 +108,13 @@ namespace Grandmaster21
             Log.Message("[Grandmaster 21] Prepare Save for Uninstall: "
                         + report.pawnsProcessed + " pawns processed, "
                         + report.skillsDemoted + " skills demoted 21 -> 20, "
-                        + report.progressCleared + " skill records had Grandmaster progress cleared.");
+                        + report.progressCleared + " skill records had Grandmaster progress cleared, "
+                        + report.capstoneStateCleared + " capstone state entries cleared.");
 
             Find.WindowStack.Add(new Dialog_MessageBox(
                 "GM21_Uninstall_DoneBody".Translate(
-                    report.skillsDemoted, report.progressCleared, report.pawnsProcessed),
+                    report.skillsDemoted, report.progressCleared, report.pawnsProcessed,
+                    report.capstoneStateCleared),
                 null, null, null, null,
                 "GM21_Uninstall_DoneTitle".Translate()));
         }
@@ -109,6 +133,25 @@ namespace Grandmaster21
             foreach (Pawn pawn in pawns)
             {
                 if (pawn == null) continue;
+
+                // Registered capstone cleaners run for EVERY pawn, before the skill-tracker check
+                // below: an animal has no skills, but a Medicine Grandmaster may still have treated
+                // its wounds, and that state belongs to its hediffs. They also run before demotion,
+                // while the pawn is still a Grandmaster, so nothing they inspect has already been
+                // changed underneath them.
+                for (int c = 0; c < PawnCleaners.Count; c++)
+                {
+                    try
+                    {
+                        report.capstoneStateCleared += PawnCleaners[c](pawn);
+                    }
+                    catch (Exception e)
+                    {
+                        Log.Warning("[Grandmaster 21] Uninstall cleanup: a capstone cleaner failed for "
+                                    + pawn + "; continuing. " + e);
+                    }
+                }
+
                 Pawn_SkillTracker tracker = pawn.skills;
                 if (tracker == null || tracker.skills == null) continue;
 

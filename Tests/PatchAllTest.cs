@@ -144,6 +144,70 @@ class PatchAllTest
                                 ?? AccessTools.Method(typeof(Projectile), "Tick"),
                                 new HarmonyMethod(AccessTools.Method(projDef, "Prefix_ProjectileFlight"))));
 
+        Console.WriteLine("\n=== Manual medicine patches (one target at a time) ===");
+        // Gm21MedicinePatches.Apply() is driven for real, end to end, by tools/verify-medicine.sh
+        // (with a test-only ContentFinder shim). Here each target is bound individually, like the
+        // shooting and melee blocks above. HediffComp_TendDuration's static constructor loads icons
+        // through Unity, so its two targets report BLOCKED headless -- that is the environment.
+        Type tend = modAsm.GetType("Grandmaster21.Gm21GrandmasterTend");
+        Type recovery = modAsm.GetType("Grandmaster21.Gm21RecoveryEffects");
+        Type surgery = modAsm.GetType("Grandmaster21.Gm21Surgery");
+        Type medPatches = modAsm.GetType("Grandmaster21.Gm21MedicinePatches");
+        Func<Type, string, HarmonyMethod> med = (t, n) => new HarmonyMethod(AccessTools.Method(t, n));
+
+        Bind("Hediff.ExposeData  [treatment persistence postfix]", ref okCount, ref failCount, ref blockedCount,
+            () => harmony.Patch(AccessTools.Method(typeof(Hediff), "ExposeData"),
+                                null, med(medPatches, "Postfix_Hediff_ExposeData")));
+
+        Bind("TendUtility.DoTend  [prefix + finalizer, __state frame]", ref okCount, ref failCount, ref blockedCount,
+            () => harmony.Patch(AccessTools.Method(typeof(TendUtility), "DoTend"),
+                                med(tend, "Prefix_DoTend"), null, null, med(tend, "Finalizer_DoTend")));
+
+        Bind("TendUtility.DoTend  [transpiler: the one Hediff.Tended call -> TendedEffective]", ref okCount, ref failCount, ref blockedCount,
+            () =>
+            {
+                harmony.Patch(AccessTools.Method(typeof(TendUtility), "DoTend"), null, null, med(tend, "Transpiler_DoTend"));
+                int sites = (int)AccessTools.Property(tend, "PropagationSites").GetValue(null, null);
+                if (sites != 1) throw new InvalidOperationException("DoTend has " + sites + " rewritable Hediff.Tended call sites, expected 1");
+            });
+
+        Bind("HediffComp_TendDuration.CompTended  [prefix ref quality/maxQuality + postfix]", ref okCount, ref failCount, ref blockedCount,
+            () => harmony.Patch(AccessTools.Method(typeof(HediffComp_TendDuration), "CompTended"),
+                                med(tend, "Prefix_CompTended"), med(tend, "Postfix_CompTended")));
+
+        Bind("HediffComp_TendDuration.CompTipStringExtra  [postfix, cosmetic]", ref okCount, ref failCount, ref blockedCount,
+            () => harmony.Patch(AccessTools.PropertyGetter(typeof(HediffComp_TendDuration), "CompTipStringExtra"),
+                                null, med(tend, "Postfix_CompTipStringExtra")));
+
+        Bind("Pawn_HealthTracker.HealthTickInterval  [prefix + finalizer]", ref okCount, ref failCount, ref blockedCount,
+            () => harmony.Patch(AccessTools.Method(typeof(Pawn_HealthTracker), "HealthTickInterval"),
+                                med(recovery, "Prefix_HealthTickInterval"), null, null,
+                                med(recovery, "Finalizer_HealthTickInterval")));
+
+        Bind("Hediff_Injury.Heal  [prefix, ref amount]", ref okCount, ref failCount, ref blockedCount,
+            () => harmony.Patch(AccessTools.DeclaredMethod(typeof(Hediff_Injury), "Heal"),
+                                med(recovery, "Prefix_Heal")));
+
+        Bind("ImmunityRecord.ImmunityChangePerTick  [postfix]", ref okCount, ref failCount, ref blockedCount,
+            () => harmony.Patch(AccessTools.Method(typeof(ImmunityRecord), "ImmunityChangePerTick"),
+                                null, med(recovery, "Postfix_ImmunityChangePerTick")));
+
+        Bind("SurgeryOutcomeEffectDef.GetOutcome  [prefix, replaces for Grandmaster only]", ref okCount, ref failCount, ref blockedCount,
+            () => harmony.Patch(AccessTools.Method(typeof(SurgeryOutcomeEffectDef), "GetOutcome"),
+                                med(surgery, "Prefix_GetOutcome")));
+
+        Console.WriteLine("\n=== Core bill compatibility patch ===");
+        // Patch_BillSkillCeiling.Apply is driven for real: on success it logs nothing, and on
+        // failure its Log.Warning would bottom out in Unity -- either way the outcome is reported.
+        Type bill = modAsm.GetType("Grandmaster21.Patch_BillSkillCeiling");
+        Bind("Bill.PawnAllowedToStartAnew  [transpiler: the one upper skill-range comparison -> UpperBoundFor]", ref okCount, ref failCount, ref blockedCount,
+            () =>
+            {
+                bill.GetMethod("Apply").Invoke(null, new object[] { harmony });
+                if (!(bool)AccessTools.Property(bill, "Applied").GetValue(null, null))
+                    throw new InvalidOperationException("Bill.PawnAllowedToStartAnew: the upper skill-range comparison was not rewritten");
+            });
+
         Console.WriteLine("\n=== Transpiler ===");
         // Gm21.LearnPatchApplied is the authoritative flag: Gm21.Promote is gated on it, so false
         // here means no Grandmaster could be created this session.

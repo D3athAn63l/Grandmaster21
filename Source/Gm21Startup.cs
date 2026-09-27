@@ -17,6 +17,8 @@ namespace Grandmaster21
             // -- level 21 permanence included -- down with it.
             Gm21ShootingPatches.Apply(harmony);
             Gm21MeleePatches.Apply(harmony);
+            // Vanilla bills refuse a skill above 20; lets a Grandmaster through a max-20 bill only.
+            Patch_BillSkillCeiling.Apply(harmony);
 
             Log.Message("[Grandmaster 21] " + Gm21Version.Full
                         + "  |  shooting: passive=" + Gm21Shooting.PassiveBonusesEnabled

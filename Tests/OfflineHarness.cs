@@ -246,9 +246,13 @@ static class OfflineHarness
         SkillRecord shootGm = Rec(21); shootGm.def = SkillDefOf.Shooting;
         Check("Shooting 21 gets its own title, not the generic one",
               Descriptor(shootGm) == "GM21_Descriptor_Shooting", "desc=" + Descriptor(shootGm));
+        // Medicine gained its own title with Medicine 21; Cooking has none and still falls back.
         SkillRecord medGm = Rec(21); medGm.def = new SkillDef { defName = "Medicine", label = "medicine" };
+        Check("Medicine 21 gets its own title, not the generic one",
+              Descriptor(medGm) == "GM21_Descriptor_Medicine", "desc=" + Descriptor(medGm));
+        SkillRecord cookGm = Rec(21); cookGm.def = new SkillDef { defName = "Cooking", label = "cooking" };
         Check("a skill with no bespoke title falls back to the generic one",
-              Descriptor(medGm) == "GM21_GrandmasterDescriptor", "desc=" + Descriptor(medGm));
+              Descriptor(cookGm) == "GM21_GrandmasterDescriptor", "desc=" + Descriptor(cookGm));
         Check("stored 21 with -1 aptitude is still IsGrandmaster", Gm21.IsGrandmaster(apt));
         Check("stored 21 with -1 aptitude has MECHANICAL level 20 (aptitude preserved)",
               LevelWithAptitude(apt) == 20, "mech=" + LevelWithAptitude(apt));

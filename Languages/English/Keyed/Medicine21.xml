@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LanguageData>
+
+  <!-- Grandmaster Medicine gizmo (Medicine 21 only). {0} current mode name -->
+  <GM21_Med_GizmoLabel>Grandmaster Medicine: {0}</GM21_Med_GizmoLabel>
+  <!-- {0} current mode name, {1} current mode description -->
+  <GM21_Med_GizmoDesc>Left-click to choose the intervention. Right-click to perform the selected one: {0}.\n\n{1}\n\nThe Grandmaster personally performs every intervention as a medical job, and nothing is applied until the work is finished. Ordinary tending and surgery need no command: a Medicine Grandmaster's tending is always exact and their surgery never fails.</GM21_Med_GizmoDesc>
+
+  <GM21_Med_ModeCure>Cure</GM21_Med_ModeCure>
+  <GM21_Med_ModeCureDesc>Target a living patient - the Grandmaster included - and cure one pathological condition: diseases, chronic illness, food poisoning. Wounds, missing parts, implants, pregnancy and unknown conditions are never offered.</GM21_Med_ModeCureDesc>
+  <GM21_Med_ModeReconstruct>Reconstruct</GM21_Med_ModeReconstruct>
+  <GM21_Med_ModeReconstructDesc>Target a living patient and restore one missing natural body part. A part already replaced by a bionic, prosthetic or implant is never offered. A Grandmaster can rebuild their own body only with enough working hands.</GM21_Med_ModeReconstructDesc>
+  <GM21_Med_ModeResuscitate>Resuscitate</GM21_Med_ModeResuscitate>
+  <GM21_Med_ModeResuscitateDesc>Target a medically viable corpse and bring the pawn back to life where it lies. The brain must be intact and the body still biologically recoverable when the work begins: an unpreserved body decays past that in about four hours, a refrigerated one lasts longer, and a frozen one keeps. The revived pawn stays in resuscitation shock, unconscious, for six hours. Destroyed vital organs are rebuilt only as far as life requires; lost limbs stay lost. Wounds are preserved and stabilised, and the worst of the death trauma leaves permanent scars. A hostile pawn stays hostile.</GM21_Med_ModeResuscitateDesc>
+
+  <!-- {0} medicine potency budget, {1} work time for this Grandmaster -->
+  <GM21_Med_ModeCost>Needs {0} medicine potency (one industrial medicine is 1, herbal 0.6, glitterworld 1.6; stacks combine) and about {1} of this Grandmaster's work. The patient's medical care setting limits which medicine is used.</GM21_Med_ModeCost>
+
+  <!-- Menu entries. {0} condition, {1} body part -->
+  <GM21_Med_CureOption>Cure {0}</GM21_Med_CureOption>
+  <GM21_Med_CureOptionPart>Cure {0} ({1})</GM21_Med_CureOptionPart>
+  <!-- {0} body part -->
+  <GM21_Med_ReconstructOption>Reconstruct {0}</GM21_Med_ReconstructOption>
+
+  <!-- Rejections. {0} pawn or thing -->
+  <GM21_Med_NotPractising>{0} cannot practise Grandmaster medicine right now (needs consciousness and manipulation).</GM21_Med_NotPractising>
+  <GM21_Med_NoPatient>No valid patient.</GM21_Med_NoPatient>
+  <GM21_Med_NotMedicalPatient>{0} is not a medical patient.</GM21_Med_NotMedicalPatient>
+  <GM21_Med_NotOurPatient>{0} is not under the colony's care. Only colony members, prisoners of the colony, or downed pawns can be treated.</GM21_Med_NotOurPatient>
+  <GM21_Med_CannotReach>Cannot reach {0}.</GM21_Med_CannotReach>
+  <GM21_Med_Reserved>{0} is already being attended to.</GM21_Med_Reserved>
+  <GM21_Med_NoCureCandidates>{0} has no condition Grandmaster Cure can safely address. Wounds are treated by ordinary tending; missing parts by Reconstruct.</GM21_Med_NoCureCandidates>
+  <GM21_Med_NoReconstructCandidates>{0} has no missing natural anatomy that can be reconstructed.</GM21_Med_NoReconstructCandidates>
+  <!-- {0} doctor, {1} required manipulation -->
+  <GM21_Med_SelfReconstructHands>{0} needs at least {1} manipulation to reconstruct their own body.</GM21_Med_SelfReconstructHands>
+  <!-- {0} potency needed, {1} potency available -->
+  <GM21_Med_NotEnoughMedicine>Not enough permitted medicine: this intervention needs {0} medicine potency, {1} available. Check the patient's medical care setting and forbidden medicine.</GM21_Med_NotEnoughMedicine>
+  <!-- {0} max stacks -->
+  <GM21_Med_MedicineTooScattered>The medicine for this is spread over more than {0} stacks. Gather it into fewer stacks first.</GM21_Med_MedicineTooScattered>
+  <GM21_Med_ConditionGone>The condition is no longer present.</GM21_Med_ConditionGone>
+  <!-- {0} condition -->
+  <GM21_Med_NoLongerCurable>{0} is no longer a condition Grandmaster Cure can address.</GM21_Med_NoLongerCurable>
+  <GM21_Med_NoLongerReconstructable>The body part can no longer be safely reconstructed.</GM21_Med_NoLongerReconstructable>
+  <!-- {0} doctor, {1} reason -->
+  <GM21_Med_InterventionStopped>{0} stopped the intervention: {1}</GM21_Med_InterventionStopped>
+
+  <!-- Resuscitation viability -->
+  <GM21_Med_ResNotCorpse>Not a corpse.</GM21_Med_ResNotCorpse>
+  <GM21_Med_ResUnavailable>This body cannot be reached for resuscitation.</GM21_Med_ResUnavailable>
+  <GM21_Med_ResNotFlesh>Only flesh bodies can be resuscitated.</GM21_Med_ResNotFlesh>
+  <GM21_Med_ResSupernatural>This is not a medical death.</GM21_Med_ResSupernatural>
+  <GM21_Med_ResBrain>Brain destroyed. What carried the mind is gone, and cannot be rebuilt.</GM21_Med_ResBrain>
+  <GM21_Med_ResVital>Vital anatomy destroyed beyond what a minimal reconstruction can safely rebuild.</GM21_Med_ResVital>
+  <GM21_Med_ResDeteriorated>The body is rotting. Nothing recoverable is left.</GM21_Med_ResDeteriorated>
+  <GM21_Med_ResDecayed>The body has deteriorated beyond recoverable limits.</GM21_Med_ResDecayed>
+  <GM21_Med_ResFailed>Resuscitation could not be completed.</GM21_Med_ResFailed>
+  <!-- {0} pawn -->
+  <GM21_Med_ResHostileWarning>{0} will remain hostile after resuscitation.\n\nThe Grandmaster saves the life; nothing makes the patient grateful. Revived here, they will go straight back to fighting the colony.\n\nResuscitate anyway?</GM21_Med_ResHostileWarning>
+
+  <!-- Results. {0} doctor, {1} patient, {2} condition or body part -->
+  <GM21_Med_Cured>{0} has cured {1}'s {2}.</GM21_Med_Cured>
+  <GM21_Med_Reconstructed>{0} has reconstructed {1}'s {2}.</GM21_Med_Reconstructed>
+  <!-- {0} doctor, {1} patient -->
+  <GM21_Med_Resuscitated>{0} has resuscitated {1}.</GM21_Med_Resuscitated>
+  <!-- {0} rebuilt body parts -->
+  <GM21_Med_ResRebuilt>Rebuilt so that life was possible again: {0}.</GM21_Med_ResRebuilt>
+  <!-- {0} permanent scars -->
+  <GM21_Med_ResScars>Lasting trauma: {0}.</GM21_Med_ResScars>
+  <!-- {0} patient, {1} shock duration -->
+  <GM21_Med_ResShock>{0} is in resuscitation shock and will wake in {1}.</GM21_Med_ResShock>
+  <!-- {0} medicine consumed, e.g. "industrial medicine x1" -->
+  <GM21_Med_MedicineUsed>Medicine used: {0}.</GM21_Med_MedicineUsed>
+
+  <!-- Condition tooltip while a Grandmaster Treatment is active. {0} quality, {1} multiplier -->
+  <GM21_Med_TreatmentRecovery>Grandmaster Treatment ({0}): this injury recovers x{1} faster</GM21_Med_TreatmentRecovery>
+  <GM21_Med_TreatmentImmunity>Grandmaster Treatment ({0}): immunity to this disease develops x{1} faster</GM21_Med_TreatmentImmunity>
+  <!-- {0} quality -->
+  <GM21_Med_TreatmentOnly>Grandmaster Treatment ({0})</GM21_Med_TreatmentOnly>
+
+</LanguageData>

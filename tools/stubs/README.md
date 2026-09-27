@@ -27,3 +27,13 @@ they cannot mask a signature mismatch in the members the mod actually calls.
 Every signature in `RimMelee.cs` was taken from the real 1.6 assembly's metadata and is
 independently re-checked against the shipped game by `Tests/VerifyRuntimeTargets.cs`, which is what
 actually closes the "the stub could be wrong" gap.
+
+## `SteamworksShim.cs` — a different kind of shim
+
+Not part of the stub build. `tools/verify-medicine.sh` compiles it into its throwaway test
+directory as `com.rlabrecque.steamworks.net.dll` so that vanilla `Verse.ParseHelper` can initialise
+headless: its static constructor registers a parser for `Steamworks.PublishedFileId_t`, and every
+Scribe **load** goes through `ParseHelper`. It contains that one struct and its constructor — the only
+member `ParseHelper` touches — and is only ever used alongside the REAL game assemblies. Steamworks.NET
+itself ships with the game launcher, not in `Managed/`. It is never shipped and never referenced by
+the mod.

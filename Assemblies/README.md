@@ -65,8 +65,19 @@ policy, real API signatures/ingredient selection, XML and save-writing. It does 
 game or verify reload, hauling, needs, output placement or item transfers. See
 [Transcendent craftsmanship](../Docs/MagicalCrafting.md) for results and the remaining runtime gate.
 
+For Medicine 21, after building the mod:
+
+```bash
+./tools/verify-medicine.sh /path/to/Managed /path/to/0Harmony.dll /path/to/Mono.Cecil.dll [/path/to/RimWorld/Data]
+```
+
+It installs the real Medicine patches on the real vanilla methods and executes them, round-trips
+state through the real Scribe saver and loader, and — given the game's `Data/` directory — audits the
+Cure, tier and surgery rules against every vanilla Def. It does not launch the game. See
+[Medicine 21](../Docs/Medicine21.md#13-tests).
+
 ## No RimWorld install?
 
 `./tools/build-stubs.sh` compile-checks the older source groups and runs their offline logic suites
-against reference stubs. It excludes `Source/Transcendent` and does **not** validate Transcendent
-craftsmanship or produce a usable assembly — see `tools/stubs/README.md`.
+against reference stubs. It excludes `Source/Transcendent` and `Source/Medicine` and does **not**
+validate Transcendent craftsmanship or Medicine 21, or produce a usable assembly — see `tools/stubs/README.md`.
