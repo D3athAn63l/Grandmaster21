@@ -13,6 +13,19 @@ namespace Grandmaster21
     /// </summary>
     public static class Gm21DebugActions
     {
+        [DebugAction("Grandmaster 21", "Force one Insight (first level-20 skill)",
+            actionType = DebugActionType.ToolMapForPawns, allowedGameStates = AllowedGameStates.PlayingOnMap)]
+        private static void ForceOneInsight(Pawn p)
+        {
+            if (p?.skills == null || !Patch_SkillRecord_LearnRateFactor.Applied) return;
+            foreach (SkillRecord rec in p.skills.skills)
+            {
+                if (rec.levelInt != Gm21.VanillaMaxLevel || rec.TotallyDisabled) continue;
+                Gm21AspirantLearning.ForceOneInsight(rec);
+                return;
+            }
+        }
+
         [DebugAction("Grandmaster 21", "Grant Grandmaster XP (full requirement)",
             actionType = DebugActionType.ToolMapForPawns, allowedGameStates = AllowedGameStates.PlayingOnMap)]
         private static void GrantFullGrandmasterXp(Pawn p)

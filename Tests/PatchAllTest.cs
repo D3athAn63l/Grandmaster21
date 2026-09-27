@@ -281,6 +281,7 @@ class PatchAllTest
             "Steamworks",                  // launcher-side assembly
             "ExtractStackTraceNoAlloc",    // Unity player internal call
             "Internal_Log",                // Unity player internal call
+            "UnityEngine.ResourcesAPIInternal.Load", // shader loading requires the Unity player
             "Verse.UnityData"              // cctor that logs, so it needs the player
         })
         {

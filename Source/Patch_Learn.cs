@@ -35,8 +35,9 @@ namespace Grandmaster21
         ///
         /// The XP we bank is the *effective* XP, obtained by calling vanilla's own public
         /// LearnRateFactor -- so passion, GlobalLearningFactor, AnimalsLearningFactor, implants,
-        /// genes, traits and daily learning saturation all keep applying exactly as they do for
-        /// normal levelling. We are not inventing a counter; we are banking real earned XP.
+        /// genes, traits and modded modifiers keep applying. Aspirant support scopes that resolved
+        /// query to bypass ONLY vanilla daily saturation, then may bank an XP-weighted Insight.
+        /// Vanilla's own learning/counters run outside that scope and are unchanged.
         ///
         /// Evaluation order matches vanilla: LearnRateFactor is read before xpSinceMidnight is
         /// updated, so the saturation state we see is the same one vanilla sees.
@@ -76,11 +77,7 @@ namespace Grandmaster21
 
             if (level == Gm21.VanillaMaxLevel && xp > 0f && !__instance.TotallyDisabled)
             {
-                float effective = ignoreLearnRate ? xp : xp * __instance.LearnRateFactor(direct);
-                if (effective > 0f)
-                {
-                    GrandmasterStore.Add(__instance, effective);
-                }
+                Gm21AspirantLearning.Capture(__instance, xp, direct, ignoreLearnRate);
             }
 
             return true;

@@ -102,4 +102,5 @@
   <!-- {0} skills demoted, {1} skill records cleared, {2} pawns processed, {3} capstone state entries cleared -->
   <GM21_Uninstall_DoneBody>Grandmaster skill cleanup complete.\n\n  -  Grandmaster skills reduced to level 20: {0}\n  -  Skill records with Grandmaster progress cleared: {1}\n  -  Pawns processed: {2}\n  -  Medicine 21 state cleared (treatments, modes, resuscitation shock, interventions in progress): {3}\n\nTranscendent workstations, catalysts and artifact metadata were not removed by this action. Remove any remaining crafting objects before disabling the mod.\n\nSave the game now, exit RimWorld, then disable Grandmaster 21.\n\nThe game has NOT been saved automatically, so you can write to a new save slot if you prefer.</GM21_Uninstall_DoneBody>
 
+  <GM21_GrandmasterInsight>{0} has achieved a Grandmaster Insight in {1}! +{2} Grandmaster XP.</GM21_GrandmasterInsight>
 </LanguageData>

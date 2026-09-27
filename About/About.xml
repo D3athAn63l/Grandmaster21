@@ -2,7 +2,7 @@
 <ModMetaData>
   <packageId>ared.grandmaster21</packageId>
   <name>Grandmaster 21</name>
-  <modVersion>0.12.0 Beta</modVersion>
+  <modVersion>0.13.0 Beta</modVersion>
   <author>aRed</author>
   <supportedVersions>
     <li>1.6</li>
@@ -23,6 +23,8 @@
 Level 21 can never be randomly generated. No colonist, raider, trader, refugee, quest pawn, ancient, faction leader or modded super-soldier will ever spawn with it, no matter how many implants, genes, traits or backstory bonuses they have. It must be earned by accumulating an enormous amount of additional experience after a pawn has already reached level 20 - one billion XP by default, configurable in Mod Settings.
 
 Level 21 is the absolute maximum. Level 22 cannot occur.
+
+At learned level 20, daily learning saturation no longer throttles Grandmaster XP. Continued training can produce a Grandmaster Insight, granting a massive burst of progress. If the skill decays below 20, support pauses but banked Grandmaster XP remains.
 
 Newly generated pawns are capped at level 20 unconditionally - there is no setting that relaxes this.
 
