@@ -48,6 +48,11 @@ namespace Verse
         public IntRange(int min, int max) { this.min = min; this.max = max; }
     }
     public class RecipeDef : Def { public RimWorld.SkillDef workSkill; }
+    public static class GenRecipe
+    {
+        // Real 1.6 adds (Precept_ThingStyle, ThingStyleDef, int?) after worker; the mod binds by name.
+        private static Thing PostProcessProduct(Thing product, RecipeDef recipeDef, Pawn worker) { return product; }
+    }
 
     public class Thing
     {
@@ -61,7 +66,7 @@ namespace Verse
         public readonly Dictionary<RimWorld.StatDef, float> statsStub = new Dictionary<RimWorld.StatDef, float>();
         public virtual void PreApplyDamage(ref DamageInfo dinfo, out bool absorbed) { absorbed = false; }
     }
-    public class ThingWithComps : Thing { }
+    public class ThingWithComps : Thing { public RimWorld.CompQuality compQuality; }
     public class ThingDef : Def
     {
         public bool IsRangedWeapon; public bool IsMeleeWeapon; public bool IsWeapon;
@@ -401,6 +406,7 @@ namespace RimWorld
     {
         public static SkillDef Shooting = new SkillDef { defName = "Shooting" };
         public static SkillDef Melee = new SkillDef { defName = "Melee" };
+        public static SkillDef Crafting = new SkillDef { defName = "Crafting" };
     }
 
     public class PawnCapacityDef : Def { }
@@ -477,11 +483,13 @@ namespace RimWorld
     }
 
     public enum QualityCategory : byte { Awful, Poor, Normal, Good, Excellent, Masterwork, Legendary }
+    public class CompQuality { public QualityCategory qualityStub; public QualityCategory Quality { get { return qualityStub; } } }
 
     public static class QualityUtility
     {
         public static QualityCategory GenerateQualityCreatedByPawn(int relevantSkillLevel, bool inspired) { return QualityCategory.Normal; }
         public static QualityCategory GenerateQualityCreatedByPawn(Pawn pawn, SkillDef relevantSkill, bool forcedInspired = false) { return QualityCategory.Normal; }
+        public static void SendCraftNotification(Thing thing, Pawn worker) { }
     }
 
     public static class SkillUI

@@ -76,6 +76,17 @@ state through the real Scribe saver and loader, and — given the game's `Data/`
 Cure, tier and surgery rules against every vanilla Def. It does not launch the game. See
 [Medicine 21](../Docs/Medicine21.md#13-tests).
 
+For the Crafting Grandmaster Legendary letter setting, after building the mod:
+
+```bash
+./tools/verify-crafting-notification.sh /path/to/Managed /path/to/0Harmony.dll /path/to/Mono.Cecil.dll
+```
+
+It re-derives the vanilla letter path from the real IL, installs the real patches, executes vanilla
+`GenRecipe.PostProcessProduct` and `QualityUtility.SendCraftNotification`, and round-trips the setting
+through the real mod-settings reader and writer. See
+[the owner check](../Docs/Crafting21LegendaryLetterTest.md).
+
 ## No RimWorld install?
 
 `./tools/build-stubs.sh` compile-checks the older source groups and runs their offline logic suites

@@ -15,6 +15,12 @@ namespace Grandmaster21
         public bool deterministicQuality = true;
         public bool showGrandmasterProgress = true;
 
+        /// <summary>
+        /// Show vanilla's "Legendary Work" letter for a stored Crafting Grandmaster's crafted product.
+        /// Off hides only that letter; see <see cref="Patch_CraftingLegendaryNotification"/>.
+        /// </summary>
+        public bool showCraftingGrandmasterLegendaryNotifications = true;
+
         // NOTE: two former settings are gone, and neither is coming back.
         //   "grandmasterPreventsDecay" -- level 21 never decays; it is an achieved state.
         //   "clampGeneratedPawns"      -- generated pawns are capped at 20, unconditionally.
@@ -30,6 +36,8 @@ namespace Grandmaster21
             Scribe_Values.Look(ref grandmasterXpRequirement, "grandmasterXpRequirement", DefaultRequirement);
             Scribe_Values.Look(ref deterministicQuality, "deterministicQuality", true);
             Scribe_Values.Look(ref showGrandmasterProgress, "showGrandmasterProgress", true);
+            Scribe_Values.Look(ref showCraftingGrandmasterLegendaryNotifications,
+                "showCraftingGrandmasterLegendaryNotifications", true);
 
             if (Scribe.mode == LoadSaveMode.PostLoadInit)
             {
@@ -100,6 +108,10 @@ namespace Grandmaster21
 
             list.CheckboxLabeled("GM21_Setting_DeterministicQuality".Translate(),
                 ref Settings.deterministicQuality, "GM21_Setting_DeterministicQualityDesc".Translate());
+
+            list.CheckboxLabeled("GM21_Setting_CraftingLegendaryLetters".Translate(),
+                ref Settings.showCraftingGrandmasterLegendaryNotifications,
+                "GM21_Setting_CraftingLegendaryLettersDesc".Translate());
 
             list.CheckboxLabeled("GM21_Setting_ShowProgress".Translate(),
                 ref Settings.showGrandmasterProgress, "GM21_Setting_ShowProgressDesc".Translate());
