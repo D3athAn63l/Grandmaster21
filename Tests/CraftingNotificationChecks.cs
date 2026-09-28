@@ -28,8 +28,9 @@
 //
 // Stand-ins for OTHER mods (test fixtures, clearly named "OtherMod*"): a quality postfix that runs
 // after GM21's and forces Legendary for one pawn (the only way a non-Grandmaster can reach
-// Legendary with GM21 installed) or Masterwork for another, and a Thing.PostQualitySet postfix that
-// performs extra calls in the middle of a craft.
+// Legendary with GM21 installed) or Masterwork for another, a Thing.PostQualitySet postfix that
+// performs extra calls in the middle of a craft, and (section 7b only) prefixes and a postfix on
+// SendCraftNotification at several priorities.
 //
 // NOT covered: a running map, the settings window itself, jobs, Frame.CompleteConstruction and the
 // cube sculpture driver executing end to end (their IL is audited in section 1 and their call
@@ -43,6 +44,7 @@ using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.Serialization;
+using System.Threading;
 using System.Xml.Linq;
 using Grandmaster21;
 using HarmonyLib;
@@ -459,6 +461,23 @@ internal static class CraftingNotificationChecks
         Check("the finalizer is void: it cannot swallow an exception thrown inside the craft",
               AccessTools.Method(typeof(Patch_CraftingLegendaryNotification), "Finalizer_PostProcessProduct").ReturnType == typeof(void));
 
+        HarmonyLib.Patch suppress = notify.Prefixes.Single(p => p.owner == Gm21Id);
+        Check("the SendCraftNotification suppression prefix is registered at Priority.Last (Harmony's own patch info)",
+              suppress.priority == Priority.Last && suppress.PatchMethod.Name == "Prefix_SendCraftNotification", "priority=" + suppress.priority);
+        List<string> reordered = new List<string>();
+        foreach (MethodBase m in Harmony.GetAllPatchedMethods())
+        {
+            Patches info = Harmony.GetPatchInfo(m);
+            foreach (HarmonyLib.Patch p in info.Prefixes.Concat(info.Postfixes).Concat(info.Transpilers).Concat(info.Finalizers))
+                if (p.owner == Gm21Id && p.PatchMethod != suppress.PatchMethod && p.priority != Priority.Normal)
+                    reordered.Add(m.DeclaringType.Name + "." + m.Name + ":" + p.PatchMethod.Name + "=" + p.priority);
+        }
+        Check("every other GM21 patch here keeps Harmony's default priority (PostProcessProduct frame, quality, level)",
+              reordered.Count == 0, reordered.Count == 0 ? "all Normal" : string.Join(", ", reordered.ToArray()));
+        FieldInfo frame = typeof(Patch_CraftingLegendaryNotification).GetField("current", BindingFlags.NonPublic | BindingFlags.Static);
+        Check("the in-flight crafting frame field carries [ThreadStatic]",
+              frame != null && frame.FieldType == typeof(Gm21CraftingFrame) && frame.IsDefined(typeof(ThreadStaticAttribute), false));
+
         List<string> gmPatched = Harmony.GetAllPatchedMethods().Where(m => Harmony.GetPatchInfo(m).Owners.Contains(Gm21Id))
             .Select(m => m.DeclaringType.Name + "." + m.Name).OrderBy(s => s).ToList();
         Check("every method GM21 patched in this process is a quality/level patch or one of the two notification targets",
@@ -677,6 +696,19 @@ internal static class CraftingNotificationChecks
         List<string> afterThrow = Announce(doomed, gm);
         Check("  ...and the frame was closed: the same item announced later is not suppressed", Only(afterThrow, Legendary), Show1(afterThrow));
 
+        ThingWithComps local = Product();
+        bool onCraftingThread = false, onOtherThread = true;
+        otherModDuringCraft = delegate
+        {
+            onCraftingThread = Patch_CraftingLegendaryNotification.ShouldSuppress(local, gm);
+            Thread other = new Thread(() => onOtherThread = Patch_CraftingLegendaryNotification.ShouldSuppress(local, gm));
+            other.Start();
+            other.Join();
+        };
+        Craft(local, gladius, gm);
+        Check("the frame is thread-local: mid-craft, this product matches on the crafting thread and not on another thread",
+              onCraftingThread && !onOtherThread, "crafting thread " + onCraftingThread + ", other thread " + onOtherThread);
+
         Gm21Settings saved2 = Gm21Mod.Settings;
         Gm21Mod.Settings = null;
         bool noSettings = Patch_CraftingLegendaryNotification.ShouldSuppress(product, gm);
@@ -684,6 +716,63 @@ internal static class CraftingNotificationChecks
         Check("no settings object -> never suppress", !noSettings);
         Check("null thing / null worker -> never suppress",
               !Patch_CraftingLegendaryNotification.ShouldSuppress(null, gm) && !Patch_CraftingLegendaryNotification.ShouldSuppress(product, null));
+    }
+
+    // ------------------------------------------------------------------ 7b. Harmony ordering
+
+    static readonly List<string> otherModCalls = new List<string>();
+    public static bool OtherModBoolPrefix() { otherModCalls.Add("bool prefix"); return true; }
+    public static void OtherModVoidPrefix() { otherModCalls.Add("void prefix"); }
+    public static bool OtherModLateBoolPrefix() { otherModCalls.Add("late bool prefix"); return true; }
+    public static void OtherModLateVoidPrefix() { otherModCalls.Add("late void prefix"); }
+    public static void OtherModPostfix() { otherModCalls.Add("postfix"); }
+
+    static void HarmonyOrdering()
+    {
+        Console.WriteLine("\n=== 7b. Harmony ordering: other mods' patches on the real SendCraftNotification (Crafting Grandmaster) ===");
+        const string OtherId = "othermod.test";
+        Harmony other = new Harmony(OtherId);
+        HarmonyMethod voidPrefix = Stub("OtherModVoidPrefix");
+        voidPrefix.priority = Priority.Low;
+        HarmonyMethod lateBool = Stub("OtherModLateBoolPrefix");
+        lateBool.priority = Priority.Last;
+        lateBool.after = new[] { Gm21Id };
+        HarmonyMethod lateVoid = Stub("OtherModLateVoidPrefix");
+        lateVoid.priority = Priority.Last;
+        lateVoid.after = new[] { Gm21Id };
+        other.Patch(Notify, Stub("OtherModBoolPrefix"));   // default (Normal) priority
+        other.Patch(Notify, voidPrefix);
+        other.Patch(Notify, lateBool);
+        other.Patch(Notify, lateVoid);
+        other.Patch(Notify, null, Stub("OtherModPostfix"));
+
+        Pawn gm = MakePawn("Grandmaster", 21);
+        RecipeDef gladius = Recipe("TestMakeGladius", crafting);
+
+        Show = false;
+        otherModCalls.Clear();
+        List<string> off = Craft(Product(), gladius, gm);
+        string offCalls = string.Join(" > ", otherModCalls.ToArray());
+        Check("OFF: the letter is still suppressed with other mods' patches present", off.Count == 0, Show1(off));
+        Check("  ...prefixes at ordinary priorities (Normal bool, Low void) run first, in order", otherModCalls.Count >= 2
+              && otherModCalls[0] == "bool prefix" && otherModCalls[1] == "void prefix", offCalls);
+        Check("  ...a void prefix ordered after GM21, and the postfix, still run",
+              otherModCalls.Contains("late void prefix") && otherModCalls.Contains("postfix"), offCalls);
+        Check("  ...a bool prefix explicitly ordered after GM21 is skipped (the documented caveat)",
+              !otherModCalls.Contains("late bool prefix"), offCalls);
+
+        Show = true;
+        otherModCalls.Clear();
+        List<string> on = Craft(Product(), gladius, gm);
+        string onCalls = string.Join(" > ", otherModCalls.ToArray());
+        Check("ON: the letter is sent and every one of them runs, GM21's decision coming after the ordinary prefixes",
+              Only(on, Legendary) && onCalls == "bool prefix > void prefix > late bool prefix > late void prefix > postfix", onCalls);
+
+        Show = false;
+        other.UnpatchAll(OtherId);
+        Patches after = Harmony.GetPatchInfo(Notify);
+        Check("stand-ins removed; GM21's prefix is untouched", !after.Owners.Contains(OtherId)
+              && after.Prefixes.Count(p => p.owner == Gm21Id && p.priority == Priority.Last) == 1);
     }
 
     // ------------------------------------------------------------------ 8. quality untouched
@@ -740,6 +829,7 @@ internal static class CraftingNotificationChecks
             NotGrandmaster();
             OtherSkills();
             Isolation();
+            HarmonyOrdering();
             QualityUntouched();
         }
         catch (Exception e) { Console.WriteLine("FAIL  unhandled: " + e); fail++; }

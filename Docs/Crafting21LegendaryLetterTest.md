@@ -42,7 +42,11 @@ required.
   and the worker's stored (not aptitude-adjusted) Crafting is 21. `LetterStack` is never patched.
 * Automated coverage: `tools/verify-crafting-notification.sh` (see `Assemblies/README.md`).
 
-**Compatibility.** Another mod that replaces vanilla's call to `SendCraftNotification` inside
-`GenRecipe.PostProcessProduct`, or sends its own Legendary letter, is not affected by this setting.
-If either patch target ever fails to resolve, the setting does nothing, vanilla letters stay, and
-one warning is logged.
+**Compatibility (best effort).** GM21 runs its suppression prefix at Harmony `Priority.Last`, so
+other mods' prefixes normally receive the call first. When it suppresses, it returns `false` to skip
+vanilla's `SendCraftNotification` body. A bool-returning prefix that is still ordered after GM21 (for
+example another `Priority.Last`, or an explicit `after` constraint) is then skipped too. With the
+tested Harmony 2.4.1, void prefixes, postfixes and finalizers still run. No compatibility is claimed
+with a mod that replaces this notification path, or that sends its own Legendary letter. If either
+patch target ever fails to resolve, the setting does nothing, vanilla letters stay, and one warning
+is logged.

@@ -47,8 +47,14 @@ namespace Grandmaster21
     ///     Legendary (every Masterwork letter is left alone);
     ///   * the worker is a legitimate stored Crafting Grandmaster, Gm21.IsGrandmaster(worker,
     ///     Crafting) -- levelInt, never the aptitude-adjusted level.
-    /// Any other case runs vanilla. Other mods' prefixes and postfixes on SendCraftNotification
-    /// still run either way; only the vanilla letter is skipped.
+    /// Any other case runs vanilla.
+    ///
+    /// HARMONY COMPATIBILITY (best effort, not a guarantee): suppression works by the prefix
+    /// returning false, which skips vanilla's SendCraftNotification body. The prefix is registered at
+    /// Priority.Last so other mods' prefixes normally receive the call first. A bool-returning prefix
+    /// ordered after GM21 anyway (another Priority.Last, or an explicit after/before constraint) is
+    /// skipped when GM21 suppresses; with Harmony 2.4.1, void prefixes, postfixes and finalizers still
+    /// run. No compatibility is claimed with a mod that replaces this notification path.
     ///
     /// FAIL-SAFE: if either target no longer resolves, nothing suppresses, vanilla letters are shown,
     /// and one warning is logged. No save data, no ticks, no per-pawn or per-item state.
@@ -58,6 +64,12 @@ namespace Grandmaster21
         /// <summary>True once both the crafting frame and the notification prefix are installed.</summary>
         public static bool Applied { get; private set; }
 
+        /// <summary>
+        /// Scoped call context, like the shot and melee contexts: thread-local so a craft or
+        /// announcement on another thread can never read or clobber this one. Vanilla crafting runs on
+        /// the main thread; this costs nothing there.
+        /// </summary>
+        [ThreadStatic]
         private static Gm21CraftingFrame current;
 
         /// <summary>Called from Gm21Startup after PatchAll, like the bill ceiling bridge.</summary>
@@ -77,7 +89,11 @@ namespace Grandmaster21
                 // Frame first: a notification prefix with no frame to match never suppresses anything.
                 harmony.Patch(craft, Hook(nameof(Prefix_PostProcessProduct)), null, null,
                     Hook(nameof(Finalizer_PostProcessProduct)));
-                harmony.Patch(notify, Hook(nameof(Prefix_SendCraftNotification)), null, null, null);
+                // Last, so other prefixes normally see the call before GM21 decides whether vanilla's
+                // body (the letter) runs. Only this prefix is reordered.
+                HarmonyMethod suppress = Hook(nameof(Prefix_SendCraftNotification));
+                suppress.priority = Priority.Last;
+                harmony.Patch(notify, suppress, null, null, null);
                 Applied = true;
             }
             catch (Exception e)
