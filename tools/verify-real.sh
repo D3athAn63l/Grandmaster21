@@ -35,36 +35,38 @@ HARMONY="${2:?usage: verify-real.sh <Managed dir> <0Harmony.dll>}"
 [ -f "Assemblies/Grandmaster21.dll" ] || { echo "build first: ./build.sh $MANAGED $HARMONY" >&2; exit 1; }
 
 OUT="$(mktemp -d)"
-FACADE=/usr/lib/mono/4.5/Facades/netstandard.dll
+FACADE="${FRAMEWORK_REFS:-/usr/lib/mono/4.5}/Facades/netstandard.dll"
+COMPILER="${CSC:-mcs}"
+RUNNER="${RUNNER:-mono}"
 # sort -V, not plain sort: a lexical sort puts 0.9.5.0 AFTER 0.11.0.0 and picks the ancient
 # Cecil, whose ReaderParameters has no ReadWrite/InMemory and fails to compile the IL checker.
-CECIL="$(find /usr/lib/mono/gac/Mono.Cecil -name 'Mono.Cecil.dll' | sort -V | tail -1)"
+CECIL="${CECIL_DLL:-$(find /usr/lib/mono/gac/Mono.Cecil -name 'Mono.Cecil.dll' 2>/dev/null | sort -V | tail -1)}"
 cp "$MANAGED"/*.dll "$HARMONY" Assemblies/Grandmaster21.dll "$OUT/"
 [ -n "$CECIL" ] && cp "$CECIL" "$OUT/"
 
 REFS="-r:$FACADE -r:$OUT/Assembly-CSharp.dll -r:$OUT/UnityEngine.dll -r:$OUT/UnityEngine.CoreModule.dll -r:$OUT/UnityEngine.IMGUIModule.dll -r:$OUT/0Harmony.dll -r:$OUT/Grandmaster21.dll"
 
 echo "=== 1. Runtime targets and Harmony parameter names ==="
-mcs -out:"$OUT/verify.exe" $REFS Tests/VerifyRuntimeTargets.cs
-( cd "$OUT" && mono verify.exe )
+"$COMPILER" -out:"$OUT/verify.exe" $REFS Tests/VerifyRuntimeTargets.cs
+( cd "$OUT" && "$RUNNER" verify.exe )
 
 if [ -n "$CECIL" ]; then
   echo; echo "=== 2. Learn transpiler IL pattern ==="
-  mcs -out:"$OUT/vt.exe" -r:"$OUT/Mono.Cecil.dll" Tests/VerifyTranspiler.cs
-  ( cd "$OUT" && mono vt.exe Assembly-CSharp.dll )
+  "$COMPILER" -out:"$OUT/vt.exe" -r:"$OUT/Mono.Cecil.dll" Tests/VerifyTranspiler.cs
+  ( cd "$OUT" && "$RUNNER" vt.exe Assembly-CSharp.dll )
 else
   echo "=== 2. Learn transpiler IL pattern: SKIPPED (Mono.Cecil not installed) ==="
 fi
 
 echo; echo "=== 3. Live Harmony patching against real RimWorld methods ==="
-mcs -out:"$OUT/patchall.exe" $REFS Tests/PatchAllTest.cs
-( cd "$OUT" && mono patchall.exe Grandmaster21.dll 2>&1 \
+"$COMPILER" -out:"$OUT/patchall.exe" $REFS Tests/PatchAllTest.cs
+( cd "$OUT" && "$RUNNER" patchall.exe Grandmaster21.dll 2>&1 \
     | grep -vE 'out of sync|update one from git|the other too|Do not report this|you probably have|If you see other|and you need to fix|Your mono runtime|The out of sync|cant resolve internal call|^$' )
 
 echo; echo "=== 4. Harmony finalizer semantics (no exception suppression) ==="
-mcs -out:"$OUT/fin.exe" $REFS Tests/VerifyFinalizerSemantics.cs
-( cd "$OUT" && mono fin.exe )
+"$COMPILER" -out:"$OUT/fin.exe" $REFS Tests/VerifyFinalizerSemantics.cs
+( cd "$OUT" && "$RUNNER" fin.exe )
 
 echo; echo "=== 5. Progression suite against the real SkillRecord ==="
-mcs -out:"$OUT/harness.exe" $REFS Tests/Harness.cs
-( cd "$OUT" && mono harness.exe )
+"$COMPILER" -out:"$OUT/harness.exe" $REFS Tests/Harness.cs
+( cd "$OUT" && "$RUNNER" harness.exe )

@@ -32,6 +32,7 @@ namespace Verse
 
     public static class Log
     {
+        public static void ErrorOnce(string s, int key) { Error(s); }
         public static void Message(string s) { Console.WriteLine("[msg] " + s); }
         public static void Warning(string s) { Console.WriteLine("[warn] " + s); }
         public static void WarningOnce(string s, int key) { Console.WriteLine("[warn1] " + s); }
@@ -50,6 +51,7 @@ namespace Verse
 
     public class Thing
     {
+        public int thingIDNumber;
         public ThingDef def; public bool Destroyed;
         public IntVec3 Position; public Map Map; public bool Spawned;
         public Faction Faction;
@@ -304,6 +306,9 @@ namespace Verse
     /// </summary>
     public static class Rand
     {
+        // Signature-only: RNG isolation is tested with the real Verse.Rand in AspirantChecks.
+        public static void PushState() { }
+        public static void PopState() { }
         private static Random rng = new Random(1);
         public static void SeedStub(int seed) { rng = new Random(seed); }
         public static float? ForcedValueStub;
@@ -429,6 +434,8 @@ namespace RimWorld
         public SkillDef def;
         public int levelInt;
         public float xpSinceLastLevel;
+        public float xpSinceMidnight;
+        public bool LearningSaturatedToday { get { return xpSinceMidnight > 4000f; } }
         // --- test hooks: additive fields that do not exist in RimWorld. They only back the
         //     properties below, whose SIGNATURES match the real API exactly. ---
         public Pawn pawnStub;

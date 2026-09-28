@@ -2,7 +2,9 @@
 
 **RimWorld 1.6** — skills normally end at 20. This mod adds exactly one more level: **21, Grandmaster**.
 
-**Version 0.12.0 Beta.** Crafting 21 now includes Magical, Mythical and Divine progression. The original Magical
+**Version 0.13.0 Beta.** Level-20 aspirants now bank GM XP without the daily saturation penalty
+and can gain occasional Grandmaster Insights. This support has automated real-DLL coverage;
+in-game playtesting is pending. Crafting 21 now includes Magical, Mythical and Divine progression. The original Magical
 foundation has passed real gameplay, including active-work save/reload and completion. This
 continuation adds catalyst manufacturing and weapon phenomena; these additions still need
 in-game playtesting. This version also adds the experimental **Medicine 21 — Grandmaster
@@ -28,16 +30,20 @@ gameplay. The only supported way to turn a Grandmaster back into a level-20 pawn
 A pawn must first reach level 20 normally. From then on, every point of XP they earn in that
 skill is banked toward Grandmaster — **1,000,000,000 XP** by default, configurable in Mod Settings.
 
-The banked XP is *real earned XP*, not a counter incremented per action. It is the same effective
-value vanilla would have applied, obtained by calling RimWorld's own `LearnRateFactor`, so
-passion, `GlobalLearningFactor`, `AnimalsLearningFactor`, implants, genes, traits and the daily
-learning-saturation penalty all continue to matter exactly as they normally do.
+Reaching **learned level 20** removes the ordinary daily learning ceiling for the pursuit of
+Grandmastery. GM XP still reflects passion and other learning modifiers, but daily saturation
+no longer throttles this bank. Ordinary learning counters and the saturation display stay vanilla.
+Aptitude alone cannot qualify a skill.
 
-When the threshold is met, the skill is promoted 20 → 21.
+Continued mastery can occasionally produce a **Grandmaster Insight**, granting a massive burst
+of Grandmaster XP. Player colonists receive a small positive notification. When ordinary XP and
+any Insight bonus reach the configured threshold, the existing system promotes the skill to 21.
 
-To get a feel for the default: a pawn earning the maximum full-rate 4,000 XP per day with a burning
-passion needs on the order of **many in-game centuries**. It is meant to be close to unreachable
-without deliberate, long-term investment. Lower it in Mod Settings if you want it achievable.
+Level 20 still decays normally. Dropping to 19 pauses aspirant support and retains the saved bank;
+returning to learned level 20 resumes it. Skills below 20 and Grandmaster capstones are unchanged.
+
+See [aspirant implementation and verification](Docs/Developer/AspirantLearning.md) for formulas,
+automated results and the focused in-game checklist.
 
 ### Keeping Grandmaster
 
@@ -52,7 +58,7 @@ immune to every ordinary way a skill level can fall:
 | `skill.Level = 22` (or higher) | Ignored; stays 21 |
 | Negative aptitude from a gene, trait or hediff | Stored level unchanged; still displays 21 |
 
-Skills at **level 20 and below are untouched** and decay exactly as in vanilla.
+Skills at **level 20 and below decay exactly as in vanilla**.
 
 There is no setting for this. The earlier "Grandmaster skills never decay" toggle has been removed:
 permanence is now part of what level 21 means.
@@ -1606,6 +1612,11 @@ hand-written approximations. Only a real build does that. See `tools/stubs/READM
 ---
 
 ## Release status
+
+**0.13.0 Beta.** Level-20 aspirant support builds cleanly and passes its 91-check real-DLL
+suite. Gameplay remains untested. See the [current verification results and runtime
+checklist](Docs/Developer/AspirantLearning.md#automated-verification-2026-09-27). Existing
+capstone runtime status below is unchanged.
 
 **0.12.0 Beta.** Medicine 21 builds against the real RimWorld 1.6/Unity/Harmony assemblies with
 zero warnings/errors. After the second design pass (tend-quality propagation, medicine cost, work
