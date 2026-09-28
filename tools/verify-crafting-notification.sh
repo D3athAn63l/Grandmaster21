@@ -21,6 +21,12 @@ OUT="$(mktemp -d)"
 trap 'rm -rf "$OUT"' EXIT
 cp "$MANAGED"/*.dll "$OUT/"
 cp "$HARMONY" "$CECIL" Assemblies/Grandmaster21.dll "$OUT/"
+# Frame loads three rendering assets before Harmony can bind it outside Unity. This temporary
+# fixture omits ONLY that graphics initializer, verifies every other method body unchanged, and
+# keeps the pristine DLL for the IL audit. No prepared game DLL is shipped.
+"$COMPILER" -out:"$OUT/prepare.exe" -r:"$OUT/Mono.Cecil.dll" Tests/PrepareConstructionFixture.cs
+mv "$OUT/Assembly-CSharp.dll" "$OUT/Assembly-CSharp.pristine.dll"
+"$RUNNER" "$OUT/prepare.exe" "$OUT/Assembly-CSharp.pristine.dll" "$OUT/Assembly-CSharp.dll"
 # Test-only: lets vanilla ParseHelper initialise so the real settings reader can run. See the shim's header.
 [ -f "$OUT/com.rlabrecque.steamworks.net.dll" ] || \
   "$COMPILER" -nologo -target:library -out:"$OUT/com.rlabrecque.steamworks.net.dll" tools/stubs/SteamworksShim.cs
@@ -28,5 +34,5 @@ cp "$HARMONY" "$CECIL" Assemblies/Grandmaster21.dll "$OUT/"
   -r:"$FRAMEWORK/mscorlib.dll" -r:"$FRAMEWORK/System.dll" -r:"$FRAMEWORK/System.Core.dll" \
   -r:"$FRAMEWORK/System.Xml.dll" -r:"$FRAMEWORK/System.Xml.Linq.dll" -r:"$FRAMEWORK/Facades/netstandard.dll" \
   -r:"$OUT/Assembly-CSharp.dll" -r:"$OUT/UnityEngine.CoreModule.dll" -r:"$OUT/0Harmony.dll" \
-  -r:"$OUT/Mono.Cecil.dll" -r:"$OUT/Grandmaster21.dll" Tests/CraftingNotificationChecks.cs
-( cd "$OUT" && "$RUNNER" crafting-notification.exe Grandmaster21.dll Assembly-CSharp.dll "$OUT" "$OLDPWD" )
+  -r:"$OUT/Mono.Cecil.dll" -r:"$OUT/Grandmaster21.dll" Tests/CraftingNotificationChecks.cs Tests/ConstructionNotificationChecks.cs
+( cd "$OUT" && "$RUNNER" crafting-notification.exe Grandmaster21.dll Assembly-CSharp.pristine.dll "$OUT" "$OLDPWD" )

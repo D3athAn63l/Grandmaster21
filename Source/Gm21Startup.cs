@@ -21,6 +21,8 @@ namespace Grandmaster21
             Patch_BillSkillCeiling.Apply(harmony);
             // Mod setting: optionally skip vanilla's Legendary letter for a Crafting Grandmaster's product.
             Patch_CraftingLegendaryNotification.Apply(harmony);
+            // Independent Construction control: only the Frame completion call, no shared context.
+            Patch_ConstructionLegendaryNotification.Apply(harmony);
 
             Log.Message("[Grandmaster 21] " + Gm21Version.Full
                         + "  |  shooting: passive=" + Gm21Shooting.PassiveBonusesEnabled

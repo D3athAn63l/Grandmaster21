@@ -36,6 +36,9 @@
 // cube sculpture driver executing end to end (their IL is audited in section 1 and their call
 // sequence emulated in section 6). See Docs/Crafting21LegendaryLetterTest.md.
 //
+// Construction coverage adds a temporary loader fixture omitting only Frame's three rendering
+// asset loads; every other game method body is checked unchanged, and Audit reads the pristine DLL.
+//
 //   mono CraftingNotificationChecks.exe <Grandmaster21.dll> <Assembly-CSharp.dll> <scratch dir> <repo root>
 using System;
 using System.Collections.Generic;
@@ -55,7 +58,7 @@ using Verse;
 using OpCodes = System.Reflection.Emit.OpCodes;
 using Code = Mono.Cecil.Cil.Code;
 
-internal static class CraftingNotificationChecks
+internal static partial class CraftingNotificationChecks
 {
     const string Gm21Id = "ared.grandmaster21";
     static int pass, fail, nextId = 7000;
@@ -354,8 +357,9 @@ internal static class CraftingNotificationChecks
                 IsCall(i, "RimWorld.QualityUtility", "SendCraftNotification") || IsCall(i, "Verse.GenRecipe", "PostProcessProduct")
                 || IsCall(i, "Verse.LetterStack", "ReceiveLetter")))
             .Select(m => m.DeclaringType.Name + "::" + m.Name).ToList();
-        Check("no Grandmaster 21 code (Transcendent included) calls SendCraftNotification, PostProcessProduct or ReceiveLetter",
-              modLetterCallers.Count == 0, modLetterCallers.Count == 0 ? "none" : string.Join(", ", modLetterCallers.ToArray()));
+        Check("only the Construction notification wrapper calls SendCraftNotification; no other notification pipeline callers",
+              modLetterCallers.SequenceEqual(new[] { "Patch_ConstructionLegendaryNotification::SendConstructionNotification" }),
+              string.Join(", ", modLetterCallers.ToArray()));
 
         int receiveCallers = all.Count(m => m.Body.Instructions.Any(i => IsCall(i, "Verse.LetterStack", "ReceiveLetter")));
         Check("LetterStack.ReceiveLetter is a global chokepoint (why it is NOT patched)", receiveCallers > 100, receiveCallers + " calling methods");
@@ -411,7 +415,7 @@ internal static class CraftingNotificationChecks
         Check("the setting is a ModSettings field only: Gm21Settings has no other new state",
               typeof(Gm21Settings).GetFields(BindingFlags.Public | BindingFlags.Instance).Select(f => f.Name).OrderBy(s => s)
                   .SequenceEqual(new[] { "deterministicQuality", "grandmasterXpRequirement", "requirementBuffer",
-                                         "showCraftingGrandmasterLegendaryNotifications", "showGrandmasterProgress" }));
+                                         "showConstructionGrandmasterLegendaryNotifications", "showCraftingGrandmasterLegendaryNotifications", "showGrandmasterProgress" }));
     }
 
     static void SettingsUi(string root, string modPath)
@@ -431,8 +435,8 @@ internal static class CraftingNotificationChecks
               det >= 0 && det < mine && mine < progress && keys.Contains("GM21_Setting_CraftingLegendaryLettersDesc"));
         Check("every settings key the page draws is shipped", keys.Where(k => k.StartsWith("GM21_", StringComparison.Ordinal))
               .All(k => keyed.Element(k) != null));
-        Check("the page has three checkboxes: the two existing ones plus this one",
-              draw.Body.Instructions.Count(i => IsCall(i, "Verse.Listing_Standard", "CheckboxLabeled")) == 3);
+        Check("the page has four checkboxes: deterministic quality, both independent notification settings, and progress",
+              draw.Body.Instructions.Count(i => IsCall(i, "Verse.Listing_Standard", "CheckboxLabeled")) == 4);
     }
 
     // ------------------------------------------------------------------ 3. installation
@@ -831,6 +835,9 @@ internal static class CraftingNotificationChecks
             Isolation();
             HarmonyOrdering();
             QualityUntouched();
+            ConstructionAuditAndInstall(acsPath, modPath);
+            ConstructionSettings(scratch, root, modPath);
+            ConstructionBehavior();
         }
         catch (Exception e) { Console.WriteLine("FAIL  unhandled: " + e); fail++; }
         Console.WriteLine("\nNOT RUN HERE (needs the Unity player and a loaded game): the settings window, a real bill job,"

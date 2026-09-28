@@ -4,7 +4,14 @@ Mod Settings → **Crafting Grandmaster Legendary notifications** (default **on*
 "Legendary Work" letter for items a stored Crafting 21 Grandmaster makes with the Crafting skill.
 Nothing else changes: the item is still Legendary, and every other letter and message is untouched.
 
-## Runtime checklist
+## Runtime result (owner, 2026-09-28)
+
+**PASS in a real modded game:** Crafting 21 with the setting ON produces Legendary work and a
+Legendary Work letter; OFF produces Legendary work without the letter. The Construction extension
+leaves this implementation unchanged, so a full repeat of this checklist is not requested.
+See the [focused Construction checklist](Construction21LegendaryLetterTest.md).
+
+## Original Crafting runtime checklist (reference)
 
 Use Dev Mode. `Grandmaster 21 → Promote all level 20 skills to Grandmaster` promotes a pawn's
 level-20 skills; vanilla's dev skill setter puts a skill at 20 first.

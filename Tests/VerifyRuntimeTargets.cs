@@ -594,6 +594,13 @@ static class VerifyRuntimeTargets
            && AccessTools.Method(typeof(Patch_CraftingLegendaryNotification), "Finalizer_PostProcessProduct").ReturnType == typeof(void)
            && AccessTools.Method(typeof(Patch_CraftingLegendaryNotification), "Prefix_SendCraftNotification").ReturnType == typeof(bool));
 
+        MethodInfo complete = AccessTools.Method(typeof(Frame), "CompleteConstruction", new[] { typeof(Pawn) });
+        Ok("Frame.CompleteConstruction(Pawn) resolves as instance void", complete != null && !complete.IsStatic && complete.ReturnType == typeof(void));
+        MethodInfo constructionNotify = AccessTools.Method(typeof(Patch_ConstructionLegendaryNotification), "SendConstructionNotification");
+        Ok("Construction wrapper matches static void(Thing, Pawn)", constructionNotify != null && constructionNotify.IsStatic
+           && constructionNotify.ReturnType == typeof(void) && constructionNotify.GetParameters().Select(p => p.ParameterType)
+               .SequenceEqual(new[] { typeof(Thing), typeof(Pawn) }));
+
         Console.WriteLine("\n================================");
         Console.WriteLine("PASS: " + pass + "   FAIL: " + fail + "   SKIP: " + skipped);
         Environment.Exit(fail == 0 ? 0 : 1);

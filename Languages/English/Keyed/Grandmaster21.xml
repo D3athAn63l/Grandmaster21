@@ -82,6 +82,9 @@
   <GM21_Setting_CraftingLegendaryLetters>Crafting Grandmaster Legendary notifications</GM21_Setting_CraftingLegendaryLetters>
   <GM21_Setting_CraftingLegendaryLettersDesc>Show the normal "Legendary Work" letter when a Crafting Grandmaster produces Legendary work.\nTurning this off hides only that letter, and only for items made with the Crafting skill by a pawn whose learned Crafting level is 21. The item is still Legendary. Legendary letters for other pawns, art, construction and every other letter or message are unchanged.</GM21_Setting_CraftingLegendaryLettersDesc>
 
+  <GM21_Setting_ConstructionLegendaryLetters>Construction Grandmaster Legendary notifications</GM21_Setting_ConstructionLegendaryLetters>
+  <GM21_Setting_ConstructionLegendaryLettersDesc>Show the normal "Legendary Work" letter when a pawn whose learned Construction level is 21 completes a Legendary building through normal frame construction.\nTurning this off hides only that letter. The building remains Legendary. Masterwork letters, Crafting recipes, art, cube sculptures and unrelated notifications are unchanged.</GM21_Setting_ConstructionLegendaryLettersDesc>
+
   <GM21_Setting_ShowProgress>Show Grandmaster progress</GM21_Setting_ShowProgress>
   <GM21_Setting_ShowProgressDesc>Adds Grandmaster progress to the skill tooltip and a star beside a Grandmaster skill.</GM21_Setting_ShowProgressDesc>
 

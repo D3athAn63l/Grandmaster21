@@ -219,6 +219,17 @@ class PatchAllTest
                     throw new InvalidOperationException("Patch_CraftingLegendaryNotification: the crafting frame and notification prefix were not both installed");
             });
 
+        Type constructionLetters = modAsm.GetType("Grandmaster21.Patch_ConstructionLegendaryNotification");
+        Bind("Frame.CompleteConstruction [notification call transpiler]", ref okCount, ref failCount, ref blockedCount,
+            () =>
+            {
+                // Surface the actual missing-Unity exception before Apply's graceful warning.
+                System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(Frame).TypeHandle);
+                constructionLetters.GetMethod("Apply").Invoke(null, new object[] { harmony });
+                if (!(bool)AccessTools.Property(constructionLetters, "Applied").GetValue(null, null))
+                    throw new InvalidOperationException("Construction notification call was not redirected");
+            });
+
         Console.WriteLine("\n=== Transpiler ===");
         // Gm21.LearnPatchApplied is the authoritative flag: Gm21.Promote is gated on it, so false
         // here means no Grandmaster could be created this session.

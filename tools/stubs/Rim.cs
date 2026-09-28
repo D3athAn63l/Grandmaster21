@@ -406,6 +406,7 @@ namespace RimWorld
     {
         public static SkillDef Shooting = new SkillDef { defName = "Shooting" };
         public static SkillDef Melee = new SkillDef { defName = "Melee" };
+        public static SkillDef Construction = new SkillDef { defName = "Construction" };
         public static SkillDef Crafting = new SkillDef { defName = "Crafting" };
     }
 
@@ -483,7 +484,9 @@ namespace RimWorld
     }
 
     public enum QualityCategory : byte { Awful, Poor, Normal, Good, Excellent, Masterwork, Legendary }
-    public class CompQuality { public QualityCategory qualityStub; public QualityCategory Quality { get { return qualityStub; } } }
+    public class Frame { public void CompleteConstruction(Verse.Pawn worker) { } }
+    public enum ArtGenerationContext { Colony }
+    public class CompQuality { public void SetQuality(QualityCategory quality, ArtGenerationContext? context) { qualityStub = quality; } public QualityCategory qualityStub; public QualityCategory Quality { get { return qualityStub; } } }
 
     public static class QualityUtility
     {

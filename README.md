@@ -136,7 +136,8 @@ Legendary weapon — they just can't *make* one.
 | Grandmaster XP requirement | 1,000,000,000 | Range 1,000 – 1,000,000,000,000. Invalid input is clamped; NaN resets to default. |
 | Deterministic quality | On | Off restores vanilla's random roll for levels 0–20, capped at Masterwork. Level 21 is Legendary either way. |
 | Show Grandmaster progress | On | Tooltip progress line plus a ★ beside a Grandmaster skill. |
-| Crafting Grandmaster Legendary notifications | On | Off hides vanilla's "Legendary Work" letter for a Crafting Grandmaster's crafted items only. The item is still Legendary; every other letter is unchanged. |
+| Crafting Grandmaster Legendary notifications | On | Controls vanilla Legendary Work letters from Crafting 21 recipe work. Quality is unchanged. |
+| Construction Grandmaster Legendary notifications | On | Independently controls vanilla Legendary Work letters from Construction 21 completed buildings. Quality and Masterwork letters are unchanged; cube sculptures remain vanilla. |
 
 Two things are deliberately **not** settings, because both would switch off a defining rule:
 
