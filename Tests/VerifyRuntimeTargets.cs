@@ -569,6 +569,38 @@ static class VerifyRuntimeTargets
            && AccessTools.Method(typeof(Patch_BillSkillCeiling), "UpperBoundFor").GetParameters().Select(p => p.ParameterType)
                   .SequenceEqual(new[] { typeof(int), typeof(Bill), typeof(Pawn) }));
 
+        Console.WriteLine("\n=== Core: Crafting Grandmaster Legendary letter setting (Patch_CraftingLegendaryNotification) ===");
+        MethodInfo craft = AccessTools.Method(typeof(GenRecipe), "PostProcessProduct");
+        Ok("GenRecipe.PostProcessProduct resolves by name, static, returns Thing (the crafting frame's target)",
+           craft != null && craft.IsStatic && craft.ReturnType == typeof(Thing), Params(craft));
+        Ok("  ...leading (Thing, RecipeDef, Pawn) parameters, the shape Apply requires",
+           craft != null && craft.GetParameters().Length >= 3 && craft.GetParameters()[0].ParameterType == typeof(Thing)
+           && craft.GetParameters()[1].ParameterType == typeof(RecipeDef) && craft.GetParameters()[2].ParameterType == typeof(Pawn));
+        NeedParam("GenRecipe.PostProcessProduct", craft, "product");
+        NeedParam("GenRecipe.PostProcessProduct", craft, "recipeDef");
+        NeedParam("GenRecipe.PostProcessProduct", craft, "worker");
+        MethodInfo notify = AccessTools.Method(typeof(QualityUtility), "SendCraftNotification", new[] { typeof(Thing), typeof(Pawn) });
+        Ok("QualityUtility.SendCraftNotification(Thing, Pawn) resolves, static void", notify != null && notify.IsStatic
+           && notify.ReturnType == typeof(void), Params(notify));
+        NeedParam("QualityUtility.SendCraftNotification", notify, "thing");
+        NeedParam("QualityUtility.SendCraftNotification", notify, "worker");
+        Ok("ThingWithComps.compQuality is a public CompQuality field (what vanilla's letter branch reads)",
+           typeof(ThingWithComps).GetField("compQuality") != null
+           && typeof(ThingWithComps).GetField("compQuality").FieldType == typeof(CompQuality));
+        Ok("CompQuality.Quality and SkillDefOf.Crafting exist",
+           AccessTools.PropertyGetter(typeof(CompQuality), "Quality") != null && typeof(SkillDefOf).GetField("Crafting") != null);
+        Ok("Patch_CraftingLegendaryNotification hooks: prefix + void finalizer, prefix returning bool",
+           AccessTools.Method(typeof(Patch_CraftingLegendaryNotification), "Prefix_PostProcessProduct") != null
+           && AccessTools.Method(typeof(Patch_CraftingLegendaryNotification), "Finalizer_PostProcessProduct").ReturnType == typeof(void)
+           && AccessTools.Method(typeof(Patch_CraftingLegendaryNotification), "Prefix_SendCraftNotification").ReturnType == typeof(bool));
+
+        MethodInfo complete = AccessTools.Method(typeof(Frame), "CompleteConstruction", new[] { typeof(Pawn) });
+        Ok("Frame.CompleteConstruction(Pawn) resolves as instance void", complete != null && !complete.IsStatic && complete.ReturnType == typeof(void));
+        MethodInfo constructionNotify = AccessTools.Method(typeof(Patch_ConstructionLegendaryNotification), "SendConstructionNotification");
+        Ok("Construction wrapper matches static void(Thing, Pawn)", constructionNotify != null && constructionNotify.IsStatic
+           && constructionNotify.ReturnType == typeof(void) && constructionNotify.GetParameters().Select(p => p.ParameterType)
+               .SequenceEqual(new[] { typeof(Thing), typeof(Pawn) }));
+
         Console.WriteLine("\n================================");
         Console.WriteLine("PASS: " + pass + "   FAIL: " + fail + "   SKIP: " + skipped);
         Environment.Exit(fail == 0 ? 0 : 1);

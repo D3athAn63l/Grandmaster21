@@ -79,6 +79,12 @@
   <GM21_Setting_DeterministicQuality>Deterministic quality</GM21_Setting_DeterministicQuality>
   <GM21_Setting_DeterministicQualityDesc>Pawn-created quality is decided by skill band instead of a random roll:\n0-3 Awful, 4-7 Poor, 8-10 Normal, 11-13 Good, 14-16 Excellent, 17-20 Masterwork, 21 Legendary.\nTurning this off restores vanilla's random roll for levels 0-20, capped at Masterwork. Level 21 always produces Legendary either way.</GM21_Setting_DeterministicQualityDesc>
 
+  <GM21_Setting_CraftingLegendaryLetters>Crafting Grandmaster Legendary notifications</GM21_Setting_CraftingLegendaryLetters>
+  <GM21_Setting_CraftingLegendaryLettersDesc>Show the normal "Legendary Work" letter when a Crafting Grandmaster produces Legendary work.\nTurning this off hides only that letter, and only for items made with the Crafting skill by a pawn whose learned Crafting level is 21. The item is still Legendary. Legendary letters for other pawns, art, construction and every other letter or message are unchanged.</GM21_Setting_CraftingLegendaryLettersDesc>
+
+  <GM21_Setting_ConstructionLegendaryLetters>Construction Grandmaster Legendary notifications</GM21_Setting_ConstructionLegendaryLetters>
+  <GM21_Setting_ConstructionLegendaryLettersDesc>Show the normal "Legendary Work" letter when a pawn whose learned Construction level is 21 completes a Legendary building through normal frame construction.\nTurning this off hides only that letter. The building remains Legendary. Masterwork letters, Crafting recipes, art, cube sculptures and unrelated notifications are unchanged.</GM21_Setting_ConstructionLegendaryLettersDesc>
+
   <GM21_Setting_ShowProgress>Show Grandmaster progress</GM21_Setting_ShowProgress>
   <GM21_Setting_ShowProgressDesc>Adds Grandmaster progress to the skill tooltip and a star beside a Grandmaster skill.</GM21_Setting_ShowProgressDesc>
 

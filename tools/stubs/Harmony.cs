@@ -12,7 +12,8 @@ namespace HarmonyLib
         public MethodInfo Patch(MethodBase original, HarmonyMethod prefix = null, HarmonyMethod postfix = null,
             HarmonyMethod transpiler = null, HarmonyMethod finalizer = null) { return null; }
     }
-    public class HarmonyMethod { public HarmonyMethod(MethodInfo m) { } }
+    public class HarmonyMethod { public int priority = -1; public HarmonyMethod(MethodInfo m) { } }
+    public static class Priority { public const int Last = 0; public const int Low = 200; public const int Normal = 400; public const int High = 600; public const int First = 800; }
 
     [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, AllowMultiple = true)]
     public class HarmonyPatch : Attribute

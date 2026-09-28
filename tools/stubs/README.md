@@ -19,7 +19,7 @@ fail at runtime. Anything built against these stubs must never be shipped as `As
 
 A few members carry extra `*Stub` fields (`SkillRecord.aptitudeStub`, `BodyPartRecord.healthStub`,
 `Thing.statsStub`, `PawnCapacitiesHandler.levelsStub`, `Pawn_MeleeVerbs.attacksStub`,
-`Projectile.TicksToImpactStub`, `Rand.ForcedValueStub`, `Translator.KnownKeys`,
+`Projectile.TicksToImpactStub`, `Rand.ForcedValueStub`, `CompQuality.qualityStub`, `Translator.KnownKeys`,
 `DefDatabase<T>.Registry`) that do not exist in RimWorld. They exist only so tests can set up state
 the real game would build from XML, pawn generation and its own RNG. They are purely additive, so
 they cannot mask a signature mismatch in the members the mod actually calls.
