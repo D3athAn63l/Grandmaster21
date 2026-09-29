@@ -4,8 +4,9 @@ A Melee Grandmaster cannot outrun light. They do not need to. By reading the sho
 weapon alignment and firing line before emission, they place their weapon at the moment of
 discharge. The reflected flash overloads optics or senses; it does **not** reflect damage.
 
-**One attack, one defensive decision.** Success stops the attack and attempts a short counter-stun.
-Failure leaves the beam's damage, fire and burst behavior vanilla, without another attempt.
+**One attack, one defensive attempt.** Success stops the attack and attempts a short counter-stun.
+Failure leaves the beam's damage, fire and burst behavior vanilla, without another attempt. The
+attempt begins only when an eligible Guardian actually rolls: *no Guardian, no attempt.*
 
 ## Rules and tuning
 
@@ -20,10 +21,12 @@ Failure leaves the beam's damage, fire and burst behavior vanilla, without anoth
   Fixed difficulty 1 models prediction and weapon placement. With ordinary capacities, a 3 kg melee
   weapon gives 60%; a 3 kg ranged implement gives about 45.2%. Better capacities improve the chance;
   nonfinite quality fails open. These are initial tuning values, not gameplay-validated balance.
-- Only a positive, health-harming beam contact on a living pawn can consume the decision. The **first
-  such pawn contact** consumes it even if no Guardian is available. No later target or newly arrived
-  Guardian can fish for another roll in that burst. Objects/empty cells before this contact remain
-  vanilla; previously resolved effects are not undone.
+- Only a positive, health-harming beam contact on a living pawn can start the attempt, and only when
+  it has an eligible Guardian. **The first damaging contact that has an eligible Guardian consumes the
+  beam attack's single defensive attempt.** Contacts with no eligible Guardian proceed normally and do
+  not spend the attempt. **Once a Guardian actually rolls, success or failure is final for that beam
+  attack**: no later target, Guardian or contact can fish for another roll in that burst. This is one
+  roll per attack, never one per protected pawn. Previously resolved effects are not undone.
 - Successful defence blocks the current contact and all remaining contacts in that attack, including
   neighbour cells and ground fire at the defended contact. It is not timed beam immunity.
 - Counter-stun target is **120 ticks** before normal immunity/resistance/definition adjustments.
@@ -85,7 +88,7 @@ The Projectile Defence flag and patches are not changed.
 | ShootBeam `WarmupComplete` prefix + finalizer | Creates a fresh Attack object in a `ConditionalWeakTable<Verb, Attack>`; removes it on setup failure/completion. |
 | Verb `TryCastNextBurstShot` prefix + finalizer | Opens/restores a thread-local linked scope for that verb and attack; removes the entry on completion or exception. Non-beam verbs allocate no scope. |
 | Verb `TryCastNextBurstShot` transpiler | Requires exactly one call to virtual `TryCastShot`, then passes its bool result through `ShotResult`. Only a defended beam converts true to false. Other verbs retain their exact result. |
-| ShootBeam `ApplyDamage` prefix | Resolves the first relevant contact and one roll before any original damage/attached fire. Evaluated is set **before** Guardian resolution, RNG or counter-effects. Defended contacts skip the original method. |
+| ShootBeam `ApplyDamage` prefix | Selects a Guardian for each relevant contact until one exists, then makes the attack's one roll before any original damage/attached fire. Evaluated is set **after** a Guardian is selected and **before** the RNG and every counter-effect; a contact with no eligible Guardian leaves it unset. Defended contacts skip the original method. |
 | ShootBeam `HitCell` prefix + transpiler | Skips subsequent hit cells after success; after the unique ApplyDamage call, returns before ground fire if the attack was defended. |
 | Verb `Reset` prefix + finalizer | Captures and removes the current entry on external interruption. |
 
@@ -93,13 +96,38 @@ The unique attack identity is the **Attack object created by one WarmupComplete*
 weapon, tick number or damage event. Both successful and failed decisions survive repeated contacts.
 Weak keys cannot retain unused verbs; values contain only outcome flags. Scopes restore in finalizers.
 Removal checks reference identity, so an older completion cannot delete an attack started reentrantly
-by a completion callback, even on the same verb. Exceptions during a failed selection consume the
-decision and fail open. Stun/FX exceptions cannot undo an already successful defence.
+by a completion callback, even on the same verb. An exception while selecting a Guardian spends nothing
+and fails open for that contact; an exception in the roll, after a Guardian was selected, has spent the
+attempt and fails open without retry. Stun/FX exceptions cannot undo an already successful defence.
 
 No entry is created opportunistically inside ApplyDamage. A loaded mid-burst verb with no transient
 entry proceeds vanilla until its next new WarmupComplete; it never gains a retry by loading a save.
 No serialization is added. Natural completion and Reset release the state; weak ownership is the
 backstop for abandoned verbs.
+
+### Attempt consumption
+
+| Contact / event | Attempt spent? | Result |
+|---|---|---|
+| Unprotected pawn, object, empty cell, harmless beam, zero damage | No | Vanilla |
+| Protected pawn, but no eligible Guardian (cannot act, unarmed, outside radius, sealed route) | No | Vanilla |
+| An eligible Guardian is selected | **Yes, immediately**, before the roll and every effect | One roll |
+| Roll succeeds | Spent | Defended; remaining contacts blocked; burst ends |
+| Roll fails | Spent | Vanilla; no later roll in this attack |
+| Guardian selection throws | No | That contact vanilla; warned once (see below) |
+| The roll itself throws | Yes | Vanilla; no retry |
+
+An unprotected contact that comes first therefore cannot deprive a protected pawn hit later in the same
+attack of its one legitimate roll, and a failed real roll can never be re-rolled by a later victim or
+Guardian. The commitment is made after selection succeeds and **before** `Rand.Chance`, the stun, the
+feedback or any other callback, so nothing those trigger can re-enter beam damage for another roll.
+
+**Selection failure.** An exception while looking for a Guardian happens before any attempt exists. It
+is logged once, that contact proceeds vanilla, and the attempt is *not* spent. This cannot fish: no RNG
+ran, the roll still requires a later successful selection, and once that selection commits the attack is
+final. A transient `Selecting` flag on the Attack, cleared in a finally block, makes contacts provoked
+from inside selection itself (for example by a foreign patch on a stat, hostility or route call)
+proceed vanilla, so selection cannot recurse or resolve a roll that the outer call would repeat.
 
 ### Interruption, stun and visuals
 
@@ -137,14 +165,20 @@ Run:
 ./tools/verify-beam-parry.sh "$GM21_MANAGED" "$GM21_HARMONY" "$CECIL_DLL" [RimWorld/Data]
 ```
 
-**110 PASS, 0 FAIL; one XML binding check BLOCKED (Data absent).** Includes real IL inspection and
+**195 PASS, 0 FAIL; one XML binding check BLOCKED (Data absent).** Includes real IL inspection and
 actual production Harmony installation on pristine game methods. The harness executes real beam
 WarmupComplete, Next, TryCastShot, HitCell, ApplyDamage, Reset, VerbTick and the normal stun
 notification/StunFor path. It verifies success, failure, one roll, exact unchanged failure damage
 and fire, no reflected damage, subsequent tick suppression, fresh casts, immune attackers,
 self/Guardian defence, accidental versus deliberate friendly fire, harmless beams, incapacitation,
-aptitude/stored skill, radius/routes, multiple Guardians, nested verbs, same-verb completion
-callbacks, exceptions, loaded mid-burst behavior and isolated rollback on changed IL.
+aptitude/stored skill, radius/routes, multiple Guardians (best chance selected, one roll), nested
+verbs, same-verb completion callbacks, exceptions, loaded mid-burst behavior and isolated rollback on
+changed IL. Attempt consumption is covered end to end: unprotected or unreachable-Guardian contacts
+first then a protected contact (one roll), final failed and final successful attempts, selection and
+roll exceptions, and beam contacts provoked from inside selection, the roll, the stun and the feedback.
+Each rule was mutation-checked: restoring the old commit-before-selection order, dropping the
+selection guard, committing after the RNG, letting a selection exception spend the attempt, and never
+committing each make specific checks fail.
 
 Headless shims provide map/grid contents, capacities, equipment stats, deterministic RNG, beam path
 geometry, visual/log services and damage recording. The real Thing.TakeDamage boundary is recorded,

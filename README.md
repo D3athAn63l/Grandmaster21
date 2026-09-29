@@ -683,12 +683,14 @@ at once is how colonists get stuck. Every *physical constraint* is still enforce
 A Melee Grandmaster cannot outrun light. They do not need to. They read the shooter's firing
 line and place their weapon before emission: **they move before the light is fired**.
 
-At the first damaging pawn contact, an eligible armed Grandmaster can defend themselves or a
-protected ally within the existing three-tile Guardian radius. The best eligible Guardian gets
-**one attempt for the entire beam burst**. Success blocks that contact and remaining beam hits,
-ends the current attack, and attempts about two seconds of normal stun on the attacker. Stun
-immunity does not defeat the parry. A failed attempt leaves damage unchanged and cannot reroll
-later in that burst. Accidental friendly fire can be stopped without counter-stunning its shooter.
+At the first damaging pawn contact that has an eligible Guardian, an armed Grandmaster can defend
+themselves or a protected ally within the existing three-tile Guardian radius. The best eligible
+Guardian gets **one attempt for the entire beam burst**. Contacts with no eligible Guardian proceed
+normally and do not spend it; once a Guardian actually rolls, success or failure is final for that
+burst. Success blocks that contact and remaining beam hits, ends the current attack, and attempts
+about two seconds of normal stun on the attacker. Stun immunity does not defeat the parry. A failed
+attempt leaves damage unchanged and cannot reroll later in that burst. Accidental friendly fire can
+be stopped without counter-stunning its shooter.
 
 Chance uses Precision × Consciousness × implement suitability, opposed by a fixed difficulty;
 there is no beam-speed calculation. There is no reflected damage or fabricated projectile.
@@ -1640,7 +1642,7 @@ hand-written approximations. Only a real build does that. See `tools/stubs/READM
 
 ## Release status
 
-**0.14.0 Beta.** Beam Parry passes 110 focused real-DLL checks, including actual beam damage and
+**0.14.0 Beta.** Beam Parry passes 195 focused real-DLL checks, including actual beam damage and
 burst completion, with the full existing regression suites green. No in-game Beam Parry testing
 has been performed. The supplied DLLs lack the game's Data XML, so `Gun_BeamGraser`'s definition
 binding remains unverified here; the verification script accepts an installed Data directory.

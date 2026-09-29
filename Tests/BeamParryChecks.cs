@@ -21,8 +21,14 @@ class BeamParryChecks
     static float damageTotal;
     static bool rollSuccess, immune, awake = true, capable = true, clearRoute = true, hostile = true;
     static float manipulation = 1f, consciousness = 1f;
-    static int aptitude, nextId=100;
-    static bool throwShot, throwStun, throwFeedback;
+    static int aptitude, nextId=100, selectionWarnings;
+    static float lastChance;
+    static bool throwShot, throwStun, throwFeedback, throwSelect, throwSelectAlways, throwRoll, reenterSelect;
+    static int burstCount=4;
+    static string reenterPhase;
+    static int reentries;
+    static Verb activeVerb;
+    static readonly Dictionary<Pawn, float> manipulationOf = new Dictionary<Pawn, float>();
     static readonly Type Logic = typeof(Gm21Melee).Assembly.GetType("Grandmaster21.Gm21BeamParry");
     static readonly Type Patches = typeof(Gm21Melee).Assembly.GetType("Grandmaster21.Gm21BeamParryPatches");
     static Map map;
@@ -42,12 +48,19 @@ class BeamParryChecks
     static void Getter(Harmony h, Type t, string n, string hook)
     { h.Patch(AccessTools.PropertyGetter(t,n), prefix:Hook(hook)); }
 
-    public static bool BurstCount(ref int __result) { __result=4; return false; }
+    // Simulates another patch that damages through the SAME beam from inside one phase of the decision.
+    static void Reenter(string phase)
+    {
+        if(reenterPhase!=phase || activeVerb==null || reentries>=6) return;
+        reentries++;
+        AccessTools.Method(typeof(Verb_ShootBeam),"ApplyDamage",new[]{typeof(Thing),typeof(IntVec3),typeof(float)}).Invoke(activeVerb,new object[]{victim,new IntVec3(10,0,10),1f});
+    }
+    public static bool BurstCount(ref int __result) { __result=burstCount; return false; }
     public static bool Angle(ref float __result) { __result=0f; return false; }
     public static bool Skip() { return false; }
     public static bool Yes(ref bool __result) { __result=true; return false; }
     public static bool No(ref bool __result) { __result=false; return false; }
-    public static bool LogText(string text) { Console.WriteLine("GAME " + text); return false; }
+    public static bool LogText(string text) { if(text.Contains("Beam Parry guardian selection")) selectionWarnings++; Console.WriteLine("GAME " + text); return false; }
     public static bool Spawned(ref bool __result) { __result=true; return false; }
     public static bool MapValue(ref Map __result) { __result=map; return false; }
     public static bool Position(Thing __instance, ref IntVec3 __result)
@@ -57,15 +70,28 @@ class BeamParryChecks
     public static bool Things(ref List<Thing> __result) { __result=contacts; return false; }
     public static bool Range(int minInclusive, ref int __result) { __result=minInclusive; return false; }
     public static bool Chance(float chance, ref bool __result)
-    { if(chance>0f && chance<1f) { rolls++; __result=rollSuccess; } else __result=chance>=1f; return false; }
+    { if(chance>0f && chance<1f) { rolls++; lastChance=chance; if(throwRoll) throw new InvalidOperationException("fixture roll failure"); Reenter("roll"); __result=rollSuccess; } else __result=chance>=1f; return false; }
     public static bool Awake(ref bool __result) { __result=awake; return false; }
     public static bool Capable(ref bool __result) { __result=capable; return false; }
-    public static bool Level(PawnCapacityDef capacity, ref float __result)
-    { __result=capacity==PawnCapacityDefOf.Manipulation ? manipulation : capacity==PawnCapacityDefOf.Consciousness ? consciousness : 1f; return false; }
+    public static bool Level(PawnCapacitiesHandler __instance, PawnCapacityDef capacity, ref float __result)
+    {
+        Pawn owner=(Pawn)AccessTools.Field(typeof(PawnCapacitiesHandler),"pawn").GetValue(__instance); float own;
+        __result=capacity==PawnCapacityDefOf.Manipulation ? (owner!=null && manipulationOf.TryGetValue(owner,out own) ? own : manipulation) : capacity==PawnCapacityDefOf.Consciousness ? consciousness : 1f; return false;
+    }
     public static bool Equip(ref ThingWithComps __result) { __result=weapon; return false; }
     public static bool Stat(StatDef stat, ref float __result) { __result=stat==StatDefOf.Mass ? 3f : 1f; return false; }
     public static bool Route(ref bool __result) { __result=clearRoute; return false; }
-    public static bool Hostile(Thing a, Thing b, ref bool __result) { __result=hostile && (a==attacker || b==attacker); return false; }
+    public static bool Hostile(Thing a, Thing b, ref bool __result)
+    {
+        if(throwSelect) { throwSelect=throwSelectAlways; throw new InvalidOperationException("fixture selection failure"); }
+        if(reenterSelect && activeVerb!=null && reentries<6 && !Flag(activeVerb,"Evaluated"))
+        {
+            // A foreign patch on a call made during Guardian selection that itself damages via the same beam.
+            reentries++;
+            AccessTools.Method(typeof(Verb_ShootBeam),"ApplyDamage",new[]{typeof(Thing),typeof(IntVec3),typeof(float)}).Invoke(activeVerb,new object[]{victim,new IntVec3(10,0,10),1f});
+        }
+        __result=hostile && (a==attacker || b==attacker); return false;
+    }
     public static bool Aptitude(ref int __result) { __result=aptitude; return false; }
     public static bool Vector(ref Vector3 __result) { __result=new Vector3(10f,0f,10f); return false; }
     public static bool Last(ref IntVec3 __result) { __result=IntVec3.Invalid; return false; }
@@ -79,9 +105,9 @@ class BeamParryChecks
     public static bool TakeDamage(Thing __instance, DamageInfo dinfo, ref DamageWorker.DamageResult __result)
     { damageCalls++; damageTotal+=dinfo.Amount; Check("damage recipient is victim, never attacker", __instance==victim); __result=new DamageWorker.DamageResult(); return false; }
     public static bool Fire(ref bool __result) { fires++; __result=true; return false; }
-    public static bool Text() { feedback++; if(throwFeedback) throw new InvalidOperationException("fixture feedback failure"); return false; }
+    public static bool Text() { feedback++; Reenter("feedback"); if(throwFeedback) throw new InvalidOperationException("fixture feedback failure"); return false; }
     public static bool Immunity(ref bool __result) { if(throwStun) throw new InvalidOperationException("fixture stun failure"); __result=!immune; return false; }
-    public static void StunAttempt(ref bool addBattleLog) { stuns++; addBattleLog=false; }
+    public static void StunAttempt(ref bool addBattleLog) { stuns++; addBattleLog=false; Reenter("stun"); }
     public static void ShotCount() { shots++; if(throwShot) throw new InvalidOperationException("fixture shot failure"); }
 
     // Avoid live pawn stance/rendering managers in the headless burst-completion path. The real
@@ -144,14 +170,15 @@ class BeamParryChecks
         var p=Empty<Pawn>(); p.thingIDNumber=nextId++; p.def=Empty<ThingDef>(); p.def.race=Empty<RaceProperties>();
         p.skills=Empty<Pawn_SkillTracker>(); p.skills.skills=new List<SkillRecord>{new SkillRecord{def=SkillDefOf.Melee,levelInt=level}};
         p.health=Empty<Pawn_HealthTracker>(); Set(p.health,"pawn",p); Set(p.health,"healthState",PawnHealthState.Mobile);
-        p.health.capacities=Empty<PawnCapacitiesHandler>(); p.equipment=Empty<Pawn_EquipmentTracker>();
+        p.health.capacities=Empty<PawnCapacitiesHandler>(); Set(p.health.capacities,"pawn",p); p.equipment=Empty<Pawn_EquipmentTracker>();
         p.stances=Empty<Pawn_StanceTracker>(); p.stances.stunner=new StunHandler(p);
         positions[p]=new IntVec3(x,0,10); Set(p,"positionInt",positions[p]); return p;
     }
     static FixtureBeam Setup(bool success, bool hasGuardian=true)
     {
         occupants.Clear(); contacts.Clear(); positions.Clear();
-        throwShot=throwStun=throwFeedback=false; awake=capable=clearRoute=hostile=true; manipulation=consciousness=1f; aptitude=0; immune=false;
+        throwShot=throwStun=throwFeedback=throwSelect=throwSelectAlways=throwRoll=reenterSelect=false; burstCount=4; reenterPhase=null; awake=capable=clearRoute=hostile=true; manipulation=consciousness=1f; aptitude=0; immune=false;
+        manipulationOf.Clear(); reentries=0; lastChance=0f; activeVerb=null;
         victim=Pawn(0,10); guardian=Pawn(21,11); attacker=Pawn(0,20);
         var faction=Empty<Faction>(); Set(victim,"factionInt",faction); Set(guardian,"factionInt",faction);
         if(hasGuardian) occupants.Add(guardian);
@@ -167,6 +194,8 @@ class BeamParryChecks
     static void Next(Verb v) { AccessTools.Method(typeof(Verb),"TryCastNextBurstShot").Invoke(v,null); }
     static void Complete(Verb v) { for(int i=0;i<8 && v.Bursting;i++) Next(v); }
     static float ChanceFor(Pawn p) { return (float)Call("BeamParryChance",p); }
+    // The live transient Attack of a bursting verb (null once the burst completed or was reset).
+    static bool Flag(Verb v, string field) { object a=Call("Find",v); return a!=null && (bool)AccessTools.Field(a.GetType(),field).GetValue(a); }
 
     static void Integration()
     {
@@ -197,8 +226,6 @@ class BeamParryChecks
 
         v=Setup(true); victim=guardian; contacts.Clear(); contacts.Add(victim); Set(v,"currentTarget",new LocalTargetInfo(victim)); v.WarmupComplete();
         Check("self defence",rolls==1 && damageCalls==0 && !v.Bursting);
-        v=Setup(true,false); v.WarmupComplete(); occupants.Add(guardian); Complete(v);
-        Check("no guardian at first contact: vanilla, no later fishing",rolls==0 && damageCalls==6 && stuns==0);
         v=Setup(true); hostile=false; Set(v,"currentTarget",new LocalTargetInfo(new IntVec3(10,0,10))); v.WarmupComplete();
         Check("friendly accidental fire defended without counter-stun",rolls==1 && damageCalls==0 && stuns==0);
         v=Setup(true); hostile=false; v.WarmupComplete();
@@ -228,6 +255,105 @@ class BeamParryChecks
         Check("reentrant callback starts independent attack on same verb",completed==1 && rolls==2 && v.Bursting && Call("Find",v)!=null);
         rollSuccess=true; Complete(v);
         Check("old completion does not erase nested failure decision",rolls==2 && damageCalls==6 && Call("Find",v)==null);
+    }
+    // One beam attack = one parry attempt. An attempt exists only once an eligible Guardian has been
+    // selected and is about to roll: no Guardian, no attempt; a Guardian's roll is final for the attack.
+    static void Pair(int x, out Pawn protectedPawn, out Pawn protector)
+    {
+        protectedPawn=Pawn(0,x); protector=Pawn(21,x+1);
+        Set(protectedPawn,"factionInt",guardian.Faction); Set(protector,"factionInt",guardian.Faction);
+        occupants.Add(protectedPawn); occupants.Add(protector);
+    }
+    static void AttemptConsumption()
+    {
+        // 1. Unprotected contact first, protected contact later in the SAME attack (replaces the old
+        //    "first pawn contact spends the attempt even with no Guardian" expectation).
+        var v=Setup(true,false); v.WarmupComplete();
+        Check("1 unprotected first contact: vanilla damage, no roll, no stun",rolls==0 && damageCalls==3 && stuns==0);
+        Check("1 unprotected first contact: attempt not evaluated and still available",v.Bursting && Call("Find",v)!=null && !Flag(v,"Evaluated") && !Flag(v,"Defended"));
+        occupants.Add(guardian); Complete(v);
+        Check("1 protected later contact: exactly one roll, defended, later shots suppressed",rolls==1 && damageCalls==3 && shots==2 && !v.Bursting);
+        Check("1 protected later contact: normal 120-tick stun attempted once",stuns==1 && (int)AccessTools.Field(typeof(StunHandler),"stunTicksLeft").GetValue(attacker.stances.stunner)==120 && feedback==1);
+        for(int i=0;i<8;i++) v.VerbTick();
+        Check("1 success final: no later shot or roll, state released",shots==2 && rolls==1 && damageCalls==3 && Call("Find",v)==null);
+        v=Setup(false,false); v.WarmupComplete(); occupants.Add(guardian); Next(v);
+        Check("1 late Guardian failing its one roll: vanilla, attempt now evaluated",rolls==1 && damageCalls==4 && stuns==0 && v.Bursting && Flag(v,"Evaluated") && !Flag(v,"Defended"));
+        rollSuccess=true; Complete(v);
+        Check("1 late failed roll stays final: no retry, unchanged vanilla burst",rolls==1 && stuns==0 && damageCalls==6 && fires==12 && !v.Bursting);
+
+        // 2. A FAILED real attempt stays final, even against another protected victim and Guardian.
+        v=Setup(false); v.WarmupComplete();
+        Check("2 first eligible Guardian fails: one roll, vanilla damage, attempt evaluated",rolls==1 && damageCalls==3 && v.Bursting && Flag(v,"Evaluated") && !Flag(v,"Defended"));
+        Pawn other, otherGuardian; Pair(30,out other,out otherGuardian);
+        contacts.Clear(); contacts.Add(other); victim=other; rollSuccess=true; Next(v);
+        Check("2 another protected victim with another Guardian: no second roll, vanilla",rolls==1 && damageCalls==4 && stuns==0 && v.Bursting);
+        Complete(v);
+        Check("2 no retry for the rest of the burst despite guaranteed success",rolls==1 && damageCalls==6 && stuns==0 && !v.Bursting && Call("Find",v)==null);
+        v=Setup(true); v.WarmupComplete(); Check("2 next attack is a fresh attempt",rolls==1 && damageCalls==0 && stuns==1);
+
+        // 3. Several contacts with no eligible Guardian never spend the attempt; the first later
+        //    contact that has one gets the attack's single roll. Three flavours of "no Guardian":
+        //    unprotected pawns far from any Guardian, and a protected pawn whose Guardian cannot act.
+        v=Setup(true); burstCount=6;
+        Pawn stray=Pawn(0,30), stray2=Pawn(0,40), protectedOne=victim;
+        contacts.Clear(); contacts.Add(stray); victim=stray; v.WarmupComplete();
+        Check("3 unprotected pawn (three contacts): vanilla, no roll, not evaluated",rolls==0 && damageCalls==3 && !Flag(v,"Evaluated"));
+        contacts[0]=stray2; victim=stray2; Next(v);
+        Check("3 second unprotected pawn: vanilla, no roll, not evaluated",rolls==0 && damageCalls==4 && !Flag(v,"Evaluated"));
+        contacts[0]=protectedOne; victim=protectedOne; clearRoute=false; Next(v);
+        Check("3 protected pawn but Guardian cannot reach: vanilla, no roll, not evaluated",rolls==0 && damageCalls==5 && !Flag(v,"Evaluated"));
+        clearRoute=true; Next(v);
+        Check("3 first contact with an eligible Guardian: exactly one roll, defended, burst ended early",rolls==1 && damageCalls==5 && stuns==1 && shots==4 && !v.Bursting);
+        v=Setup(false); burstCount=6; stray=Pawn(0,30); protectedOne=victim; contacts.Clear(); contacts.Add(stray); victim=stray; v.WarmupComplete();
+        contacts[0]=protectedOne; victim=protectedOne; clearRoute=false; Next(v); clearRoute=true; Next(v);
+        Check("3 same route, forced failure: one roll, vanilla, evaluated",rolls==1 && damageCalls==5 && stuns==0 && v.Bursting && Flag(v,"Evaluated"));
+        rollSuccess=true; Complete(v);
+        Check("3 forced failure stays final: no retry through the last shots",rolls==1 && damageCalls==8 && stuns==0 && !v.Bursting);
+
+        // Non-pawn, zero-factor and dead-end contacts before any Guardian also leave the attempt open.
+        v=Setup(true); object attack=Call("Begin",v), scope=Call("Enter",v);
+        Check("3 object contact is vanilla and spends nothing",(bool)Call("ShouldDamage",v,Empty<Thing>(),1f) && rolls==0 && !Flag(v,"Evaluated"));
+        Check("3 zero damage factor is vanilla and spends nothing",(bool)Call("ShouldDamage",v,victim,0f) && rolls==0 && !Flag(v,"Evaluated"));
+        Check("3 first real Guardian contact: one roll, defended",!(bool)Call("ShouldDamage",v,victim,1f) && rolls==1 && Flag(v,"Evaluated") && Flag(v,"Defended"));
+        Check("3 defended attack never rolls again",!(bool)Call("ShouldDamage",v,victim,1f) && rolls==1);
+        Call("Exit",scope); Call("End",v,attack);
+
+        // 5. Several eligible Guardians at one contact: best chance wins, regardless of scan order, one roll.
+        v=Setup(true); Pawn better=Pawn(21,9), best=Pawn(21,12);
+        Set(better,"factionInt",guardian.Faction); Set(best,"factionInt",guardian.Faction);
+        occupants.Add(better); occupants.Add(best); manipulationOf[better]=2f; manipulationOf[best]=3f;
+        object[] pick={victim,attacker,0f};
+        Check("5 best Guardian selected (scanned before and after weaker ones)",Call("SelectGuardian",pick)==best && (float)pick[2]==ChanceFor(best) && ChanceFor(best)>ChanceFor(better) && ChanceFor(better)>ChanceFor(guardian));
+        v.WarmupComplete();
+        Check("5 exactly one roll, made at the best Guardian's chance",rolls==1 && lastChance==ChanceFor(best) && damageCalls==0 && stuns==1);
+
+        // 6. Exception paths. Failure before any Guardian exists spends nothing and fails open;
+        //    failure after a Guardian is selected has already spent the attempt.
+        v=Setup(true); throwSelect=true; int seen=selectionWarnings; v.WarmupComplete();
+        Check("6 selection throws at first contact: contact proceeds vanilla, warns once",damageCalls==1 && selectionWarnings==seen+1);
+        Check("6 selection failure spent nothing: the next contact gets the one roll and defends",rolls==1 && stuns==1 && !v.Bursting && shots==1);
+        v=Setup(true); throwSelect=throwSelectAlways=true; seen=selectionWarnings; v.WarmupComplete(); Complete(v);
+        Check("6 persistent selection failure: whole burst vanilla, no roll, no crash, warning not repeated",rolls==0 && stuns==0 && damageCalls==6 && !v.Bursting && Call("Find",v)==null && selectionWarnings==seen);
+        v=Setup(true); v.WarmupComplete();
+        Check("6 no state leaks into the next attack: fresh attempt succeeds",rolls==1 && damageCalls==0 && stuns==1);
+        v=Setup(true); throwRoll=true; v.WarmupComplete(); throwRoll=false; rollSuccess=true; Complete(v);
+        Check("6 roll throws after Guardian selected: attempt spent, fail open, no retry",rolls==1 && stuns==0 && damageCalls==6 && !v.Bursting);
+        v=Setup(true); activeVerb=v; reenterSelect=true; v.WarmupComplete();
+        Check("6 contact provoked inside Guardian selection cannot recurse or roll twice (success)",reentries==1 && rolls==1 && damageCalls==1 && stuns==1 && !v.Bursting);
+        v=Setup(false); activeVerb=v; reenterSelect=true; v.WarmupComplete(); Complete(v);
+        Check("6 contact provoked inside Guardian selection cannot roll twice (failure)",reentries==1 && rolls==1 && damageCalls==7 && stuns==0 && !v.Bursting);
+        v=Setup(true); v.WarmupComplete(); Check("6 selection guard does not leak into the next attack",rolls==1 && !v.Bursting && stuns==1);
+
+        // 7. The commitment is made after Guardian selection and BEFORE the RNG and every counter-effect:
+        //    a beam contact provoked from inside any of them can neither roll again nor slip damage past a defence.
+        v=Setup(false); activeVerb=v; reenterPhase="roll"; v.WarmupComplete(); Complete(v);
+        Check("7 contact provoked inside a failing roll: vanilla, no second roll",reentries==1 && rolls==1 && damageCalls==7 && stuns==0 && !v.Bursting);
+        v=Setup(true); activeVerb=v; reenterPhase="roll"; v.WarmupComplete();
+        Check("7 contact provoked inside a succeeding roll: that contact vanilla, no second roll, then defended",reentries==1 && rolls==1 && damageCalls==1 && stuns==1 && !v.Bursting);
+        v=Setup(true); activeVerb=v; reenterPhase="stun"; v.WarmupComplete();
+        Check("7 contact provoked inside the counter-stun stays defended",reentries==1 && rolls==1 && damageCalls==0 && stuns==1 && !v.Bursting);
+        v=Setup(true); activeVerb=v; reenterPhase="feedback"; v.WarmupComplete();
+        Check("7 contact provoked inside the feedback stays defended",reentries==1 && rolls==1 && damageCalls==0 && feedback==1 && !v.Bursting);
     }
     static void Eligibility()
     {
@@ -334,7 +460,7 @@ class BeamParryChecks
             var h=new Harmony("Grandmaster21.BeamParry.Tests.Environment"); Environment(h);
             bool applied=(bool)AccessTools.Method(Patches,"Apply").Invoke(null,new object[]{h});
             Check("actual production Harmony group binds real methods",applied);
-            if(applied) { Integration(); Eligibility(); Lifecycle(); MissingPipeline(); }
+            if(applied) { Integration(); AttemptConsumption(); Eligibility(); Lifecycle(); MissingPipeline(); }
         }
         catch(Exception e) { Console.WriteLine("FAIL unhandled fixture: "+e); fail++; }
         Console.WriteLine("Beam Parry: "+pass+" PASS, "+fail+" FAIL"); return fail==0?0:1;

@@ -12,8 +12,11 @@ namespace Grandmaster21
         internal const int CounterStunTicks = 120;
         internal sealed class Attack
         {
+            // Evaluated: an eligible Guardian was selected and its one roll is committed (final).
+            // Selecting: Guardian selection is running; only ever true inside ShouldDamage.
             internal bool Evaluated;
             internal bool Defended;
+            internal bool Selecting;
         }
         internal sealed class Scope
         {
@@ -118,21 +121,40 @@ namespace Grandmaster21
             Attack attack = Executing(verb);
             if (attack == null) return true; // Loaded mid-burst / custom lifecycle: no new roll.
             if (attack.Defended) return false;
-            if (!Gm21Melee.BeamParryEnabled || attack.Evaluated) return true;
+            if (!Gm21Melee.BeamParryEnabled || attack.Evaluated || attack.Selecting) return true;
             Pawn victim = thing as Pawn;
             var props = verb.verbProps;
             if (victim == null || victim.Dead || props == null || props.beamDamageDef == null
                 || !props.beamDamageDef.harmsHealth || !(damageFactor > 0f)
                 || !(props.beamTotalDamage > 0f || props.beamDamageDef.defaultDamage > 0)) return true;
 
-            // Commit before selection/RNG/counter-effects: nested damage cannot fish for a roll.
-            // First damaging pawn contact consumes the decision even when no Guardian can act.
+            // One beam attack = one parry attempt, and an attempt exists only once an eligible
+            // Guardian has been selected: no Guardian, no attempt. An unprotected contact, or a
+            // protected one nobody can act for, proceeds vanilla and leaves the attempt available.
+            // Selecting closes the selection window itself: a contact provoked from inside
+            // selection (a foreign patch on a stat, hostility or route call) proceeds vanilla, so
+            // it can neither recurse into selection nor resolve a roll this frame would repeat.
+            Pawn guardian;
+            float chance = 0f;
+            attack.Selecting = true;
+            try { guardian = SelectGuardian(victim, verb.Caster, out chance); }
+            catch (Exception e)
+            {
+                // Selection failed before any Guardian was resolved: nothing was attempted, so
+                // nothing is spent. No RNG runs on this path and a roll still requires a later
+                // successful selection, so this cannot fish; this contact proceeds vanilla.
+                Warn("guardian selection (this contact proceeds vanilla)", e);
+                return true;
+            }
+            finally { attack.Selecting = false; }
+            if (guardian == null) return true;
+
+            // A Guardian exists and is about to roll: commit BEFORE the RNG and every
+            // counter-effect, so nothing they trigger can fish for a second roll. Final from here.
             attack.Evaluated = true;
             try
             {
-                float chance;
-                Pawn guardian = SelectGuardian(victim, verb.Caster, out chance);
-                if (guardian == null || !Rand.Chance(chance)) return true;
+                if (!Rand.Chance(chance)) return true;
                 attack.Defended = true;
                 // Effects are independent; neither an immune caster nor a cosmetic error can
                 // undo the already successful defence.
@@ -148,6 +170,7 @@ namespace Grandmaster21
             }
             catch (Exception e)
             {
+                // The attempt was already spent on the selected Guardian; fail open, no retry.
                 Warn("defence (this attack proceeds vanilla)", e);
                 return !attack.Defended;
             }
@@ -173,7 +196,8 @@ namespace Grandmaster21
         private static void Warn(string stage, Exception e)
         {
             Log.WarningOnce("[Grandmaster 21] Beam Parry " + stage + ": " + e.GetType().Name
-                            + ": " + e.Message, 21216001 + (stage == "feedback" ? 1 : stage == "counter-stun" ? 2 : 0));
+                            + ": " + e.Message, 21216001 + (stage == "feedback" ? 1 : stage == "counter-stun" ? 2
+                            : stage.StartsWith("guardian selection") ? 3 : 0));
         }
     }
 }
