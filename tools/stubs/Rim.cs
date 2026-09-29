@@ -87,9 +87,10 @@ namespace Verse
         public float healthStub = 10f;
         public bool missingStub;
     }
-    public class DamageDef : Def { public bool harmsHealth; }
+    public class DamageDef : Def { public bool harmsHealth; public int defaultDamage; }
     public struct DamageInfo
     {
+        public DamageInfo(DamageDef def, float amount, float armorPenetration = -1f, float angle = -1f, Thing instigator = null) : this() { Def = def; amountInt = amount; Instigator = instigator; }
         public DamageDef Def { get; set; }
         public Thing Instigator { get; set; }
         public ThingDef Weapon { get; set; }
@@ -158,7 +159,7 @@ namespace Verse
     }
     public class Verb
     {
-        public Thing caster; public Pawn CasterPawn; public VerbProperties verbProps;
+        public Thing caster; public Thing Caster { get { return caster; } } public bool Bursting; public Pawn CasterPawn; public VerbProperties verbProps;
         public LocalTargetInfo CurrentTarget;
         // Test hook: the real CanHitTarget resolves reach and line of sight. Tests set the
         // predicate; the SIGNATURE the mod calls is identical.
@@ -172,8 +173,9 @@ namespace Verse
         protected internal virtual int ShotsPerBurst { get { return shotsPerBurstStub; } }
         public int shotsPerBurstStub = 1;               // test hook
     }
-    public class VerbProperties { public float warmupTime; public bool IsMeleeAttack; }
+    public class VerbProperties { public float warmupTime; public bool IsMeleeAttack; public DamageDef beamDamageDef; public float beamTotalDamage; }
     public class Verb_LaunchProjectile : Verb { }
+    public class Verb_ShootBeam : Verb { }
     public class Stance { }
     public class Stance_Mobile : Stance { }
     public class Stance_Busy : Stance { public Stance_Busy(int ticks, LocalTargetInfo focusTarg, Verb verb) { } }

@@ -2,7 +2,7 @@
 <ModMetaData>
   <packageId>ared.grandmaster21</packageId>
   <name>Grandmaster 21</name>
-  <modVersion>0.13.0 Beta</modVersion>
+  <modVersion>0.14.0 Beta</modVersion>
   <author>aRed</author>
   <supportedVersions>
     <li>1.6</li>
@@ -49,6 +49,8 @@ Every one of those abilities is driven by the pawn's OWN stats, so no two Grandm
 Armour, weapon damage, damage types and blast radius are untouched: the mastery is the fighter's, not the weapon's. There is no explosion immunity - a successfully redirected doomsday rocket can still kill the Grandmaster who redirected it.
 
 MELEE DODGE: RimWorld caps melee dodge chance at roughly 50% for every pawn, whatever stats feed it. Levels 0-20 stay entirely under that cap - a heavily modded level-20 pawn is still the peak NORMAL combatant. Level 21 is the one level that crosses it, transforming the already-resolved vanilla value into roughly 99.9% effective melee defence. The dodge StatDef itself is never modified, so every other pawn and every other mod reading it are unaffected, and ranged dodge is untouched entirely - a Melee Grandmaster answers projectiles by intercepting them, not by dodging them. A pawn who is downed, unconscious, asleep or stunned gets none of it.
+
+BEAM PARRY: A Grandmaster cannot outrun light; they read the firing line before emission. One attempt per beam burst can protect themselves or a nearby ally, interrupt the attack, and briefly stun the shooter without reflecting damage. Failure leaves the burst unchanged, with no retries. Compatible weapons using the vanilla beam pipeline are supported; custom beam systems may remain unaffected.
 
 Melee Grandmasters also get their own Normal/Killer/Downed doctrine, separate from the Shooting aim mode. Downed doctrine additionally pulls the blow, stopping short of destroying the limb it is aimed at - something only melee can do.
 
