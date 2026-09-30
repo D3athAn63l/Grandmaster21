@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+  <!--
+    Cooking 21 adds NO research, items, buildings or recipes, and edits NO existing ThingDef. It ships two
+    JobDefs (the Grandmaster Cook's Purify Food work, ordered from the Purify Food gizmo) and one
+    ThoughtDef (the Masterful Meal memory). There is deliberately no WorkGiver: ordinary cooks never
+    receive Purify jobs, and a Grandmaster only performs one when the player orders it.
+
+    The Masterful Meal component is attached to food ThingDefs at runtime, from code, by looking for
+    vanilla's CompFoodPoisonable - see Gm21CookingStartup. Nothing here names a vanilla meal.
+  -->
+
+  <!-- Purify ONE contaminated stack, then stop. -->
+  <JobDef>
+    <defName>GM21_PurifyFood</defName>
+    <driverClass>Grandmaster21.JobDriver_Gm21PurifyFood</driverClass>
+    <reportString>purifying TargetA.</reportString>
+    <suspendable>false</suspendable>
+    <allowOpportunisticPrefix>false</allowOpportunisticPrefix>
+  </JobDef>
+
+  <!--
+    Purify every currently reachable contaminated stack, nearest first, then stop. A finite cleanup,
+    never a standing toggle: when none is left the job ends and the pawn returns to normal behaviour.
+  -->
+  <JobDef>
+    <defName>GM21_PurifyFoodAuto</defName>
+    <driverClass>Grandmaster21.JobDriver_Gm21AutoPurifyFood</driverClass>
+    <reportString>purifying contaminated food (TargetA).</reportString>
+    <suspendable>false</suspendable>
+    <allowOpportunisticPrefix>false</allowOpportunisticPrefix>
+  </JobDef>
+
+  <!--
+    The Masterful Meal reward: a modest, clearly visible mood memory for eating a serving a Grandmaster
+    Cook prepared. Vanilla's fine meal is +5 and lavish +12 for a day; this is +4 for a day and stacks
+    once (eating several Masterful meals refreshes it rather than piling up). All tuning is here.
+    Prepare Save for Uninstall removes it from every pawn.
+  -->
+  <ThoughtDef>
+    <defName>GM21_MasterfulMeal</defName>
+    <durationDays>1</durationDays>
+    <stackLimit>1</stackLimit>
+    <stages>
+      <li>
+        <label>masterful meal</label>
+        <description>A Grandmaster cooked this. I did not know food could be like this.</description>
+        <baseMoodEffect>4</baseMoodEffect>
+      </li>
+    </stages>
+  </ThoughtDef>
+</Defs>

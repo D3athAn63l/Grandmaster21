@@ -2,7 +2,12 @@
 
 **RimWorld 1.6** — skills normally end at 20. This mod adds exactly one more level: **21, Grandmaster**.
 
-**Version 0.13.0 Beta.** Level-20 aspirants now bank GM XP without the daily saturation penalty
+**Version 0.15.0 Beta.** Adds the first pass of **Cooking 21 — Grandmaster Cook**: never-poisoned
+meals, persistent Masterful servings that slow rot, and a Purify Food command with a finite Auto
+Purify. It builds against the real 1.6 assemblies and has 169 headless checks that run the real
+vanilla methods; it has **not** been tested in gameplay. See [Cooking 21](#cooking-21--grandmaster-cook).
+
+**0.13.0 Beta** made level-20 aspirants bank GM XP without the daily saturation penalty
 and can gain occasional Grandmaster Insights. This support has automated real-DLL coverage;
 in-game playtesting is pending. Crafting 21 now includes Magical, Mythical and Divine progression. The original Magical
 foundation has passed real gameplay, including active-work save/reload and completion. This
@@ -1139,6 +1144,40 @@ modes and Resuscitation Shock and stops interventions in progress.
 
 ---
 
+## Cooking 21 — Grandmaster Cook
+
+New in **0.15.0 Beta**, first pass, **experimental**, and **not yet verified in a running game**. Every
+tuning number is provisional. Full reference, including the audit of the real 1.6 code and the runtime
+checklist: [Docs/Cooking21.md](Docs/Cooking21.md).
+
+No research, items, buildings or recipes are added, and no existing ThingDef is edited. Status is stored
+Cooking 21, read like every other capstone. Vanilla food poisoning, `CompFoodPoisonable` stack semantics
+and rot are **not** changed globally; the package only intervenes where a Grandmaster Cook is involved.
+
+* **Perfect Hygiene.** A meal whose recipe a Cooking Grandmaster completes is never poisoned by a filthy
+  kitchen or an incompetent cook. Normal cooks are exactly vanilla; rotten-food and other poison are untouched.
+* **Masterful Meals.** Every serving a Grandmaster cooks carries persistent provenance, stored as a *count*
+  (not a flag) so mixed stacks stay exact: ten Masterful meals merged with five ordinary ones are fifteen
+  meals of which ten are Masterful. Merge, split, save/load and eating all conserve the count. Attached at
+  startup to any ingestible item carrying vanilla's `CompFoodPoisonable`, so modded prepared food is covered
+  with no DefName list. Eating a Masterful serving gives a modest **Masterful Meal** mood memory (+4 for a
+  day), once per meal and only for servings that were really Masterful.
+* **Longer freshness.** A stack rots at `1 − masterfulRatio × 0.80` of the vanilla speed: 1.00x with none, 0.60x
+  at half, **0.20x** when the whole stack is Masterful. It scales the one place vanilla advances rot, so
+  temperature, refrigeration and freezing behave exactly as before, and non-Masterful food is bit-for-bit vanilla.
+* **Purify Food.** Left-click a contaminated prepared-food stack (any stack with `CompFoodPoisonable` and a
+  poison percentage above zero). The Grandmaster walks to it, works about three seconds, and clears the
+  contamination. The meals are kept; their number, rot and Masterful servings are unchanged.
+* **Auto Purify.** Right-click the command. It cleans every currently reachable contaminated stack,
+  nearest first, skipping unreachable or contested ones, and then **stops by itself**. It is not a toggle and
+  nothing scans in the background.
+
+Dev mode adds food actions under *Grandmaster 21* to mark servings Masterful, split a stack, poison,
+purify and report a stack. Before uninstalling, **Prepare Save for Uninstall** also removes Masterful Meal
+memories and Purify jobs.
+
+---
+
 ## Removing Grandmaster 21 safely
 
 > **Do not remove the mod while a save still contains level 21 skills or transcendent crafting objects.**
@@ -1188,7 +1227,10 @@ For every skill record on every relevant pawn in the currently loaded game:
 * **Medicine 21 state is removed** from every collected pawn, animals and corpses included: each
   hediff's Grandmaster Treatment, the Medicine mode, and any Grandmaster intervention in progress or
   queued — so no `gm21Treatment*` / `gm21MedicineMode` element and no `GM21_Medicine*` JobDef is
-  left in the save. The result dialog reports the count.
+  left in the save. The result dialog reports the count;
+* **Cooking 21 state is removed** the same way: every Masterful Meal memory and any Purify Food job in
+  progress or queued, so no `GM21_MasterfulMeal` ThoughtDef or `GM21_PurifyFood*` JobDef is left in a
+  pawn. A food stack's `gm21MasterfulCount` element is ignored by vanilla when the mod is absent.
 
 Afterwards the scanned pawns contain no meaningful Grandmaster skill/progression state. The operation is idempotent:
 running it twice reports zero on the second pass.
@@ -1420,6 +1462,23 @@ one Medicine feature and logs once. Why each hook sits where it does is in
 | `ImmunityRecord.ImmunityChangePerTick` | Postfix | A treated disease instance builds immunity faster |
 | `SurgeryOutcomeEffectDef.GetOutcome` | Prefix (replaces for a practising Grandmaster only) | No failure/death outcome is ever evaluated |
 
+### Cooking Grandmaster patches
+
+Applied **manually**, one **independent** Harmony owner per feature, by `Gm21CookingPatches` — a target that
+cannot be bound (or an IL shape that changed) disables that feature only, unpatches only its own owner, and
+leaves vanilla in place. Why each hook sits where it does is in [Docs/Cooking21.md](Docs/Cooking21.md#hooks).
+
+| Target | Kind | Why |
+|---|---|---|
+| `CompFoodPoisonable.Notify_RecipeProduced` | Prefix (skips vanilla for a Cooking Grandmaster only) | Perfect Hygiene |
+| `Thing.Ingested` | Prefix + Postfix | Vanilla discards the eaten part; the Masterful count before and after says how much was eaten |
+| `CompRottable.TickInterval` | **Transpiler** (the single `RotRateAtTemperature` call) | Scales the rot rate by the stack's Masterful ratio; the only place rot advances |
+| `CompRottable.TicksUntilRotAtTemp` | **Transpiler** (the single `RotRateAtTemperature` call) | Keeps the "days until rot" estimate honest |
+| `Pawn.GetGizmos` | Postfix (attribute) | The Purify Food command for a player Cooking Grandmaster |
+
+Nothing else in vanilla is patched: `CompRottable` is not replaced, stack merge/split is reached only through
+the comp callbacks vanilla already provides, and the comp is attached from code, not XML.
+
 ### The progression transpiler
 
 Exactly one instruction is changed, in `SkillRecord.Learn`. (The only other transpilers are the
@@ -1566,6 +1625,19 @@ shims cover what needs a live game (icon loading, live-pawn re-evaluation, and S
 `ParseHelper` via `tools/stubs/SteamworksShim.cs`); none of them ship. Details and results:
 [Docs/Medicine21.md](Docs/Medicine21.md#13-tests).
 
+Cooking 21 is also excluded from the stub build and verified against the real game DLLs:
+
+```bash
+./tools/verify-cooking.sh /path/to/Managed /path/to/0Harmony.dll /path/to/Mono.Cecil.dll
+```
+
+**169 checks** install the mod's real Cooking patches on the real vanilla methods and execute them:
+`CompFoodPoisonable.Notify_RecipeProduced`, `GenRecipe.MakeRecipeProducts`, `ThingWithComps.TryAbsorbStack`
+and `SplitOff` (including a 4000-step random walk asserting exact Masterful conservation),
+`Thing.Ingested`, `CompRottable`, the real Scribe saver/loader, and the real `JobDriver` running Purify Food
+and Auto Purify. Game-world services (pathing, reservations, the map search, text and Unity) are answered by
+test-process shims that never ship. Every rule was mutation-checked. Details: [Docs/Cooking21.md](Docs/Cooking21.md#verification-2026-09-30).
+
 The Magical crafting source is excluded from the stub build. Build it against the real game DLLs
 and run `tools/verify-transcendent.sh`; setup and overrides are documented in
 [Assemblies/README.md](Assemblies/README.md).
@@ -1617,6 +1689,17 @@ hand-written approximations. Only a real build does that. See `tools/stubs/READM
 ---
 
 ## Release status
+
+**0.15.0 Beta.** Cooking 21 (first pass) builds against the real RimWorld 1.6/Unity/Harmony assemblies with
+zero warnings and errors, and `tools/verify-cooking.sh` reports **169 PASS, 0 FAIL**: real vanilla poison,
+recipe production, stack merge/split, ingestion, rot, Scribe save and load, and the real `JobDriver` all
+execute under the mod's real hooks, and every rule was mutation-checked. All existing suites are unchanged
+(58 / 74 / 295 offline; 271 runtime targets; 15 / 26 finalizer and progression; 91 Aspirant; 344 Medicine;
+604 Transcendent; 166 notifications); real binding is 40 applied (the new gizmo) with the same six
+environment blocks. **No in-game Cooking testing has been performed**: the gizmo, the live pather and job
+presentation, and the exact feel of the numbers need a real game. See the
+[runtime checklist](Docs/Cooking21.md#owner-runtime-checklist-not-run). Shooting, Melee, Crafting and
+Medicine are unchanged.
 
 **0.13.0 Beta.** Level-20 aspirant support builds cleanly and passes its 91-check real-DLL
 suite. Gameplay remains untested. See the [current verification results and runtime

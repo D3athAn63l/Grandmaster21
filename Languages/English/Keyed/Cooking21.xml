@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LanguageData>
+
+  <!-- Masterful servings, shown in the inspect pane of a stack that has any. -->
+  <!-- {0} Masterful servings, {1} servings in the stack -->
+  <GM21_Cook_MasterfulInspect>Masterful servings: {0} / {1}</GM21_Cook_MasterfulInspect>
+  <!-- {0} Masterful servings, {1} servings in the stack, {2} this stack's rot speed as a percentage of normal -->
+  <GM21_Cook_MasterfulInspectRot>Masterful servings: {0} / {1} (rots at {2} of normal speed)</GM21_Cook_MasterfulInspectRot>
+
+  <!-- Purify Food gizmo -->
+  <GM21_Cook_PurifyLabel>Purify Food</GM21_Cook_PurifyLabel>
+  <!-- {0} work time per stack -->
+  <GM21_Cook_PurifyDesc>Left-click, then choose a contaminated prepared-food stack. The Grandmaster Cook walks to it and, after about {0} of work, removes the contamination. The meals are kept: their number, freshness and Masterful servings are unchanged.\n\nRight-click for Auto Purify, which cleans every currently reachable contaminated stack, nearest first, and then stops.</GM21_Cook_PurifyDesc>
+  <GM21_Cook_AutoPurify>Auto Purify</GM21_Cook_AutoPurify>
+  <GM21_Cook_PurifyUnavailable>Purify Food is unavailable this session: the food-poisoning fields it needs could not be found in this version of the game.</GM21_Cook_PurifyUnavailable>
+
+  <!-- Order refusals. {0} the Grandmaster / the food -->
+  <GM21_Cook_NotPractising>{0} cannot purify food right now: a Cooking Grandmaster must be conscious and able to use their hands.</GM21_Cook_NotPractising>
+  <GM21_Cook_NotContaminated>That is not a contaminated prepared-food stack.</GM21_Cook_NotContaminated>
+  <GM21_Cook_CannotReach>Cannot reach {0}.</GM21_Cook_CannotReach>
+  <GM21_Cook_Reserved>{0} is already being handled by someone else.</GM21_Cook_Reserved>
+  <GM21_Cook_NothingToPurify>{0} finds no contaminated food they can reach.</GM21_Cook_NothingToPurify>
+
+  <!-- {0} the Grandmaster, {1} the food -->
+  <GM21_Cook_Purified>{0} purified {1}.</GM21_Cook_Purified>
+  <GM21_Cook_PurifiedMote>Purified</GM21_Cook_PurifiedMote>
+  <!-- {0} the Grandmaster, {1} number of stacks purified -->
+  <GM21_Cook_AutoDone>{0} has finished purifying food: {1} stacks cleaned.</GM21_Cook_AutoDone>
+
+</LanguageData>
