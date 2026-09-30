@@ -9,6 +9,7 @@ namespace HarmonyLib
     {
         public Harmony(string id) { }
         public void PatchAll(Assembly asm) { }
+        public void UnpatchAll(string harmonyID = null) { }
         public MethodInfo Patch(MethodBase original, HarmonyMethod prefix = null, HarmonyMethod postfix = null,
             HarmonyMethod transpiler = null, HarmonyMethod finalizer = null) { return null; }
     }

@@ -44,12 +44,15 @@ namespace Grandmaster21
         /// <summary>Ally melee interception inside the protective radius.</summary>
         public static bool AllyInterceptEnabled;
 
+        /// <summary>Anticipatory, once-per-burst defence for the audited beam pipeline.</summary>
+        public static bool BeamParryEnabled;
+
         /// <summary>Projectile interception, deflection, return-to-sender and safe redirection.</summary>
         public static bool ProjectileDefenceEnabled;
 
         // ---------------------------------------------------------------- geometry / references
 
-        /// <summary>The Grandmaster's protective radius, in tiles. Ally and projectile defence both use it.</summary>
+        /// <summary>The Grandmaster's protective radius, in tiles. Ally, projectile and beam defence share it.</summary>
         public const float ProtectiveRadius = 3f;
 
         /// <summary>Squared, so the hot-path distance test never takes a square root.</summary>
