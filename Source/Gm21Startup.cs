@@ -31,7 +31,8 @@ namespace Grandmaster21
                         + " reactions=" + Gm21Melee.ReactionsEnabled
                         + " doctrine=" + Gm21Melee.DoctrineEnabled
                         + " ally=" + Gm21Melee.AllyInterceptEnabled
-                        + " projectile=" + Gm21Melee.ProjectileDefenceEnabled);
+                        + " projectile=" + Gm21Melee.ProjectileDefenceEnabled
+                        + " beam=" + Gm21Melee.BeamParryEnabled);
 
             if (!Gm21.LearnPatchApplied)
             {

@@ -20,6 +20,7 @@ namespace Grandmaster21
     ///   doctrine    -- Killer/Downed strike placement and force     (Gm21Melee.DoctrineEnabled)
     ///   ally        -- 3-tile ally melee interception               (Gm21Melee.AllyInterceptEnabled)
     ///   projectile  -- projectile interception and redirection      (Gm21Melee.ProjectileDefenceEnabled)
+    ///   beam        -- one anticipatory parry per beam burst         (Gm21Melee.BeamParryEnabled)
     /// </summary>
     internal static class Gm21MeleePatches
     {
@@ -57,6 +58,7 @@ namespace Grandmaster21
             Gm21Melee.ReactionsEnabled = ApplyReactions(harmony);
             Gm21Melee.AllyInterceptEnabled = Gm21Melee.ReactionsEnabled;
             Gm21Melee.ProjectileDefenceEnabled = ApplyProjectileDefence(harmony);
+            Gm21Melee.BeamParryEnabled = Gm21BeamParryPatches.Apply(harmony);
 
             if (!Gm21Melee.DoctrineEnabled)
             {

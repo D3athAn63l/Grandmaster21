@@ -301,6 +301,7 @@ memory, no reservation release, attach rule too wide, unguarded whole-stack spli
 | Existing suite | Result |
 |---|---:|
 | Offline core / Shooting / Melee | 58 / 74 / 295 PASS, 0 FAIL |
+| Beam Parry (merged from 0.14.0, loaded together with Cooking) | 195 PASS, 0 FAIL; one XML-binding check blocked without game Data |
 | Real runtime targets | 271 PASS, 0 FAIL |
 | Real binding | 40 applied, 0 failed, 6 environment-blocked |
 | Skill Learn transpiler | PASS |
@@ -310,7 +311,7 @@ memory, no reservation release, attach rule too wide, unguarded whole-stack spli
 | Transcendent Crafting | 604 PASS, 0 FAIL |
 | Crafting/Construction Legendary notifications | 166 PASS, 0 FAIL |
 
-Real binding is 40 (was 39): the new gizmo patch. The six blocks are the existing Unity-initialisation ones.
+Real binding is 40 (was 39): the new gizmo patch. Beam Parry binds under its own Harmony owner and is not part of that count. The six blocks are the existing Unity-initialisation ones. Cooking and Beam Parry touch disjoint vanilla methods (food, rot and eating versus the beam verb pipeline) and were verified loaded together.
 
 ## Known limitations and follow-ups
 

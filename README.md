@@ -7,6 +7,10 @@ meals, persistent Masterful servings that slow rot, and a Purify Food command wi
 Purify. It builds against the real 1.6 assemblies and has 169 headless checks that run the real
 vanilla methods; it has **not** been tested in gameplay. See [Cooking 21](#cooking-21--grandmaster-cook).
 
+**0.14.0 Beta** added Melee 21 [Beam Parry](Docs/BeamParry.md): one anticipatory
+defence per beam burst, with interruption and a short counter-stun on success. No damage is
+reflected. Real-DLL checks pass; gameplay verification is pending.
+
 **0.13.0 Beta** made level-20 aspirants bank GM XP without the daily saturation penalty
 and can gain occasional Grandmaster Insights. This support has automated real-DLL coverage;
 in-game playtesting is pending. Crafting 21 now includes Magical, Mythical and Divine progression. The original Magical
@@ -678,6 +682,26 @@ On success the ally is not struck and the Grandmaster is owed a riposte against 
 pawn is moved**: the brief explicitly permits a logical representation where physically relocating a
 pawn mid-attack would be unsafe, and it would be — fighting the job, reservation and stance systems
 at once is how colonists get stuck. Every *physical constraint* is still enforced.
+
+### Beam Parry
+
+A Melee Grandmaster cannot outrun light. They do not need to. They read the shooter's firing
+line and place their weapon before emission: **they move before the light is fired**.
+
+At the first damaging pawn contact that has an eligible Guardian, an armed Grandmaster can defend
+themselves or a protected ally within the existing three-tile Guardian radius. The best eligible
+Guardian gets **one attempt for the entire beam burst**. Contacts with no eligible Guardian proceed
+normally and do not spend it; once a Guardian actually rolls, success or failure is final for that
+burst. Success blocks that contact and remaining beam hits, ends the current attack, and attempts
+about two seconds of normal stun on the attacker. Stun immunity does not defeat the parry. A failed
+attempt leaves damage unchanged and cannot reroll later in that burst. Accidental friendly fire can
+be stopped without counter-stunning its shooter.
+
+Chance uses Precision × Consciousness × implement suitability, opposed by a fixed difficulty;
+there is no beam-speed calculation. There is no reflected damage or fabricated projectile.
+Ordinary Projectile Defence keeps its existing behavior. Compatible weapons using the vanilla
+`Verb_ShootBeam` lifecycle share support without weapon-name lists; custom beam pipelines that
+bypass it continue vanilla. [Audit, tuning, verification and owner checklist](Docs/BeamParry.md).
 
 ### Projectile interception — the Guardian doctrine
 
@@ -1694,12 +1718,18 @@ hand-written approximations. Only a real build does that. See `tools/stubs/READM
 zero warnings and errors, and `tools/verify-cooking.sh` reports **169 PASS, 0 FAIL**: real vanilla poison,
 recipe production, stack merge/split, ingestion, rot, Scribe save and load, and the real `JobDriver` all
 execute under the mod's real hooks, and every rule was mutation-checked. All existing suites are unchanged
-(58 / 74 / 295 offline; 271 runtime targets; 15 / 26 finalizer and progression; 91 Aspirant; 344 Medicine;
-604 Transcendent; 166 notifications); real binding is 40 applied (the new gizmo) with the same six
-environment blocks. **No in-game Cooking testing has been performed**: the gizmo, the live pather and job
+(58 / 74 / 295 offline; 195 Beam Parry; 271 runtime targets; 15 / 26 finalizer and progression; 91 Aspirant;
+344 Medicine; 604 Transcendent; 166 notifications); real binding is 40 applied (the new gizmo) with the same
+six environment blocks. **No in-game Cooking testing has been performed**: the gizmo, the live pather and job
 presentation, and the exact feel of the numbers need a real game. See the
 [runtime checklist](Docs/Cooking21.md#owner-runtime-checklist-not-run). Shooting, Melee, Crafting and
 Medicine are unchanged.
+
+**0.14.0 Beta.** Beam Parry passes 195 focused real-DLL checks, including actual beam damage and
+burst completion, with the full existing regression suites green. No in-game Beam Parry testing
+has been performed. The supplied DLLs lack the game's Data XML, so `Gun_BeamGraser`'s definition
+binding remains unverified here; the verification script accepts an installed Data directory.
+See [the exact test coverage and runtime checklist](Docs/BeamParry.md).
 
 **0.13.0 Beta.** Level-20 aspirant support builds cleanly and passes its 91-check real-DLL
 suite. Gameplay remains untested. See the [current verification results and runtime

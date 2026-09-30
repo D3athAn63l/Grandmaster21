@@ -291,7 +291,8 @@ namespace RimWorld
         }
     }
 
-    public class StunHandler { public bool Stunned { get; set; } }
+    public static class DamageDefOf { public static Verse.DamageDef Stun; }
+    public class StunHandler { public bool Stunned { get; set; } public void Notify_DamageApplied(Verse.DamageInfo info) { } }
 
     public static class RestUtility { public static bool Awake(Pawn p) { return p != null && p.awakeStub; } }
 
@@ -314,6 +315,7 @@ namespace RimWorld
     public static class MoteMaker
     {
         public static void ThrowText(Vector3 loc, Map map, string text, float timeBeforeStartFadeout) { }
+        public static void ThrowText(Vector3 loc, Map map, string text, Color color, float timeBeforeStartFadeout = -1f) { }
         public static void ThrowText(Vector3 loc, Map map, TaggedString text, float timeBeforeStartFadeout) { }
     }
 
