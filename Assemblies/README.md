@@ -90,8 +90,20 @@ through the real mod-settings reader and writer. See
 uses a temporary fixture omitting only Frame's three-asset rendering initializer, with all other
 method bodies verified unchanged. The IL audit reads the pristine game DLL; no fixture DLL ships.
 
+For Cooking 21, after building the mod:
+
+```bash
+./tools/verify-cooking.sh /path/to/Managed /path/to/0Harmony.dll /path/to/Mono.Cecil.dll
+```
+
+It installs the mod's real Cooking patches on the real vanilla methods and executes them: cooking
+poisoning, `GenRecipe.MakeRecipeProducts`, stack merge and split (including a 4000-step random walk),
+`Thing.Ingested`, `CompRottable`, real Scribe save and load, and the real `JobDriver` for Purify Food and
+Auto Purify. It accepts the same `CSC`/`FRAMEWORK_REFS`/`RUNNER` overrides. It does not launch the game. See
+[Cooking 21](../Docs/Cooking21.md#verification-2026-09-30).
+
 ## No RimWorld install?
 
 `./tools/build-stubs.sh` compile-checks the older source groups and runs their offline logic suites
-against reference stubs. It excludes `Source/Transcendent` and `Source/Medicine` and does **not**
-validate Transcendent craftsmanship or Medicine 21, or produce a usable assembly — see `tools/stubs/README.md`.
+against reference stubs. It excludes `Source/Transcendent`, `Source/Medicine` and `Source/Cooking` and does **not**
+validate Transcendent craftsmanship, Medicine 21 or Cooking 21, or produce a usable assembly — see `tools/stubs/README.md`.

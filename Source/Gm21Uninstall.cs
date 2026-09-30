@@ -15,7 +15,8 @@ namespace Grandmaster21
 
         /// <summary>
         /// State removed by capstone packages that registered a pawn cleaner (Medicine 21's
-        /// per-condition treatments, its mode, and any intervention job in progress).
+        /// per-condition treatments, its mode, and any intervention job in progress; Cooking 21's
+        /// Masterful Meal memories and any Purify Food job).
         /// </summary>
         public int capstoneStateCleared;
     }

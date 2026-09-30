@@ -37,3 +37,13 @@ Scribe **load** goes through `ParseHelper`. It contains that one struct and its 
 member `ParseHelper` touches — and is only ever used alongside the REAL game assemblies. Steamworks.NET
 itself ships with the game launcher, not in `Managed/`. It is never shipped and never referenced by
 the mod.
+
+## `AssetBundleShim.cs` — the same idea, for `ReservationManager`
+
+Not part of the stub build. `tools/verify-cooking.sh` compiles it into its throwaway test directory as
+`UnityEngine.AssetBundleModule.dll` **only when the supplied `Managed/` folder lacks that module**. The Cooking
+checks run against the REAL vanilla `ReservationManager`; its static constructor builds one debug icon, which
+reaches `Verse.ShaderDatabase`, whose shader loader falls back to the mod asset bundles. Harmony cannot patch a
+method whose locals name a missing assembly, so this one type (`UnityEngine.AssetBundle`, with the single method
+that lookup mentions) lets it load. The checks never run that method: it is replaced by a "no shader" answer. Never
+shipped, never referenced by the mod.
