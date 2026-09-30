@@ -12,8 +12,8 @@ The first Grandmaster Cooking mechanics. Five things, and only these:
 | 4 | **Purify Food** — an active command that removes contamination from prepared food | `Command_Gm21PurifyFood`, `JobDriver_Gm21PurifyFood` |
 | 5 | **Auto Purify** — a finite cleanup of every reachable contaminated stack | `JobDriver_Gm21AutoPurifyFood` |
 
-Status: builds against the real RimWorld 1.6 assemblies, and 169 headless checks execute the **real
-vanilla methods** these features attach to. **Not verified in a running game.** Tuning numbers are
+Status: builds against the real RimWorld 1.6 assemblies, and 293 headless checks execute the **real
+vanilla methods** these features attach to (the reservation checks run the **real `ReservationManager`**). **Not verified in a running game.** Tuning numbers are
 provisional. See [the owner runtime checklist](#owner-runtime-checklist-not-run).
 
 ## Boundaries: what this deliberately does not do
@@ -55,6 +55,13 @@ moves any of it fails a check rather than silently changing behaviour.
 | `Gizmo` / `GizmoGridDrawer` | A right-click opens a float menu whenever `Gizmo.RightClickFloatMenuOptions` is non-empty, otherwise calls `ProcessInput`. | "Auto Purify" is a normal `RightClickFloatMenuOptions` entry. No custom window. |
 | `JobDriver.DriverTick` | Runs `preTickActions`, and after each one returns if the toil changed or `wantBeginNextToil` is set. `Toils_Goto.GotoThing` bakes in `FailOnDespawnedOrNull`, which would end the whole job. | Auto skips a stack by `JumpToToil` from a pre-tick action (vanilla-supported) and uses its own goto toil. |
 | `Pawn_PathFollower.PatherFailed` | `StopDead()` then `JobDriver.Notify_PatherFailed()` (virtual; base ends the job with `ErroredPather`). | Auto overrides `Notify_PatherFailed` to drop just that stack. |
+| `Pawn_JobTracker.TryTakeOrderedJob` | Sets `job.playerForced = true` itself, then calls `job.TryMakePreToilReservations(pawn, errorOnFailed: true)` **at order time** and only then queues the job. A `false` result logs a vanilla warning ("should have been checked before") and drops the order. | The flag is *also* set where the job is made (see [Reservations](#reservations-purify-is-a-player-forced-order)), so the job never depends on how it is issued; and an Auto order must never make `TryMakePreToilReservations` fail. |
+| `Pawn_JobTracker.StartJob` | `playerForced` also sets `ignoreForbidden` and `ignoreDesignations`. A queued job's `TryMakePreToilReservations` runs again with `errorOnFailed: false`. | Forbidden status stays out of the target rule, exactly as for every other forced order. |
+| `ReservationManager.Reserve` | If `CanReserve` fails **and** `job.playerForced` **and** `CanReserve(..., ignoreOtherReservations: true)` holds, it adds the reservation, then for every other claimant on that target that `RespectsReservationsOf` it calls `EndCurrentOrQueuedJob(theirJob, InterruptForced)`. It never reads the *other* job's `playerForced`. | The takeover and the interruption are vanilla's. GM21 makes the job forced and asks the same question; it ends nobody's job. |
+| `ReservationManager.CanReserve(ignoreOtherReservations: true)` | Skips other reservations **only**. Still refuses a null/destroyed/invalid target, a claimant not spawned on the map, a target spawned on another map, and a `stackCount` larger than the stack. | The order-time and search-time check (`CanClaim`) is this exact call: "impossible" is what vanilla says is impossible. |
+| `ReservationManager.RespectsReservationsOf(new, old)` | Same pawn or same faction: respected. Non-hostile factions: respected. Hostile factions: **not** respected (neither blocks nor is interrupted) unless host/guest relations apply. | Guests, allies and quest lodgers are covered by this rule, not by GM21 code. |
+| `JobDriver_Ingest` / `Toils_Ingest.PickupIngestible` | Eating reserves a **partial stack** (`Reserve(source, job, 10, count)`, shared by up to ten pawns) and releases it once the pawn has picked its serving up. | A different `maxPawns` (Purify reserves 1) is a conflict for ordinary `CanReserve`, which is why the ordinary check refused every stack somebody was about to eat. A pawn that already holds its serving keeps eating it. |
+| every `ReservationManager.Release*` caller | 12 sites in 1.6: the owning job's own pick-up/release toils, job cleanup (`ReleaseReservations`), `Pawn.ClearAllReservations` / `ClearReservationsForJob`, a destroyed Thing, and two pre-toil reservations of a *pawn* target. | A running job's reservation is never silently dropped. The only way to lose it is a forced `Reserve`, which **ends** the job. No per-tick ownership check is needed; the check-suite pins the list. |
 
 ## 1. Perfect Hygiene
 
@@ -183,9 +190,11 @@ A Grandmaster Cook gets a **Purify Food** command (player colonists with a store
 * **Right-click** opens the vanilla float menu with one entry, **Auto Purify**.
 * Disabled with the reason if the Grandmaster is unconscious or has no working hands. Never shown for enemies.
 
-**A valid target** is a Thing that exists, is spawned, is on the pawn's map, is reachable, can be reserved, carries
-`CompFoodPoisonable`, and has `PoisonPercent > 0`. No DefName is consulted. Forbidden status is not part of the
-rule, so a stack the player forbade to quarantine it can still be purified.
+**A valid target** is a Thing that exists, is spawned, is on the pawn's map, is reachable, **can be claimed under
+player-forced semantics** (see [Reservations](#reservations-purify-is-a-player-forced-order): an ordinary pawn's
+reservation does *not* make a stack invalid), carries `CompFoodPoisonable`, and has `PoisonPercent > 0`. No DefName
+is consulted. Forbidden status is not part of the rule, so a stack the player forbade to quarantine it can still be
+purified.
 
 **Result:** poison percentage → 0, cause → `Unknown`. Stack count, rot progress, Masterful count and every other
 comp are unchanged; the food is never destroyed.
@@ -200,9 +209,9 @@ acquire  -> go  -> work (180 ticks, progress bar, Cooking is the active skill) -
 
 | Step | Behaviour |
 |---|---|
-| order | Full validation with a player-facing reason; a Job is only created if the target is valid now. |
-| start | `TryMakePreToilReservations` reserves the first stack. |
-| acquire | Keeps the current target if still valid; otherwise (Auto) searches once for the nearest reachable, unreserved contaminated stack and reserves it. |
+| order | Full validation with a player-facing reason; a Job is only created if the target is valid now. The Job is made by one seam (`Gm21PurifyFood.MakeJob`) that sets `playerForced`. |
+| start | `TryMakePreToilReservations` reserves the first stack; because the job is `playerForced`, vanilla takes an ordinary reservation over and ends the displaced job. Auto never fails here (see below); Single fails normally if its target is genuinely impossible. |
+| acquire | Keeps the current target if still valid; otherwise (Auto) searches once for the nearest reachable contaminated stack the Grandmaster can claim, and reserves it. |
 | go / work | A per-tick check runs **first**; if the stack has vanished or been cleaned it is dropped. |
 | finish | Purifies, mote text, releases the reservation. Single: message, job ends. Auto: jump back to acquire. |
 
@@ -212,8 +221,8 @@ Auto Purify is **not** a toggle and not a background scan. It is one Job that en
 
 1. find the nearest valid contaminated stack, reserve it, walk, purify;
 2. search again; repeat;
-3. when the search finds nothing reachable and unreserved, the job ends with success and the pawn returns to
-   normal behaviour, with one summary message if anything was cleaned.
+3. when the search finds nothing reachable that the Grandmaster can claim, the job ends with success and the
+   pawn returns to normal behaviour, with one summary message if anything was cleaned.
 
 The search is one region-based `GenClosest` query, run only to acquire the next target. Nothing runs while the
 pawn walks or works, nothing runs after the job ends, and the driver holds no static state.
@@ -222,7 +231,9 @@ pawn walks or works, nothing runs after the job ends, and the driver holds no st
 |---|---|
 | target destroyed, eaten, hauled away, or cleaned by someone else | that stack is dropped; Auto continues, Single ends |
 | pather gives up (unreachable) | Auto: stack skipped for the rest of the run and never retried; Single: vanilla `ErroredPather` |
-| another pawn claims a stack between search and claim | that stack is skipped; the next candidate is tried |
+| an ordinary pawn (colonist, guest, hauler) holds a reservation on a stack | **not an obstacle**: the stack is a candidate, and vanilla takes the reservation over when the job claims it |
+| the first target becomes impossible between the order and the start (destroyed, despawned, another map, cleaned by someone else, cannot be claimed even under forced semantics) | the pick is discarded and the run starts empty-handed; the first toil then acquires normally. The job is never failed for this |
+| a claim that vanilla refuses during the run (genuinely impossible) | that stack is skipped for the run; the next candidate is tried |
 | a claim keeps failing | bounded at 32 attempts per acquisition, then the run ends (no infinite loop) |
 | Grandmaster drafted, downed, unconscious, handless, dead, ordered elsewhere | the job ends the vanilla way; a per-tick "still a practising Cooking Grandmaster" check backs it up |
 | map change | vanilla ends the job |
@@ -231,6 +242,60 @@ pawn walks or works, nothing runs after the job ends, and the driver holds no st
 Only the stack being worked is reserved, and it is released the moment it is done, so a long run never keeps
 meals reserved that colonists want to eat. No global fail condition, no Reset patch and no job-cancellation
 patch is involved.
+
+## Reservations: Purify is a player-forced order
+
+**Why.** Purify Food is an explicit player command. Before this change both jobs asked *ordinary* `CanReserve`
+questions while ordering and searching, so a contaminated stack that anyone had reserved for eating, hauling or
+storing (a colonist, a guest, a quest lodger) was refused or skipped, even though vanilla's own forced orders can
+take such a reservation over. Eating reserves a partial stack for up to ten pawns, so the food most people were
+about to eat was exactly the food Purify could not touch.
+
+**What now.**
+
+* **Both jobs are `playerForced`**, set in the one job-making seam `Gm21PurifyFood.MakeJob` (used by Single and Auto
+  alike). `TryTakeOrderedJob` sets the same flag, but the job does not depend on how it is issued.
+* **Order-time and search-time checks ask vanilla's forced question**, `CanReserve(..., ignoreOtherReservations:
+  true)`. That is *not* "ignore everything": it still refuses a destroyed target, a target on another map, a pawn
+  that is not spawned on the map, and a claim vetoed by the game. Reachability, contamination and "can practise"
+  are checked as before.
+* **Vanilla does the takeover.** When the job reserves the stack, `ReservationManager.Reserve` adds the reservation
+  and ends the displaced pawn's job with `InterruptForced`; that pawn's think tree runs again. GM21 does not
+  remember, recreate, queue, suspend or cancel anything for the displaced pawn and does not patch `JobDriver_Ingest`.
+* **Nothing is decided by faction.** There is no guest, quest, lodger or prisoner code. A quest guest about to eat a
+  contaminated meal is displaced, or not, by `RespectsReservationsOf` alone (non-hostile factions are respected;
+  a hostile faction's reservation is neither respected nor interrupted).
+
+**Conflicts between explicit orders (audited, not redesigned).** `ReservationManager.Reserve` does not look at the
+*other* job's `playerForced`. So vanilla's rule for two explicit orders on one stack is "the newer order wins", and
+Purify follows it:
+
+| Situation | Result |
+|---|---|
+| Purify vs another pawn's ordinary job (eat, haul, store, WorkGiver, guest) | Purify takes the stack; the other job ends once (`InterruptForced`) |
+| Purify vs another pawn's **player-forced** job (e.g. ordered to eat that meal) | Purify takes it (newer explicit order wins, as for any forced order); that job ends once |
+| a later player-forced order for someone else vs a **running** Purify | that order takes the stack; the Purify job ends once |
+| an ordinary pawn vs a running Purify | the ordinary pawn **cannot** take it (forced reservations are respected by ordinary `Reserve`) |
+| two Cooking Grandmasters, Single vs Single | the later takes over; the earlier job ends |
+| two Grandmasters, Auto vs Auto | the later takes the stack the earlier is working on; the earlier **run ends** (a displaced job is ended whole, not resumed); the later run continues and terminates normally. No ping-pong |
+
+No custom priority hierarchy exists (the suite asserts that `playerForced` is written in one place and read
+nowhere in Cooking code). The two-Auto case is the only place where the vanilla rule is unkind; it is bounded, ends
+in a clean state, and is listed under [known limitations](#known-limitations-and-follow-ups) rather than worked
+around.
+
+**Losing the reservation while working.** Not possible without the job ending: the audit above lists every
+`Release*` caller in 1.6 and none removes a running job's reservation; a forced `Reserve` *ends* the holder's job.
+So the driver keeps no per-tick ownership check. A stack that vanishes is still caught by `DropTargetIfInvalid`.
+
+**The first Auto target.** `TryTakeOrderedJob` reserves at order time and the queued job reserves again at start.
+If the first pick is no longer claimable by then, the Auto driver discards it instead of failing the order (which
+would cost the whole run) and clears the target, so "a valid target in hand is reserved" stays true. Single is an
+explicit target and fails normally.
+
+**Not implemented, deliberately.** A "Waiting for food to be cleaned..." state for displaced pawns. That would mean
+holding, suspending or re-creating other pawns' jobs, or patching `JobDriver_Ingest`. Vanilla's interruption plus
+the think tree already send the displaced pawn to other food.
 
 ## Hooks
 
@@ -283,35 +348,71 @@ Under **Dev mode → Debug actions → Grandmaster 21** (act on the food under t
 
 ## Verification (2026-09-30)
 
-`./tools/verify-cooking.sh <Managed> <0Harmony.dll> <Mono.Cecil.dll>` — **169 PASS, 0 FAIL**. It runs the mod's real
+`./tools/verify-cooking.sh <Managed> <0Harmony.dll> <Mono.Cecil.dll>` — **293 PASS, 0 FAIL**. It runs the mod's real
 patches on the real vanilla methods and executes them: `Notify_RecipeProduced`, `GenRecipe.MakeRecipeProducts`,
 `ThingWithComps.TryAbsorbStack`/`SplitOff`, `Thing.Ingested`, `CompRottable`, the real Scribe saver and loader,
-and the real `JobDriver` (`DriverTick`, toils, `JumpToToil`, `Notify_PatherFailed`).
+the real `JobDriver` (`DriverTick`, toils, `JumpToToil`, `Notify_PatherFailed`), and, for the reservation checks,
+the **real `ReservationManager`** (`Reserve`, `CanReserve`, the `playerForced` takeover, `RespectsReservationsOf`,
+`ReleaseClaimedBy`, `Pawn_JobTracker.EndCurrentOrQueuedJob`).
 
 Headless shims stand in for game-world services only (id generation, RNG, room/stat lookups, ambient temperature,
-spawn/map, pathing, the reservation table, the map search, messages/motes, the language worker, Unity text/shaders).
-Every Cooking decision runs for real. Some vanilla types cannot initialise headless (`ModsConfig`, `ReservationManager`,
-`FloatMenuOption`); those are answered at the smallest seam and the reason is recorded in the test.
+spawn/map, pathing, `Pawn_JobTracker.EndCurrentJob` (needs a live game), the map search, messages/motes, the language
+worker, Unity text/shaders). Every Cooking decision runs for real, and reservations are vanilla's, not a model of
+them. Some vanilla types cannot initialise headless (`ModsConfig`, `FloatMenuOption`, the shader database behind
+`ReservationManager`'s one debug icon, Unity's asset-bundle module): those are answered at the smallest seam and the
+reason is recorded in the test (`tools/stubs/AssetBundleShim.cs` is a test-only stub type; it is not shipped).
 
-**Mutation-checked.** Each rule was broken on purpose and the suite had to notice: hygiene for everyone / for no one,
-whole Masterful count to a split piece, donor not debited on merge, every absorbed serving Masterful (a boolean),
-reward for containing rather than eating, ratio ignored, Purify also resetting rot or leaving the cause, no failed-stack
-memory, no reservation release, attach rule too wide, unguarded whole-stack split, estimate unscaled. All 19 were caught.
+**Forced-reservation scenarios (`FR-A` … `FR-I`).**
+
+| | Asserts |
+|---|---|
+| A | Single and Auto jobs are `playerForced`, from the one job-making seam, with the vanilla ordering call stubbed out so the flag can only come from GM21 |
+| B | Manual Purify on a stack reserved by a colonist eating (partial stack), hauling, or a guest-like pawn of another faction: accepted; vanilla ends the other job exactly once with `InterruptForced`; that pawn holds nothing, has no queued job; the stack is purified with count / Masterful / rot exact. Fundamentally invalid targets (clean, destroyed, despawned, other map, unreachable, vetoed, not a Grandmaster, no hands) are still refused, each with its own reason; "held **and** unreachable" is still unreachable |
+| C | Auto against ordinary reservations: the search prefers the nearest stack even when ordinarily held; cleans free and held stacks nearest-first; leaves clean / unreachable / un-claimable / other-map stacks alone; each displaced job ended once; nothing left reserved; search count exact |
+| D | The first Auto target taken by an ordinary pawn between order and start: the run survives, cleans everything, ends once; the same for Single |
+| E | The first Auto target becomes impossible (destroyed, despawned, other map, cleaned by someone else, un-claimable): discarded, never walked to or held, normal acquisition follows, no vanilla error even with `errorOnFailed: true`; Single fails normally |
+| F | Cleanup: an ordinary pawn cannot take a stack back from a working Purify; after the work or an interruption every reservation is gone; the displaced pawn can claim food again |
+| G | Guest-like autonomous ingest is interrupted by vanilla only; a colonist and a guest sharing one stack are both displaced once; a hostile-faction holder is left alone (vanilla's rule); no guest code exists in Cooking (IL audit) |
+| H | Forced-vs-forced audit: Purify displaces another pawn's forced job; a second Grandmaster displaces the first; two Autos terminate with no ping-pong; a later forced order displaces a running Purify; no custom hierarchy (IL audit: `playerForced` is written once, read nowhere) |
+| I | Perfect Hygiene end to end through `GenRecipe.MakeRecipeProducts` (no FilthyKitchen or IncompetentCook for a Grandmaster, level 20 still poisoned), and every earlier Cooking check unchanged |
+
+**IL audits** of the 1.6 assembly (Mono.Cecil): `Reserve`'s takeover branch, `TryTakeOrderedJob`'s order-time
+reservation, and the exact set of `ReservationManager.Release*` callers; and of the Cooking assembly: one
+reservation query (always `ignoreOtherReservations: true`), every `Reserve` with `ignoreOtherReservations: false`,
+one write and no reads of `playerForced`, no job-tracker call that could end or start another pawn's job, no
+reservation released wholesale, no guest / quest / lodger / prisoner / slave references, no GameComponent /
+MapComponent / WorldComponent, no comp tick, and no Harmony patch on `JobDriver_Ingest`, `ReservationManager`,
+`ReservationUtility`, `Pawn_JobTracker` or `Toils_Ingest`.
+
+**Mutation-checked.** Each rule was broken on purpose and the suite had to notice. Original set: hygiene for everyone /
+for no one, whole Masterful count to a split piece, donor not debited on merge, every absorbed serving Masterful (a
+boolean), reward for containing rather than eating, ratio ignored, Purify also resetting rot or leaving the cause, no
+failed-stack memory, no reservation release, attach rule too wide, unguarded whole-stack split, estimate unscaled
+(19, all caught). Forced-reservation set: no `playerForced` on the job; `playerForced` on Single only; the Auto order or
+the Single order bypassing the job seam; the claim check using ordinary reservation rules (order-time, search-time,
+or both); the claim check ignoring everything; the driver reserving with `ignoreOtherReservations` (start and
+acquisition); no Auto fall-through for a dead first target; the fall-through keeping the dead target; Single
+tolerating a dead target; a custom "another Purify is protected" rule; a custom "player-forced jobs are protected"
+rule; reading `playerForced`; quest-lodger special-casing; releasing wholesale (18 in all). One, "Single tolerating a
+dead target", survived at first; the check was tightened until it was caught.
 
 | Existing suite | Result |
 |---|---:|
 | Offline core / Shooting / Melee | 58 / 74 / 295 PASS, 0 FAIL |
-| Beam Parry (merged from 0.14.0, loaded together with Cooking) | 195 PASS, 0 FAIL; one XML-binding check blocked without game Data |
+| Beam Parry (merged from 0.14.0, loaded together with Cooking) | 195 PASS, 0 FAIL without game Data (196 with it) |
 | Real runtime targets | 271 PASS, 0 FAIL |
 | Real binding | 40 applied, 0 failed, 6 environment-blocked |
 | Skill Learn transpiler | PASS |
 | Finalizer semantics / progression | 15 / 26 PASS, 0 FAIL |
 | Aspirant | 91 PASS, 0 FAIL |
-| Medicine | 344 PASS, 0 FAIL |
+| Medicine | 344 PASS, 0 FAIL without game Data (369 with it) |
 | Transcendent Crafting | 604 PASS, 0 FAIL |
 | Crafting/Construction Legendary notifications | 166 PASS, 0 FAIL |
 
-Real binding is 40 (was 39): the new gizmo patch. Beam Parry binds under its own Harmony owner and is not part of that count. The six blocks are the existing Unity-initialisation ones. Cooking and Beam Parry touch disjoint vanilla methods (food, rot and eating versus the beam verb pipeline) and were verified loaded together.
+Real binding is 40: this change adds no vanilla patch. Beam Parry binds under its own Harmony owner and is not part of that count. The six blocks are the existing Unity-initialisation ones. Cooking and Beam Parry touch disjoint vanilla methods (food, rot and eating versus the beam verb pipeline) and were verified loaded together.
+
+**What none of this proves.** The real `ReservationManager` and `JobDriver` run headless, but not a live `Pawn_JobTracker`
+think tree, a real pather, the float menu, or a game with guests, quests or two Grandmasters. See the owner checklist.
 
 ## Known limitations and follow-ups
 
@@ -322,6 +423,11 @@ Real binding is 40 (was 39): the new gizmo patch. Beam Parry binds under its own
 * Auto Purify looks at the current map only and at spawned food; food in inventories, caravans or containers that are
   not spawned Things is not a target.
 * The Purify Food gizmo and the Auto loop have had no in-game test; the shims above cannot exercise the UI or a live pather.
+* Reservations follow vanilla's forced rule, including its rough edges: a pawn that has **already picked up** its
+  serving keeps eating it (its stack reservation is gone; the split-off piece is no longer the target); a pawn of a
+  hostile faction is neither blocked nor displaced; and with two Cooking Grandmasters running Auto in the same area,
+  the later run displaces the earlier run's current stack, which ends the earlier run (finite, no loop).
+* An ordinary pawn displaced from a meal is not told why. No "waiting for food to be cleaned" state exists.
 
 ## Owner runtime checklist (NOT RUN)
 
@@ -337,4 +443,5 @@ Use **Dev mode** and *Grandmaster 21 → Promote all level 20 skills to Grandmas
 8. **H. Purify.** *Poison food stack*, then Purify Food: the Grandmaster walks over, works about 3 seconds, poison is 0, count, rot and Masterful count unchanged.
 9. **I. Auto.** Poison several stacks around the colony, right-click Purify Food → Auto Purify: they are cleaned nearest first, the job then ends by itself, and the Grandmaster resumes normal work.
 10. **J. Modded food.** If a mod adds cooked food using `CompFoodPoisonable`: it shows Masterful servings when a Grandmaster cooks it and can be purified.
-11. **Uninstall.** Run **Prepare Save for Uninstall** after eating Masterful meals: the result dialog counts the cleared memories and Purify jobs.
+11. **K. Forced reservation (owner runtime, NOT RUN).** With a colonist about to eat, or a guest/quest lodger eating, a contaminated meal: order Purify Food on that meal. It must be accepted (no "cannot claim"), the eater must stop and pick other food (or wait), the Grandmaster must purify it, and the log must show no red error. Repeat with **Auto Purify**, once with several stacks ordinary-reserved, and once with one Grandmaster's Auto running while a second Grandmaster is ordered onto the same stack. Then order a colonist to eat a stack a Grandmaster is purifying: the later order wins.
+12. **Uninstall.** Run **Prepare Save for Uninstall** after eating Masterful meals: the result dialog counts the cleared memories and Purify jobs.

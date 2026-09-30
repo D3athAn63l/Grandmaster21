@@ -136,7 +136,8 @@ namespace Grandmaster21
         }
 
         /// <summary>
-        /// Right-click "Auto Purify": start with the nearest reachable, unreserved contaminated stack.
+        /// Right-click "Auto Purify": start with the nearest reachable contaminated stack the Grandmaster can
+        /// claim under player-forced semantics (an ordinary pawn's reservation does not exclude it).
         /// The job finds its own following targets and stops by itself. With nothing to purify, no job
         /// is started at all.
         /// </summary>

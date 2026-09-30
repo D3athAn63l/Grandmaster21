@@ -4,7 +4,7 @@
 
 **Version 0.15.0 Beta.** Adds the first pass of **Cooking 21 — Grandmaster Cook**: never-poisoned
 meals, persistent Masterful servings that slow rot, and a Purify Food command with a finite Auto
-Purify. It builds against the real 1.6 assemblies and has 169 headless checks that run the real
+Purify. It builds against the real 1.6 assemblies and has 293 headless checks that run the real
 vanilla methods; it has **not** been tested in gameplay. See [Cooking 21](#cooking-21--grandmaster-cook).
 
 **0.14.0 Beta** added Melee 21 [Beam Parry](Docs/BeamParry.md): one anticipatory
@@ -1191,10 +1191,13 @@ and rot are **not** changed globally; the package only intervenes where a Grandm
   temperature, refrigeration and freezing behave exactly as before, and non-Masterful food is bit-for-bit vanilla.
 * **Purify Food.** Left-click a contaminated prepared-food stack (any stack with `CompFoodPoisonable` and a
   poison percentage above zero). The Grandmaster walks to it, works about three seconds, and clears the
-  contamination. The meals are kept; their number, rot and Masterful servings are unchanged.
+  contamination. The meals are kept; their number, rot and Masterful servings are unchanged. It is a
+  **player-forced** order: a stack that an ordinary pawn (a colonist about to eat it, a hauler, a guest) has
+  reserved is still a valid target, and vanilla's reservation system ends that pawn's job so they choose other
+  food. Nothing is remembered or restarted for them.
 * **Auto Purify.** Right-click the command. It cleans every currently reachable contaminated stack,
-  nearest first, skipping unreachable or contested ones, and then **stops by itself**. It is not a toggle and
-  nothing scans in the background.
+  nearest first, skipping only the unreachable or genuinely impossible ones, and then **stops by itself**. It is
+  not a toggle and nothing scans in the background.
 
 Dev mode adds food actions under *Grandmaster 21* to mark servings Masterful, split a stack, poison,
 purify and report a stack. Before uninstalling, **Prepare Save for Uninstall** also removes Masterful Meal
@@ -1655,12 +1658,13 @@ Cooking 21 is also excluded from the stub build and verified against the real ga
 ./tools/verify-cooking.sh /path/to/Managed /path/to/0Harmony.dll /path/to/Mono.Cecil.dll
 ```
 
-**169 checks** install the mod's real Cooking patches on the real vanilla methods and execute them:
+**293 checks** install the mod's real Cooking patches on the real vanilla methods and execute them:
 `CompFoodPoisonable.Notify_RecipeProduced`, `GenRecipe.MakeRecipeProducts`, `ThingWithComps.TryAbsorbStack`
 and `SplitOff` (including a 4000-step random walk asserting exact Masterful conservation),
 `Thing.Ingested`, `CompRottable`, the real Scribe saver/loader, and the real `JobDriver` running Purify Food
-and Auto Purify. Game-world services (pathing, reservations, the map search, text and Unity) are answered by
-test-process shims that never ship. Every rule was mutation-checked. Details: [Docs/Cooking21.md](Docs/Cooking21.md#verification-2026-09-30).
+and Auto Purify, against vanilla's own **`ReservationManager`** (forced takeover, interruption, cleanup). Game-world
+services (pathing, the map search, text and Unity) are answered by test-process shims that never ship. Every
+rule was mutation-checked. Details: [Docs/Cooking21.md](Docs/Cooking21.md#verification-2026-09-30).
 
 The Magical crafting source is excluded from the stub build. Build it against the real game DLLs
 and run `tools/verify-transcendent.sh`; setup and overrides are documented in
@@ -1715,9 +1719,10 @@ hand-written approximations. Only a real build does that. See `tools/stubs/READM
 ## Release status
 
 **0.15.0 Beta.** Cooking 21 (first pass) builds against the real RimWorld 1.6/Unity/Harmony assemblies with
-zero warnings and errors, and `tools/verify-cooking.sh` reports **169 PASS, 0 FAIL**: real vanilla poison,
-recipe production, stack merge/split, ingestion, rot, Scribe save and load, and the real `JobDriver` all
-execute under the mod's real hooks, and every rule was mutation-checked. All existing suites are unchanged
+zero warnings and errors, and `tools/verify-cooking.sh` reports **293 PASS, 0 FAIL**: real vanilla poison,
+recipe production, stack merge/split, ingestion, rot, Scribe save and load, the real `JobDriver` and the real
+`ReservationManager` (both Purify jobs are `playerForced`, so an ordinary reservation no longer protects
+contaminated food) all execute under the mod's real hooks, and every rule was mutation-checked. All existing suites are unchanged
 (58 / 74 / 295 offline; 195 Beam Parry; 271 runtime targets; 15 / 26 finalizer and progression; 91 Aspirant;
 344 Medicine; 604 Transcendent; 166 notifications); real binding is 40 applied (the new gizmo) with the same
 six environment blocks. **No in-game Cooking testing has been performed**: the gizmo, the live pather and job

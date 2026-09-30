@@ -16,14 +16,21 @@ namespace Grandmaster21
     ///
     /// AUTO (GM21_PurifyFoodAuto): the same four toils, and 'finish' jumps back to 'acquire', which looks
     /// for the next nearest contaminated stack. It is a FINITE cleanup, not a standing toggle: when no
-    /// reachable, unreserved contaminated stack remains, the job ends and the pawn returns to normal
-    /// behaviour. Nothing scans while the pawn walks or works, and nothing runs after the job ends.
+    /// reachable contaminated stack the Grandmaster can claim remains, the job ends and the pawn returns to
+    /// normal behaviour. Nothing scans while the pawn walks or works, and nothing runs after the job ends.
+    ///
+    /// RESERVATIONS. Both jobs are playerForced (see Gm21PurifyFood.MakeJob), so vanilla's Reserve takes an
+    /// ordinary AI reservation over: the displaced pawn's job is ended by vanilla and its think tree runs
+    /// again. Nothing here remembers, recreates or suspends the displaced job. A reservation cannot be lost
+    /// from under a running job: in the 1.6 assembly every removal is the owning job's own release, job or
+    /// pawn cleanup, a destroyed Thing, or another forced Reserve, which ENDS this job. So no ownership
+    /// check runs per tick; a target that vanishes is caught by DropTargetIfInvalid.
     ///
     /// A single Job carries the whole run, so it ends through the ordinary JobDriver machinery only:
     ///   * drafted, downed, dead, or ordered elsewhere -- vanilla ends the job (reservations are released
     ///     by vanilla with it); this driver adds a per-tick "still a practising Cooking Grandmaster" check;
     ///   * a target destroyed, eaten, hauled off, purified by someone else, or no longer reachable /
-    ///     reservable -- that STACK is dropped (Auto moves on to the next one, Single ends);
+    ///     claimable -- that STACK is dropped (Auto moves on to the next one, Single ends);
     ///   * a stack that fails is remembered for the rest of the run and never tried twice.
     ///
     /// Only the stack being worked is reserved, and it is released as soon as it is done, so a long run
@@ -57,10 +64,24 @@ namespace Grandmaster21
             Scribe_Values.Look(ref purified, "gm21Purified", 0);
         }
 
+        /// <summary>
+        /// The job is playerForced, so vanilla's Reserve takes an ordinary reservation over rather than
+        /// failing on it. It still refuses a target that is genuinely impossible (destroyed, on another
+        /// map, or otherwise unclaimable even by a forced job). A SINGLE order then fails normally, as it
+        /// should for an explicit target. An AUTO order must not die because its first pick went stale
+        /// between the search and the start: it drops that pick and starts empty-handed, and
+        /// <see cref="Acquire"/> finds another. The target is cleared so that "a valid target in hand is
+        /// reserved" stays true by construction. (A pick that is merely despawned or already clean can
+        /// still be reserved; the first toil notices and drops it.)
+        /// </summary>
         public override bool TryMakePreToilReservations(bool errorOnFailed)
         {
-            if (!Gm21Cooking.CanPractise(pawn) || Target == null) return false;
-            return pawn.Reserve(job.targetA, job, 1, -1, null, errorOnFailed);
+            if (!Gm21Cooking.CanPractise(pawn)) return false;
+            Thing t = Target;
+            if (t != null && pawn.Reserve(job.targetA, job, 1, -1, null, errorOnFailed && !Auto)) return true;
+            if (!Auto) return false;
+            job.targetA = LocalTargetInfo.Invalid;
+            return true;
         }
 
         protected override IEnumerable<Toil> MakeNewToils()
@@ -206,7 +227,7 @@ namespace Grandmaster21
             else EndJobWith(JobCondition.Succeeded);
         }
 
-        /// <summary>The run is complete: nothing reachable and unreserved is left. One summary, then stop.</summary>
+        /// <summary>The run is complete: nothing reachable and claimable is left. One summary, then stop.</summary>
         private void EndRun()
         {
             try

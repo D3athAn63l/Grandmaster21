@@ -18,7 +18,7 @@
   <GM21_Cook_NotPractising>{0} cannot purify food right now: a Cooking Grandmaster must be conscious and able to use their hands.</GM21_Cook_NotPractising>
   <GM21_Cook_NotContaminated>That is not a contaminated prepared-food stack.</GM21_Cook_NotContaminated>
   <GM21_Cook_CannotReach>Cannot reach {0}.</GM21_Cook_CannotReach>
-  <GM21_Cook_Reserved>{0} is already being handled by someone else.</GM21_Cook_Reserved>
+  <GM21_Cook_CannotClaim>{0} is no longer available to purify.</GM21_Cook_CannotClaim>
   <GM21_Cook_NothingToPurify>{0} finds no contaminated food they can reach.</GM21_Cook_NothingToPurify>
 
   <!-- {0} the Grandmaster, {1} the food -->

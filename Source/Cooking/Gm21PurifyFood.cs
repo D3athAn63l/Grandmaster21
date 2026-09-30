@@ -84,9 +84,23 @@ namespace Grandmaster21
         }
 
         /// <summary>
+        /// Whether the pawn could claim this stack UNDER PLAYER-FORCED SEMANTICS. Purify Food is an explicit
+        /// player command, so an ordinary autonomous reservation (an eating or hauling pawn's, a guest's)
+        /// must not protect contaminated food from it. Vanilla's ReservationManager.Reserve does the actual
+        /// takeover for a playerForced job; this asks the same vanilla question it asks to decide that,
+        /// CanReserve with ignoreOtherReservations, which still refuses a destroyed target, a target on
+        /// another map, or a pawn that is not spawned on the target's map.
+        /// </summary>
+        internal static bool CanClaim(Pawn pawn, Thing thing)
+        {
+            return pawn != null && thing != null && pawn.CanReserve(thing, 1, -1, null, true);
+        }
+
+        /// <summary>
         /// The full order-time check for one target, with the player-facing reason on refusal. The same
-        /// check runs again when the job starts. Reachability and reservation are decided here, at the
-        /// moment the pawn is asked to walk, not by a background scan.
+        /// check runs again when the job starts. Reachability and claimability are decided here, at the
+        /// moment the pawn is asked to walk, not by a background scan. An ordinary reservation held by
+        /// someone else is deliberately NOT a reason to refuse (see <see cref="CanClaim"/>).
         /// </summary>
         internal static bool CanOrder(Pawn pawn, Thing thing, out string reason)
         {
@@ -106,18 +120,19 @@ namespace Grandmaster21
                 reason = "GM21_Cook_CannotReach".Translate(thing.LabelShortCap).ToString();
                 return false;
             }
-            if (!pawn.CanReserve(thing, 1, -1, null, false))
+            if (!CanClaim(pawn, thing))
             {
-                reason = "GM21_Cook_Reserved".Translate(thing.LabelShortCap).ToString();
+                reason = "GM21_Cook_CannotClaim".Translate(thing.LabelShortCap).ToString();
                 return false;
             }
             return true;
         }
 
         /// <summary>
-        /// The nearest reachable, unreserved contaminated stack, or null. One region-based search, run
-        /// only when a target is needed -- never on a timer. <paramref name="skipped"/> holds stacks the
-        /// running job already failed on, so an unreachable or contested stack is not tried twice.
+        /// The nearest reachable contaminated stack the pawn can claim under player-forced semantics, or
+        /// null. Ordinary reservations do not exclude a stack. One region-based search, run only when a
+        /// target is needed -- never on a timer. <paramref name="skipped"/> holds stacks the running job
+        /// already failed on, so a stack that cannot be claimed is not tried twice.
         /// </summary>
         internal static Thing FindNearest(Pawn pawn, List<int> skipped)
         {
@@ -128,7 +143,7 @@ namespace Grandmaster21
                 delegate(Thing t)
                 {
                     if (skipped != null && skipped.Contains(t.thingIDNumber)) return false;
-                    return IsPurifyTarget(t) && pawn.CanReserve(t, 1, -1, null, false);
+                    return IsPurifyTarget(t) && CanClaim(pawn, t);
                 });
         }
 
@@ -144,9 +159,19 @@ namespace Grandmaster21
             if (reservations.ReservedBy(thing, pawn, job)) reservations.Release(thing, pawn, job);
         }
 
+        /// <summary>
+        /// The one place a Purify job is made, for Single and Auto alike, so they cannot diverge. The job
+        /// itself carries vanilla's playerForced flag: it is an explicit player order, and
+        /// ReservationManager.Reserve gives a playerForced job the right to take a reservation over from
+        /// ordinary work (ending the displaced job with InterruptForced and letting that pawn's think tree
+        /// choose again). Pawn_JobTracker.TryTakeOrderedJob also sets it, but the job must not depend on
+        /// how it happens to be issued.
+        /// </summary>
         internal static Job MakeJob(Thing target, bool auto)
         {
-            return JobMaker.MakeJob(auto ? Gm21CookingDefOf.GM21_PurifyFoodAuto : Gm21CookingDefOf.GM21_PurifyFood, target);
+            Job job = JobMaker.MakeJob(auto ? Gm21CookingDefOf.GM21_PurifyFoodAuto : Gm21CookingDefOf.GM21_PurifyFood, target);
+            job.playerForced = true;
+            return job;
         }
     }
 }

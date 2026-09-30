@@ -18,6 +18,12 @@ cp "$MANAGED"/*.dll "$OUT/"
 cp "$HARMONY" "$CECIL" Assemblies/Grandmaster21.dll "$OUT/"
 [ -f "$OUT/com.rlabrecque.steamworks.net.dll" ] || \
   "$COMPILER" -nologo -target:library -out:"$OUT/com.rlabrecque.steamworks.net.dll" tools/stubs/SteamworksShim.cs
+# The real ReservationManager's static initialiser reaches the shader database, whose asset-bundle fallback
+# names UnityEngine.AssetBundle; the game ships that module, the headless Managed/ subset does not.
+[ -f "$OUT/UnityEngine.AssetBundleModule.dll" ] || \
+  "$COMPILER" -nologo -target:library -out:"$OUT/UnityEngine.AssetBundleModule.dll" \
+    -r:"$FRAMEWORK/mscorlib.dll" -r:"$FRAMEWORK/System.dll" -r:"$FRAMEWORK/Facades/netstandard.dll" \
+    -r:"$OUT/UnityEngine.CoreModule.dll" tools/stubs/AssetBundleShim.cs
 "$COMPILER" -nologo -target:exe -out:"$OUT/cooking.exe" -nostdlib -noconfig -warn:2 \
   -r:"$FRAMEWORK/mscorlib.dll" -r:"$FRAMEWORK/System.dll" -r:"$FRAMEWORK/System.Core.dll" \
   -r:"$FRAMEWORK/System.Xml.dll" -r:"$FRAMEWORK/System.Xml.Linq.dll" -r:"$FRAMEWORK/Facades/netstandard.dll" \
